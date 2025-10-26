@@ -6,7 +6,7 @@ import typer
 from rich.console import Console
 from rich.progress import Progress, BarColumn, TimeElapsedColumn
 
-from storage import build_object_key, ensure_bucket_exists, head_object, upload_file
+from storage import build_object_key, download_file, ensure_bucket_exists, head_object, list_objects, upload_file
 
 
 from .config import CFG
@@ -147,6 +147,57 @@ def backup_db(
     etag = upload_file(target, key)
 
     console.print(f"[green]DB backup uploaded:[/green] {key} (etag {etag})")
+
+
+@app.command()
+def restore_db(
+    dest: str = typer.Option(None, help="Destination directory for restored DB"),
+):
+    import gzip, shutil
+    target_db = Path(dest) if dest else Path(CFG.db_path)
+    objs = list_objects("backups/")
+    if not objs:
+        console.print(f"[red]No backup objects found in S3 under backups/[/red]")
+        raise typer.Exit(2)
+
+    latest_key = sorted((k for k, _ in objs))[-1]
+    tmp = target_db.with_suffix(target_db.suffix + ".download")
+    download_file(latest_key, tmp)
+
+    if latest_key.endswith(".gz"):
+        with gzip.open(tmp, "rb") as fi, open(target_db, "wb") as fo:
+            shutil.copyfileobj(fi, fo)
+            tmp.unlink(missing_ok=True)
+    else:
+        tmp.rename(target_db)
+    console.print(f"[green]DB restored to:[/green] {target_db}")
+
+@app.command()
+def rehydrate(dest_root: str = typer.Argument(..., help="Directory to store rehydrated images")):
+    base = Path(dest_root).resolve()
+    base.mkdir(parents=True, exist_ok=True)
+
+    with connect() as con:
+        rows = con.execute("SELECT id, s3_key FROM images WHERE s3_key IS NOT NULL ORDER BY id").fetchall()
+    
+    with Progress(
+        "[progress.description]{task.description}",
+        BarColumn(),
+        "{task.completed}/{task.total}",
+        TimeElapsedColumn(),
+        transient=False,
+        console=console
+    ) as progress:
+        task = progress.add_task("Downloading", total=len(rows))
+
+        for r in rows:
+            key = r["s3_key"]
+            local = base.joinpath(*key.split("/"))
+            download_file(key, local)
+            progress.update(task, advance=1)
+    console.print(f"[green]Rehydrated {len(rows)} images to {base}[/green]")
+    
+
 
 if __name__ == "__main__":
     app()

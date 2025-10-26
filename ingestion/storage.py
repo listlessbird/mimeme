@@ -2,7 +2,7 @@
 import os
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional, Iterable
+from typing import List, Optional, Iterable, Tuple
 
 import boto3
 from boto3.s3.transfer import TransferConfig
@@ -101,6 +101,31 @@ def upload_file(local_path: Path, key: str) -> str:
     )
     etag = head_object(key) or ""
     return etag
+
+def download_file(key: str, dest: Path) -> None:
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    cli = s3_client()
+    s = get_s3_settings()
+    cli.download_file(s.bucket, key, str(dest))
+
+def list_objects(prefix: str) -> list[tuple[str, int]]:
+    cli = s3_client()
+    s = get_s3_settings()
+    token = None
+    out: List[Tuple[str, int]] = []
+
+    while True:
+        kwargs = dict(Bucket = s.bucket, Prefix=prefix)
+        if token:
+            kwargs["ContinuationToken"] = token
+        resp = cli.list_objects_v2(**kwargs)
+        for obj in resp.get("Contents", []):
+            out.append((obj["Key"], obj["Size"]))
+        token = resp.get("NextContinuationToken")
+        if not token:
+            break
+    return out
+
 
 def _map_content_type(path: Path) -> str:
     ext = path.suffix.lower()
