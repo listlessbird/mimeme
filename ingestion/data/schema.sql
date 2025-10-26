@@ -2,6 +2,8 @@ CREATE TABLE images (
   id INTEGER PRIMARY KEY,
   sha256 TEXT UNIQUE NOT NULL,
   rel_path TEXT NOT NULL,
+  s3_key TEXT,
+  s3_etag TEXT,
   width INTEGER, height INTEGER, format TEXT,
   phash TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP

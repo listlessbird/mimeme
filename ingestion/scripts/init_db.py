@@ -1,12 +1,9 @@
 import sqlite3
+from pathlib import Path
 
-conn = sqlite3.connect("./data/db.sqlite3")
+conn = sqlite3.connect(Path(__file__).parent.parent / "data" / "db.sqlite3")
 
-schema_file = "./data/schema.sql"
-
-with open(schema_file, "r") as f:
-    schema = f.read()
-
-conn.executescript(schema)
+with open(Path(__file__).parent.parent / "data" / "schema.sql", "r") as f:
+    conn.executescript(f.read())
 
 conn.close()
