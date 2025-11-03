@@ -10,7 +10,8 @@ from storage import build_object_key, download_file, ensure_bucket_exists, head_
 
 
 from .config import CFG
-from .db import connect, bulk_upsert_images
+from .database import session_scope, get_engine
+from .repositories import images as images_repo
 from .pipeline import walk_images, process_paths_parallel, batched
 
 app = typer.Typer()
@@ -38,7 +39,7 @@ def scan(
 
     rec_iter = process_paths_parallel(paths_iter, base, workers) if estimate else process_paths_parallel(paths_iter, base, workers)
 
-    with connect() as conn, Progress(
+    with session_scope() as session, Progress(
         "[progress.description]{task.description}",
         BarColumn(),
         "{task.completed}/{task.total}",
@@ -49,7 +50,7 @@ def scan(
         task_id = progress.add_task("Processing images", total=total)
 
         for chunk in batched(rec_iter, batch_size):
-            bulk_upsert_images(conn, [rec.as_dict() for rec in chunk])
+            images_repo.bulk_upsert(session, [rec.as_dict() for rec in chunk])
             progress.update(task_id, advance=len(chunk))
     
     console.print(f"[bold green]Scanned {total} images[/bold green]")
@@ -58,17 +59,22 @@ def scan(
 def verify():
     from rich.table import Table
 
-    with connect() as con:
-        row = con.execute("SELECT COUNT(*) AS c FROM images").fetchone()
-        cnt = row["c"]
+    with session_scope() as session:
+        cnt = images_repo.count(session)
         console.print(f"[bold]images[/bold]: {cnt}")
 
         table = Table(show_lines=True)
         for col in ("id", "sha256", "rel_path", "width", "height", "format", "phash"):
             table.add_column(col)
 
-        for r in con.execute("SELECT id, sha256, rel_path, width, height, format, phash FROM images ORDER BY id DESC LIMIT 5"):
-            table.add_row(*(str(r[c]) if r[c] is not None else "" for c in ("id", "sha256", "rel_path", "width", "height", "format", "phash")))
+        rows = images_repo.list_recent(session, 5)
+        for r in rows:
+            table.add_row(
+                *(
+                    str(getattr(r, c)) if getattr(r, c) is not None else ""
+                    for c in ("id", "sha256", "rel_path", "width", "height", "format", "phash")
+                )
+            )
         console.print(table)
 
 @app.command()
@@ -79,19 +85,20 @@ def upload(
     base = Path(root).resolve()
     ensure_bucket_exists()
 
-    with connect() as con:
-        rows = con.execute("SELECT id, sha256, rel_path, s3_key, s3_etag FROM images").fetchall()
+    with session_scope() as session:
+        rows = images_repo.get_all_basic(session)
 
         to_upload: list[tuple[int, str, Path, str]] = []
         for r in rows:
-            local = Path(root) / r["rel_path"]
+            img_id, sha256, rel_path, s3_key, s3_etag = r
+            local = Path(root) / rel_path
             if not local.exists():
                 continue
-            key = build_object_key(r["sha256"], r["rel_path"])
+            key = build_object_key(sha256, rel_path)
             remote_etag = head_object(key)
-            if remote_etag and remote_etag == r["s3_etag"]:
+            if remote_etag and remote_etag == s3_etag:
                 continue
-            to_upload.append((r["id"], r["sha256"], local, key))
+            to_upload.append((img_id, sha256, local, key))
 
         if dry_run:
             for _, sha, p, k in to_upload:
@@ -100,7 +107,7 @@ def upload(
 
         uploaded = 0
         
-        with connect() as conn, Progress(
+        with session_scope() as session, Progress(
             "[progress.description]{task.description}",
             BarColumn(),
             "{task.completed}/{task.total}",
@@ -112,10 +119,7 @@ def upload(
 
             for img_id, sha, local, key in to_upload:
                 etag = upload_file(local, key)
-                conn.execute(
-                    "UPDATE images SET s3_key = :key, s3_etag = :etag WHERE id = :img_id",
-                    {"key": key, "etag": etag, "img_id": img_id}
-                )
+                images_repo.set_s3_fields(session, img_id, key, etag)
                 uploaded += 1
                 progress.update(task_id, advance=1)
         console.print(f"[bold green]Uploaded {uploaded} images[/bold green]")
@@ -129,7 +133,8 @@ def backup_db(
     snap = db_path.with_name(f"{db_path.stem}.snapshot-{int(time.time())}.sqlite3")
 
     import sqlite3
-    src = sqlite3.connect(db_path)
+    engine = get_engine()
+    src = engine.raw_connection()
     dst = sqlite3.connect(snap)
     with dst:
         src.backup(dst)
@@ -177,8 +182,8 @@ def rehydrate(dest_root: str = typer.Argument(..., help="Directory to store rehy
     base = Path(dest_root).resolve()
     base.mkdir(parents=True, exist_ok=True)
 
-    with connect() as con:
-        rows = con.execute("SELECT id, s3_key FROM images WHERE s3_key IS NOT NULL ORDER BY id").fetchall()
+    with session_scope() as session:
+        rows = images_repo.get_with_s3_key(session)
     
     with Progress(
         "[progress.description]{task.description}",
@@ -191,7 +196,7 @@ def rehydrate(dest_root: str = typer.Argument(..., help="Directory to store rehy
         task = progress.add_task("Downloading", total=len(rows))
 
         for r in rows:
-            key = r["s3_key"]
+            _, key = r
             local = base.joinpath(*key.split("/"))
             download_file(key, local)
             progress.update(task, advance=1)
