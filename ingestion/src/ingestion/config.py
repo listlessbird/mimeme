@@ -9,6 +9,7 @@ _PROJECT_ROOT = Path(__file__).parent.parent.parent
 @dataclass(frozen=True)
 class Config:
     db_path: str = os.getenv("INGESTION_DB", str(_PROJECT_ROOT / "data" / "db.sqlite3"))
+    image_root: str = os.getenv("INGESTION_IMAGE_ROOT", str(_PROJECT_ROOT / "data" / "raw_memes"))
     exts: tuple[str, ...] = (".jpg", ".jpeg", ".png", ".gif", ".webp")
     workers: int = int(os.getenv("INGESTION_WORKERS", "4"))
     batch_size: int = int(os.getenv("INGESTION_BATCH_SIZE", "100"))
