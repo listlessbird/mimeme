@@ -1,11 +1,51 @@
 from __future__ import annotations
-from sqlalchemy import (
-    Column, Integer, Text, String, ForeignKey, UniqueConstraint, text
-)
+from sqlalchemy import Column, Integer, Text, String, ForeignKey, text, UniqueConstraint
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
+from sqlalchemy import create_engine
+from contextlib import contextmanager
+import os
+
 from .config import CFG
 
+
+def _sqlite_url() -> str:
+    db_abs = os.path.abspath(CFG.db_path)
+    return f"sqlite:///{db_abs}"
+
+
+def get_engine(echo: bool = False):
+    return create_engine(
+        _sqlite_url(),
+        echo=echo,
+        future=True,
+        connect_args={"check_same_thread": False},
+    )
+
+
+SessionLocal = sessionmaker(
+    bind=get_engine(),
+    autoflush=False,
+    autocommit=False,
+    future=True,
+    expire_on_commit=False,
+)
+
+
+@contextmanager
+def session_scope():
+    sess = SessionLocal()
+    try:
+        yield sess
+        sess.commit()
+    except Exception:
+        sess.rollback()
+        raise
+    finally:
+        sess.close()
+
+
 Base = declarative_base()
+
 
 class Image(Base):
     __tablename__ = "images"
@@ -24,10 +64,11 @@ class Image(Base):
     annotations = relationship("Annotation", uselist=False, back_populates="image")
     artifacts = relationship("Artifact", back_populates="image")
 
+
 class Processing(Base):
     __tablename__ = "processing"
     image_id = Column(Integer, ForeignKey("images.id"), primary_key=True)
-    ocr_status = Column(String, default="pending")       # pending|running|done|failed
+    ocr_status = Column(String, default="pending")  # pending|running|done|failed
     ocr_model = Column(Text)
     ocr_updated_at = Column(Text)
     caption_status = Column(String, default="pending")
@@ -40,6 +81,7 @@ class Processing(Base):
 
     image = relationship("Image", back_populates="processing")
 
+
 class Annotation(Base):
     __tablename__ = "annotations"
     image_id = Column(Integer, ForeignKey("images.id"), primary_key=True)
@@ -48,10 +90,11 @@ class Annotation(Base):
     tags = Column(Text)
     image = relationship("Image", back_populates="annotations")
 
+
 class Artifact(Base):
     __tablename__ = "artifacts"
     image_id = Column(Integer, ForeignKey("images.id"), primary_key=True)
-    kind = Column(Text, primary_key=True)             # 'ocr'|'caption'|'embed'|'thumb'
+    kind = Column(Text, primary_key=True)  # 'ocr'|'caption'|'embed'|'thumb'
     model_version = Column(Text, primary_key=True)
     path = Column(Text)
     checksum = Column(Text)
@@ -59,6 +102,7 @@ class Artifact(Base):
 
     image = relationship("Image", back_populates="artifacts")
     __table_args__ = (UniqueConstraint("image_id", "kind", "model_version"),)
+
 
 class IndexBuild(Base):
     __tablename__ = "index_builds"

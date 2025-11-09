@@ -1,10 +1,14 @@
 from __future__ import annotations
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+# Project root is two levels up from this file: src/ingestion/config.py -> ingestion/
+_PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 @dataclass(frozen=True)
 class Config:
-    db_path: str = os.getenv("INGESTION_DB", "ingestion/data/db.sqlite3")
+    db_path: str = os.getenv("INGESTION_DB", str(_PROJECT_ROOT / "data" / "db.sqlite3"))
     exts: tuple[str, ...] = (".jpg", ".jpeg", ".png", ".gif", ".webp")
     workers: int = int(os.getenv("INGESTION_WORKERS", "4"))
     batch_size: int = int(os.getenv("INGESTION_BATCH_SIZE", "100"))
