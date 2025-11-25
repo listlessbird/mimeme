@@ -60,7 +60,9 @@ class Image(Base):
     height: Mapped[Optional[int]] = mapped_column(Integer)
     format: Mapped[Optional[str]] = mapped_column(Text)
     phash: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[Optional[str]] = mapped_column(Text, server_default=text("CURRENT_TIMESTAMP"))
+    created_at: Mapped[Optional[str]] = mapped_column(
+        Text, server_default=text("CURRENT_TIMESTAMP")
+    )
 
     processing: Mapped[Optional["Processing"]] = relationship(back_populates="image")
     annotations: Mapped[Optional["Annotation"]] = relationship(back_populates="image")
@@ -101,7 +103,9 @@ class Artifact(Base):
     model_version: Mapped[str] = mapped_column(Text, primary_key=True)
     path: Mapped[Optional[str]] = mapped_column(Text)
     checksum: Mapped[Optional[str]] = mapped_column(Text)
-    created_at: Mapped[Optional[str]] = mapped_column(Text, server_default=text("CURRENT_TIMESTAMP"))
+    created_at: Mapped[Optional[str]] = mapped_column(
+        Text, server_default=text("CURRENT_TIMESTAMP")
+    )
 
     image: Mapped["Image"] = relationship(back_populates="artifacts")
     __table_args__ = (UniqueConstraint("image_id", "kind", "model_version"),)
@@ -114,4 +118,6 @@ class IndexBuild(Base):
     faiss_trained_on: Mapped[Optional[str]] = mapped_column(Text)
     clip_model: Mapped[Optional[str]] = mapped_column(Text)
     num_vectors: Mapped[Optional[int]] = mapped_column(Integer)
-    created_at: Mapped[Optional[str]] = mapped_column(Text, server_default=text("CURRENT_TIMESTAMP"))
+    created_at: Mapped[Optional[str]] = mapped_column(
+        Text, server_default=text("CURRENT_TIMESTAMP")
+    )

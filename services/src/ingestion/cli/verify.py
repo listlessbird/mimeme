@@ -17,26 +17,31 @@ def verify_command():
         console.print(f"[bold]images[/bold]: {cnt}")
 
         # Check processing status summary
-        status_query = (
-            session.query(
-                Processing.ocr_status,
-                Processing.caption_status,
-                func.count().label("count")
-            )
-            .group_by(Processing.ocr_status, Processing.caption_status)
-        )
+        status_query = session.query(
+            Processing.ocr_status, Processing.caption_status, func.count().label("count")
+        ).group_by(Processing.ocr_status, Processing.caption_status)
 
         console.print("\n[bold]Processing Status:[/bold]")
         for ocr, caption, count in status_query:
             ocr_str = ocr or "null"
             caption_str = caption or "null"
-            status_color = "green" if ocr == "done" and caption == "done" else "yellow" if "pending" in [ocr, caption] else "red"
-            console.print(f"  [{status_color}]ocr={ocr_str}, caption={caption_str}: {count}[/{status_color}]")
+            status_color = (
+                "green"
+                if ocr == "done" and caption == "done"
+                else "yellow"
+                if "pending" in [ocr, caption]
+                else "red"
+            )
+            console.print(
+                f"  [{status_color}]ocr={ocr_str}, caption={caption_str}: {count}[/{status_color}]"
+            )
 
         # Check for stuck running states
-        stuck_count = session.query(Processing).filter(
-            (Processing.ocr_status == "running") | (Processing.caption_status == "running")
-        ).count()
+        stuck_count = (
+            session.query(Processing)
+            .filter((Processing.ocr_status == "running") | (Processing.caption_status == "running"))
+            .count()
+        )
         if stuck_count > 0:
             console.print(f"  [red]⚠ {stuck_count} images stuck in 'running' state[/red]")
 

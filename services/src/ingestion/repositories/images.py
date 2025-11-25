@@ -46,9 +46,5 @@ def get_with_s3_key(session: Session) -> List[Tuple[int, str]]:
 
 
 def set_s3_fields(session: Session, image_id: int, key: str, etag: str) -> None:
-    stmt = (
-        update(Image)
-        .where(Image.id == image_id)
-        .values(s3_key=key, s3_etag=etag)
-    )
+    stmt = update(Image).where(Image.id == image_id).values(s3_key=key, s3_etag=etag)
     session.execute(stmt)

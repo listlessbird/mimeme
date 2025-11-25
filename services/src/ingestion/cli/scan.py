@@ -18,12 +18,8 @@ def scan_command(
         None, help="Directory with raw memes (default: data/raw_memes)"
     ),
     workers: int = typer.Option(CFG.workers, help="Number of workers to use"),
-    batch_size: int = typer.Option(
-        CFG.batch_size, help="Number of images to process in a batch"
-    ),
-    estimate: bool = typer.Option(
-        True, help="Estimate the number of images to process"
-    ),
+    batch_size: int = typer.Option(CFG.batch_size, help="Number of images to process in a batch"),
+    estimate: bool = typer.Option(True, help="Estimate the number of images to process"),
 ):
     base = Path(root or CFG.image_root).resolve()
     if not base.exists():

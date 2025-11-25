@@ -1,5 +1,3 @@
-
-
 from __future__ import annotations
 from typing import Callable, List, Optional, Tuple
 from dataclasses import dataclass
@@ -25,7 +23,6 @@ class EmbedderConfig:
 
 
 class BaseEmbedder(ABC):
-
     def __init__(self, cfg: EmbedderConfig) -> None:
         self.cfg = cfg
         self.device = torch.device(cfg.device)
@@ -47,16 +44,14 @@ class BaseEmbedder(ABC):
         pass
 
     def embed_batch(
-        self,
-        image_paths: List[Tuple[int, str]],
-        text_provider: Callable
+        self, image_paths: List[Tuple[int, str]], text_provider: Callable
     ) -> List[Tuple[int, np.ndarray, np.ndarray]]:
         results: List[Tuple[int, np.ndarray, np.ndarray]] = []
 
         batch_size = max(1, min(self.cfg.batch_size, len(image_paths)))
 
         for i in range(0, len(image_paths), batch_size):
-            chunk = image_paths[i: i + batch_size]
+            chunk = image_paths[i : i + batch_size]
             pil_images = []
             texts = []
             valid_items = []
@@ -65,8 +60,8 @@ class BaseEmbedder(ABC):
                 try:
                     pil = Image.open(img_path)
 
-                    if pil.mode == 'P' and 'transparency' in pil.info:
-                        pil = pil.convert('RGBA')
+                    if pil.mode == "P" and "transparency" in pil.info:
+                        pil = pil.convert("RGBA")
 
                     pil = pil.convert("RGB")
 
@@ -84,26 +79,28 @@ class BaseEmbedder(ABC):
             try:
                 img_feats = self.encode_images(pil_images)
             except Exception as e:
-                print(
-                    f"\nFATAL: Failed to encode images (batch size {len(pil_images)})")
+                print(f"\nFATAL: Failed to encode images (batch size {len(pil_images)})")
                 print(f"  Image IDs: {[img_id for img_id, _ in valid_items]}")
                 print(f"  Error: {e}")
                 import traceback
+
                 traceback.print_exc()
                 raise RuntimeError(
-                    f"Image encoding failed for batch with IDs {[img_id for img_id, _ in valid_items]}") from e
+                    f"Image encoding failed for batch with IDs {[img_id for img_id, _ in valid_items]}"
+                ) from e
 
             try:
                 txt_feats = self.encode_texts(texts)
             except Exception as e:
-                print(
-                    f"\nFATAL: Failed to encode texts (batch size {len(texts)})")
+                print(f"\nFATAL: Failed to encode texts (batch size {len(texts)})")
                 print(f"  Image IDs: {[img_id for img_id, _ in valid_items]}")
                 print(f"  Error: {e}")
                 import traceback
+
                 traceback.print_exc()
                 raise RuntimeError(
-                    f"Text encoding failed for batch with IDs {[img_id for img_id, _ in valid_items]}") from e
+                    f"Text encoding failed for batch with IDs {[img_id for img_id, _ in valid_items]}"
+                ) from e
 
             for (img_id, _), imf, tf in zip(valid_items, img_feats, txt_feats):
                 results.append((img_id, imf, tf))

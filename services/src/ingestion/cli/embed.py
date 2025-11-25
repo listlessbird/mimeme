@@ -39,7 +39,7 @@ def embed_command(
         console=console,
     ) as progress:
         task_id = None
-        
+
         for n, total in run_embedding_loop(cfg, limit=limit):
             if task_id is None:
                 task_id = progress.add_task("Embedding", total=total)

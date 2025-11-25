@@ -1,11 +1,15 @@
-
-
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 from ingestion.config import CFG
-from ingestion.orm import Artifact, Image as ORMImage, session_scope, Annotation as ORMAnnotation, Processing
+from ingestion.orm import (
+    Artifact,
+    Image as ORMImage,
+    session_scope,
+    Annotation as ORMAnnotation,
+    Processing,
+)
 
 import numpy as np
 
@@ -17,20 +21,12 @@ def now_iso() -> str:
 
 
 def ensure_artifact_dir(model_name: str) -> Path:
-
     p = ARTIFACT_ROOT / model_name
     p.mkdir(parents=True, exist_ok=True)
     return p
 
 
-def add_artifact_if_not_exists(
-    sess,
-    image_id: int,
-    kind: str,
-    model_version: str,
-    path: str
-):
-
+def add_artifact_if_not_exists(sess, image_id: int, kind: str, model_version: str, path: str):
     existing = (
         sess.query(Artifact)
         .filter_by(image_id=image_id, kind=kind, model_version=model_version)
@@ -44,7 +40,7 @@ def add_artifact_if_not_exists(
                 model_version=model_version,
                 path=str(path),
                 checksum="",
-                created_at=now_iso()
+                created_at=now_iso(),
             )
         )
 
@@ -53,8 +49,7 @@ def get_image_text(image_id: int) -> str:
     text_val = ""
     try:
         with session_scope() as sess:
-            ann_row = sess.query(ORMAnnotation).filter_by(
-                image_id=image_id).first()
+            ann_row = sess.query(ORMAnnotation).filter_by(image_id=image_id).first()
 
             if ann_row:
                 parts = []
@@ -68,17 +63,12 @@ def get_image_text(image_id: int) -> str:
     return text_val
 
 
-def get_pending_embeddings(
-    limit: Optional[int] = None
-) -> List[Tuple[int, str]]:
+def get_pending_embeddings(limit: Optional[int] = None) -> List[Tuple[int, str]]:
     with session_scope() as sess:
         q = (
             sess.query(ORMImage)
             .join(Processing, ORMImage.id == Processing.image_id, isouter=True)
-            .filter(
-                (Processing.embed_status == "pending") |
-                (Processing.embed_status.is_(None))
-            )
+            .filter((Processing.embed_status == "pending") | (Processing.embed_status.is_(None)))
         )
 
         if limit:
@@ -105,9 +95,8 @@ def save_embeddings(
     image_embedding: np.ndarray,
     text_embedding: np.ndarray,
     model_name: str,
-    artifact_dir: Path
+    artifact_dir: Path,
 ):
-
     with session_scope() as sess:
         img = sess.query(ORMImage).filter_by(id=image_id).first()
         sha = img.sha256 if img else str(image_id)
@@ -118,10 +107,8 @@ def save_embeddings(
     np.save(txt_path, text_embedding)
 
     with session_scope() as sess:
-        rel_img_path = img_path.relative_to(
-            Path(CFG.db_path).parent).as_posix()
-        add_artifact_if_not_exists(
-            sess, image_id, "embed", model_name, rel_img_path)
+        rel_img_path = img_path.relative_to(Path(CFG.db_path).parent).as_posix()
+        add_artifact_if_not_exists(sess, image_id, "embed", model_name, rel_img_path)
 
         proc = sess.query(Processing).filter_by(image_id=image_id).first()
         if not proc:

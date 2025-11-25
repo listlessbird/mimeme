@@ -19,7 +19,6 @@ def run_embedding_loop(
     cfg: EmbedderConfig,
     limit: Optional[int] = None,
 ) -> Iterator[Tuple[int, int]]:
-
     embedder = SiglipEmbedder(cfg)
     model_name = embedder.image_model_name
     artifact_dir = ensure_artifact_dir(model_name)
@@ -34,21 +33,17 @@ def run_embedding_loop(
     yield 0, total
 
     for i in range(0, total, cfg.batch_size):
-        batch = rows[i: i + cfg.batch_size]
+        batch = rows[i : i + cfg.batch_size]
         batch_ids = [img_id for img_id, _ in batch]
 
         try:
             mark_embedding_status(batch_ids, "running")
 
             image_paths = [
-                (img_id, str(Path(CFG.image_root) / rel_path))
-                for img_id, rel_path in batch
+                (img_id, str(Path(CFG.image_root) / rel_path)) for img_id, rel_path in batch
             ]
 
-            results = embedder.embed_batch(
-                image_paths=image_paths,
-                text_provider=get_image_text
-            )
+            results = embedder.embed_batch(image_paths=image_paths, text_provider=get_image_text)
 
             for img_id, img_emb, txt_emb in results:
                 try:
@@ -57,7 +52,7 @@ def run_embedding_loop(
                         image_embedding=img_emb,
                         text_embedding=txt_emb,
                         model_name=model_name,
-                        artifact_dir=artifact_dir
+                        artifact_dir=artifact_dir,
                     )
                 except Exception as e:
                     print(f"Failed to save embeddings for image {img_id}: {e}")
@@ -67,9 +62,9 @@ def run_embedding_loop(
 
         except RuntimeError as e:
             # Fatal error from encode_images/encode_texts - stop immediately
-            print(f"\n{'='*60}")
+            print(f"\n{'=' * 60}")
             print(f"FATAL ERROR: Embedding pipeline stopped")
-            print(f"{'='*60}")
+            print(f"{'=' * 60}")
             mark_embedding_status(batch_ids, "failed")
             raise  # Re-raise to stop the entire pipeline
         except Exception as e:

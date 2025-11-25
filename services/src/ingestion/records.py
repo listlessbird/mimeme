@@ -1,7 +1,7 @@
-
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+
 
 @dataclass(frozen=True)
 class ImageRecord:
@@ -11,7 +11,7 @@ class ImageRecord:
     height: Optional[int] = None
     format: Optional[str] = None
     phash: Optional[str] = None
-    
+
     def as_dict(self) -> dict:
         return {
             "sha256": self.sha256,
@@ -19,5 +19,5 @@ class ImageRecord:
             "width": self.width,
             "height": self.height,
             "format": self.format,
-            "phash": self.phash
+            "phash": self.phash,
         }

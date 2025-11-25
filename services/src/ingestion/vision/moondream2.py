@@ -8,6 +8,7 @@ from transformers import AutoModelForCausalLM
 from ..schemas import CaptionResult, OCRResult, DetectionResult
 from .base import VisionModel, register
 
+
 @dataclass
 class MoonDream2Config:
     hf_id: str = "vikhyatk/moondream2"
@@ -15,6 +16,7 @@ class MoonDream2Config:
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     compile_model: bool = False
     prompt_ocr: str = "Transcribe the text in natural reading order."
+
 
 @register("moondream2")
 class MoonDream2(VisionModel):
@@ -50,10 +52,13 @@ class MoonDream2(VisionModel):
         res = self.model.detect(image)
         objects = []
         for o in res.get("objects", []):
-            objects.append({
-                "label": o.get("label", ""),
-                "score": o.get("score", 0.0),
-                "box": tuple(o.get("box", (0, 0, 0, 0))),
-            })
-        return DetectionResult(objects=objects, model=f"{self.cfg.hf_id}@{self.cfg.revision or 'latest'}")
-        
+            objects.append(
+                {
+                    "label": o.get("label", ""),
+                    "score": o.get("score", 0.0),
+                    "box": tuple(o.get("box", (0, 0, 0, 0))),
+                }
+            )
+        return DetectionResult(
+            objects=objects, model=f"{self.cfg.hf_id}@{self.cfg.revision or 'latest'}"
+        )

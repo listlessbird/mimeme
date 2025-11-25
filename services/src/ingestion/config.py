@@ -1,10 +1,12 @@
 from __future__ import annotations
+
 import os
 from dataclasses import dataclass
 from pathlib import Path
 
 # Project root is two levels up from this file: src/ingestion/config.py -> ingestion/
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
+
 
 @dataclass(frozen=True)
 class Config:
@@ -20,5 +22,6 @@ class Config:
     s3_secret_access_key: str = os.getenv("S3_SECRET_ACCESS_KEY", "")
     s3_force_path_style: bool = os.getenv("S3_FORCE_PATH_STYLE", "true") == "true"
     s3_prefix: str = os.getenv("S3_PREFIX", "memes")
+
 
 CFG = Config()

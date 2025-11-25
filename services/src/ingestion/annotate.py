@@ -33,9 +33,7 @@ def _get_or_create_annotation(sess, img: ORMImage) -> Annotation:
     return ann
 
 
-def _add_artifact_if_not_exists(
-    sess, image_id: int, kind: str, model_version: str
-) -> None:
+def _add_artifact_if_not_exists(sess, image_id: int, kind: str, model_version: str) -> None:
     """Add artifact only if it doesn't already exist."""
     existing = (
         sess.query(Artifact)

@@ -1,4 +1,3 @@
-
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -10,6 +9,7 @@ from botocore.config import Config as BotoConfig
 
 from .config import CFG
 
+
 @dataclass(frozen=True)
 class S3Settings:
     endpoint_url: Optional[str]
@@ -19,6 +19,7 @@ class S3Settings:
     bucket: str
     force_path_style: bool
     prefix: str
+
 
 # from environment variables -> terraform
 def get_s3_settings() -> S3Settings:
@@ -31,7 +32,8 @@ def get_s3_settings() -> S3Settings:
         force_path_style=CFG.s3_force_path_style,
         prefix=CFG.s3_prefix,
     )
-    
+
+
 def s3_client():
     s = get_s3_settings()
     session = boto3.Session(
@@ -44,17 +46,19 @@ def s3_client():
         "s3",
         endpoint_url=s.endpoint_url,
         config=BotoConfig(
-            s3 = {
+            s3={
                 "addressing_style": "path" if s.force_path_style else "auto",
             },
-        )
+        ),
     )
+
 
 def build_object_key(sha256: str, rel_path: str) -> str:
     ext = Path(rel_path).suffix.lower().lstrip(".") or "bin"
     a, b = sha256[:2], sha256[2:4]
     prefix = get_s3_settings().prefix.rstrip("/")
     return f"{prefix}/{a}/{b}/{sha256}.{ext}"
+
 
 def ensure_bucket_exists():
     s = get_s3_settings()
@@ -70,6 +74,7 @@ def ensure_bucket_exists():
             print(f"Error creating bucket {s.bucket}: {e}")
             pass
 
+
 def head_object(key: str) -> Optional[str]:
     cli = s3_client()
     s = get_s3_settings()
@@ -80,6 +85,7 @@ def head_object(key: str) -> Optional[str]:
     except Exception as e:
         print(f"Error head_object {key}: {e}")
         return None
+
 
 def upload_file(local_path: Path, key: str) -> str:
     cli = s3_client()
@@ -102,11 +108,13 @@ def upload_file(local_path: Path, key: str) -> str:
     etag = head_object(key) or ""
     return etag
 
+
 def download_file(key: str, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
     cli = s3_client()
     s = get_s3_settings()
     cli.download_file(s.bucket, key, str(dest))
+
 
 def list_objects(prefix: str) -> list[tuple[str, int]]:
     cli = s3_client()
@@ -115,7 +123,7 @@ def list_objects(prefix: str) -> list[tuple[str, int]]:
     out: List[Tuple[str, int]] = []
 
     while True:
-        kwargs = dict(Bucket = s.bucket, Prefix=prefix)
+        kwargs = dict(Bucket=s.bucket, Prefix=prefix)
         if token:
             kwargs["ContinuationToken"] = token
         resp = cli.list_objects_v2(**kwargs)

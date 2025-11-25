@@ -1,5 +1,3 @@
-
-
 from typing import List
 from PIL.Image import Image
 from ingestion.embeddings.base import BaseEmbedder
@@ -9,7 +7,6 @@ from transformers import AutoModel, AutoProcessor, BitsAndBytesConfig
 
 
 class SiglipEmbedder(BaseEmbedder):
-
     is_siglip2: bool
     is_naflex: bool
     has_get_image_features: bool
@@ -25,8 +22,7 @@ class SiglipEmbedder(BaseEmbedder):
                     bnb_4bit_compute_dtype=torch.bfloat16,
                 )
             except Exception as e:
-                print(
-                    f"ERROR: BitsAndBytes quantization failed to initialize: {e}")
+                print(f"ERROR: BitsAndBytes quantization failed to initialize: {e}")
                 print("\nThis is likely due to Python version incompatibility.")
                 raise RuntimeError(
                     "BitsAndBytes quantization is required but failed to initialize. "
@@ -36,8 +32,7 @@ class SiglipEmbedder(BaseEmbedder):
         try:
             if quant_cfg:
                 self.processor = AutoProcessor.from_pretrained(
-                    self.image_model_name,
-                    trust_remote_code=True
+                    self.image_model_name, trust_remote_code=True
                 )
                 self.model = AutoModel.from_pretrained(
                     self.image_model_name,
@@ -51,8 +46,7 @@ class SiglipEmbedder(BaseEmbedder):
                 dtype = torch.float16 if self.cfg.fp16_fallback else torch.float32
 
                 self.processor = AutoProcessor.from_pretrained(
-                    self.image_model_name,
-                    trust_remote_code=True
+                    self.image_model_name, trust_remote_code=True
                 )
                 self.model = AutoModel.from_pretrained(
                     self.image_model_name,
@@ -64,23 +58,19 @@ class SiglipEmbedder(BaseEmbedder):
 
         except Exception as e:
             print(str(e))
-            print(
-                "Primary model load failed with the above reason, trying SigLIP SO400M fallback")
+            print("Primary model load failed with the above reason, trying SigLIP SO400M fallback")
             try:
                 self.image_model_name = "google/siglip-so400m-patch14-384"
                 self.text_model_name = "google/siglip-so400m-patch14-384"
-                self.processor = AutoProcessor.from_pretrained(
-                    self.image_model_name)
+                self.processor = AutoProcessor.from_pretrained(self.image_model_name)
                 self.model = AutoModel.from_pretrained(self.image_model_name)
                 print(f"Loaded fallback model: {self.image_model_name}")
             except Exception as e2:
-                print(
-                    f"SigLIP SO400M fallback failed, using base SigLIP: {e2}")
+                print(f"SigLIP SO400M fallback failed, using base SigLIP: {e2}")
                 # Final fallback to base SigLIP
                 self.image_model_name = "google/siglip-base-patch16-224"
                 self.text_model_name = "google/siglip-base-patch16-224"
-                self.processor = AutoProcessor.from_pretrained(
-                    self.image_model_name)
+                self.processor = AutoProcessor.from_pretrained(self.image_model_name)
                 self.model = AutoModel.from_pretrained(self.image_model_name)
                 print(f"Loaded final fallback model: {self.image_model_name}")
         self.has_get_image_features = hasattr(self.model, "get_image_features")
@@ -100,30 +90,20 @@ class SiglipEmbedder(BaseEmbedder):
             if self.is_naflex:
                 # NaFlex variant: use max_num_patches parameter
                 inputs = self.processor(
-                    images=images,
-                    return_tensors="pt",
-                    padding="max_length",
-                    max_num_patches=256
+                    images=images, return_tensors="pt", padding="max_length", max_num_patches=256
                 )
             else:
                 # FixRes variant: use standard parameters
-                inputs = self.processor(
-                    images=images,
-                    return_tensors="pt",
-                    padding="max_length"
-                )
+                inputs = self.processor(images=images, return_tensors="pt", padding="max_length")
         else:
-            inputs = self.processor(
-                images=images,
-                return_tensors="pt",
-                padding="max_length"
-            )
+            inputs = self.processor(images=images, return_tensors="pt", padding="max_length")
 
         # Convert float32 inputs to model dtype, keep others as-is
         model_dtype = self.model.dtype
         inputs = {
-            k: v.to(self.model.device, dtype=model_dtype) if v.dtype == torch.float32 else v.to(
-                self.model.device)
+            k: v.to(self.model.device, dtype=model_dtype)
+            if v.dtype == torch.float32
+            else v.to(self.model.device)
             for k, v in inputs.items()
         }
 
@@ -133,7 +113,7 @@ class SiglipEmbedder(BaseEmbedder):
             else:
                 out = self.model(**inputs)
 
-                if hasattr(out, 'image_embeds'):
+                if hasattr(out, "image_embeds"):
                     feats = out.image_embeds
                 elif hasattr(out, "last_hidden_state"):
                     feats = out.last_hidden_state[:, 0, :]
@@ -150,23 +130,17 @@ class SiglipEmbedder(BaseEmbedder):
 
         if self.is_siglip2:
             inputs = self.processor(
-                text=texts,
-                return_tensors="pt",
-                padding="max_length",
-                max_length=64
+                text=texts, return_tensors="pt", padding="max_length", max_length=64
             )
         else:
-            inputs = self.processor(
-                text=texts,
-                return_tensors="pt",
-                padding="max_length"
-            )
+            inputs = self.processor(text=texts, return_tensors="pt", padding="max_length")
 
         # Convert float32 inputs to model dtype, keep others as-is
         model_dtype = self.model.dtype
         inputs = {
-            k: v.to(self.model.device, dtype=model_dtype) if v.dtype == torch.float32 else v.to(
-                self.model.device)
+            k: v.to(self.model.device, dtype=model_dtype)
+            if v.dtype == torch.float32
+            else v.to(self.model.device)
             for k, v in inputs.items()
         }
 
@@ -175,11 +149,11 @@ class SiglipEmbedder(BaseEmbedder):
                 feats = self.model.get_text_features(**inputs)
             else:
                 out = self.model(**inputs)
-                if hasattr(out, 'text_embeds'):
+                if hasattr(out, "text_embeds"):
                     feats = out.text_embeds
-                elif hasattr(out, 'pooler_output'):
+                elif hasattr(out, "pooler_output"):
                     feats = out.pooler_output
-                elif hasattr(out, 'last_hidden_state'):
+                elif hasattr(out, "last_hidden_state"):
                     feats = out.last_hidden_state[:, 0, :]
                 else:
                     raise ValueError("Unexpected model output format")

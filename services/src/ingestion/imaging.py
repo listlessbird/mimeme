@@ -4,6 +4,7 @@ from typing import Optional, Tuple
 
 from PIL import Image
 
+
 def image_info(path: Path) -> Tuple[Optional[int], Optional[int], Optional[str]]:
     try:
         with Image.open(path) as img:
@@ -13,4 +14,3 @@ def image_info(path: Path) -> Tuple[Optional[int], Optional[int], Optional[str]]
     except Exception as e:
         print(f"Error getting image info for {path}: {e}")
         return None, None, None
-    

@@ -19,7 +19,9 @@ console = Console()
 
 
 def upload_command(
-    root: Optional[str] = typer.Argument(None, help="Directory with raw memes (default: data/raw_memes)"),
+    root: Optional[str] = typer.Argument(
+        None, help="Directory with raw memes (default: data/raw_memes)"
+    ),
     dry_run: bool = typer.Option(False, help="Only print planned uploads"),
 ):
     """Upload local images to S3 object storage."""
