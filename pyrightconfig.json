@@ -1,0 +1,13 @@
+{
+  "include": [
+    "packages/src"
+  ],
+  "extraPaths": [
+    "packages/src"
+  ],
+  "executionEnvironments": [
+    {
+      "root": "packages/src"
+    }
+  ]
+}

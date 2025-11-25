@@ -8,6 +8,7 @@ from .backup_db import backup_db_command
 from .restore_db import restore_db_command
 from .rehydrate import rehydrate_command
 from .annotate_cmd import annotate_command
+from .embed import embed_command
 
 app = typer.Typer()
 
@@ -19,6 +20,7 @@ app.command(name="backup-db")(backup_db_command)
 app.command(name="restore-db")(restore_db_command)
 app.command(name="rehydrate")(rehydrate_command)
 app.command(name="annotate")(annotate_command)
+app.command(name="embed")(embed_command)
 
 
 def main():
