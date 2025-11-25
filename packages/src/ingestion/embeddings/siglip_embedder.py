@@ -20,9 +20,13 @@ class SiglipEmbedder(BaseEmbedder):
 
         if self.cfg.use_bnb_4bit:
             try:
-                quant_cfg = BitsAndBytesConfig(load_in_4bit=True)
+                quant_cfg = BitsAndBytesConfig(
+                    load_in_4bit=True,
+                    bnb_4bit_compute_dtype=torch.bfloat16,
+                )
             except Exception as e:
-                print(f"ERROR: BitsAndBytes quantization failed to initialize: {e}")
+                print(
+                    f"ERROR: BitsAndBytes quantization failed to initialize: {e}")
                 print("\nThis is likely due to Python version incompatibility.")
                 raise RuntimeError(
                     "BitsAndBytes quantization is required but failed to initialize. "
@@ -40,6 +44,8 @@ class SiglipEmbedder(BaseEmbedder):
                     trust_remote_code=True,
                     quantization_config=quant_cfg,
                     device_map="auto",
+                    dtype=torch.bfloat16,
+                    attn_implementation="sdpa",
                 )
             else:
                 dtype = torch.float16 if self.cfg.fp16_fallback else torch.float32
@@ -51,8 +57,7 @@ class SiglipEmbedder(BaseEmbedder):
                 self.model = AutoModel.from_pretrained(
                     self.image_model_name,
                     trust_remote_code=True,
-                    torch_dtype=(torch.float16 if dtype ==
-                                 torch.float16 else None),
+                    dtype=(torch.float16 if dtype == torch.float16 else None),
                     device_map="auto" if self.device.type == "cuda" else None,
                 )
                 print(f"Loaded model: {self.image_model_name}")
@@ -98,7 +103,7 @@ class SiglipEmbedder(BaseEmbedder):
                     images=images,
                     return_tensors="pt",
                     padding="max_length",
-                    max_num_patches=256  
+                    max_num_patches=256
                 )
             else:
                 # FixRes variant: use standard parameters
@@ -114,7 +119,13 @@ class SiglipEmbedder(BaseEmbedder):
                 padding="max_length"
             )
 
-        inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
+        # Convert float32 inputs to model dtype, keep others as-is
+        model_dtype = self.model.dtype
+        inputs = {
+            k: v.to(self.model.device, dtype=model_dtype) if v.dtype == torch.float32 else v.to(
+                self.model.device)
+            for k, v in inputs.items()
+        }
 
         with torch.no_grad():
             if self.has_get_image_features:
@@ -151,7 +162,13 @@ class SiglipEmbedder(BaseEmbedder):
                 padding="max_length"
             )
 
-        inputs = {k: v.to(self.model.device) for k, v in inputs.items()}
+        # Convert float32 inputs to model dtype, keep others as-is
+        model_dtype = self.model.dtype
+        inputs = {
+            k: v.to(self.model.device, dtype=model_dtype) if v.dtype == torch.float32 else v.to(
+                self.model.device)
+            for k, v in inputs.items()
+        }
 
         with torch.no_grad():
             if self.has_get_text_features:

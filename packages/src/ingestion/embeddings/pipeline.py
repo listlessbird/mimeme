@@ -62,12 +62,20 @@ def run_embedding_loop(
                 except Exception as e:
                     print(f"Failed to save embeddings for image {img_id}: {e}")
                     mark_embedding_status([img_id], "failed")
-            
+
             yield len(batch), total
 
+        except RuntimeError as e:
+            # Fatal error from encode_images/encode_texts - stop immediately
+            print(f"\n{'='*60}")
+            print(f"FATAL ERROR: Embedding pipeline stopped")
+            print(f"{'='*60}")
+            mark_embedding_status(batch_ids, "failed")
+            raise  # Re-raise to stop the entire pipeline
         except Exception as e:
             print(f"Embedding batch failed: {e}")
             mark_embedding_status(batch_ids, "failed")
+            raise  # Stop on any exception
 
 
 def create_embedder(cfg: EmbedderConfig) -> SiglipEmbedder:

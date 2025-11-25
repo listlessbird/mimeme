@@ -5,9 +5,12 @@ from typing import Callable, List, Optional, Tuple
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 
-from PIL import Image
+from PIL import Image, ImageFile
 import numpy as np
 import torch
+
+# Enable loading of truncated images
+ImageFile.LOAD_TRUNCATED_IMAGES = True
 
 
 @dataclass
@@ -16,7 +19,7 @@ class EmbedderConfig:
     # if none -> uses the same cross modal model's text encoder
     text_model: Optional[str] = None
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
-    use_bnb_4bit: bool = True
+    use_bnb_4bit: bool = False
     fp16_fallback: bool = True
     batch_size = 8
 
@@ -60,7 +63,13 @@ class BaseEmbedder(ABC):
 
             for img_id, img_path in chunk:
                 try:
-                    pil = Image.open(img_path).convert("RGB")
+                    pil = Image.open(img_path)
+
+                    if pil.mode == 'P' and 'transparency' in pil.info:
+                        pil = pil.convert('RGBA')
+
+                    pil = pil.convert("RGB")
+
                     text = text_provider(img_id)
 
                     pil_images.append(pil)
@@ -70,9 +79,31 @@ class BaseEmbedder(ABC):
                     print(f"Failed to load image: {img_path}: {e}")
                     continue
             if not pil_images:
-                continue
-            img_feats = self.encode_images(pil_images)
-            txt_feats = self.encode_texts(texts)
+                break
+
+            try:
+                img_feats = self.encode_images(pil_images)
+            except Exception as e:
+                print(
+                    f"\nFATAL: Failed to encode images (batch size {len(pil_images)})")
+                print(f"  Image IDs: {[img_id for img_id, _ in valid_items]}")
+                print(f"  Error: {e}")
+                import traceback
+                traceback.print_exc()
+                raise RuntimeError(
+                    f"Image encoding failed for batch with IDs {[img_id for img_id, _ in valid_items]}") from e
+
+            try:
+                txt_feats = self.encode_texts(texts)
+            except Exception as e:
+                print(
+                    f"\nFATAL: Failed to encode texts (batch size {len(texts)})")
+                print(f"  Image IDs: {[img_id for img_id, _ in valid_items]}")
+                print(f"  Error: {e}")
+                import traceback
+                traceback.print_exc()
+                raise RuntimeError(
+                    f"Text encoding failed for batch with IDs {[img_id for img_id, _ in valid_items]}") from e
 
             for (img_id, _), imf, tf in zip(valid_items, img_feats, txt_feats):
                 results.append((img_id, imf, tf))
