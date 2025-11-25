@@ -4,6 +4,9 @@ Image ingestion and processing pipeline for the find-meme project. Scans local i
 
 ## Prerequisites
 
+- **Python 3.11 - 3.13** (required for BitsAndBytes/PyTorch compatibility)
+  - Python 3.14+ is NOT supported due to PyTorch's `torch.compile` limitation
+  - If using `mise`: `mise use python@3.13`
 - uv package manager
 - Raw meme images in `data/raw_memes/`
 
@@ -12,6 +15,17 @@ Image ingestion and processing pipeline for the find-meme project. Scans local i
 ```bash
 # Install dependencies
 uv sync
+```
+
+**Note:** If you were previously using Python 3.14, you need to:
+```bash
+# Switch to Python 3.13
+mise use python@3.13
+
+# Recreate virtual environment
+rm -rf .venv
+uv venv
+uv pip install -e .
 ```
 
 ## Configuration
