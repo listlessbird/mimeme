@@ -1,0 +1,185 @@
+version: "3.9"
+
+# =============================================================================
+# Find-Meme Docker Compose
+# =============================================================================
+#
+# Services:
+#   - api: FastAPI HTTP server
+#   - worker: Celery worker for background tasks
+#   - worker-gpu: Celery worker for GPU tasks (annotation, embedding)
+#   - beat: Celery beat scheduler for periodic tasks
+#   - redis: Message broker and result backend
+#   - minio: S3-compatible object storage (optional, for dev)
+#
+# Profiles:
+#   - default: api, worker, redis
+#   - gpu: includes worker-gpu
+#   - full: all services including minio
+#
+# Usage:
+#   docker compose up                    # Basic setup
+#   docker compose --profile gpu up      # With GPU worker
+#   docker compose --profile full up     # All services
+#
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: findmeme-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    container_name: findmeme-api
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_ENV=development
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=${DATABASE_URL:-}
+      - S3_ENDPOINT_URL=${S3_ENDPOINT_URL:-http://minio:9000}
+      - S3_BUCKET=${S3_BUCKET:-findmeme}
+      - S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID:-minioadmin}
+      - S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY:-minioadmin}
+    volumes:
+      - ../data:/app/data
+      - model_cache:/root/.cache/huggingface
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/live" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    container_name: findmeme-worker
+    command: >
+      celery -A api.tasks.celery_app worker --loglevel=INFO --concurrency=2 --queues=default,ingest,index
+    environment:
+      - APP_ENV=development
+      - LOG_LEVEL=INFO
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=${DATABASE_URL:-}
+      - EMBED_DEVICE=cpu
+    volumes:
+      - ../data:/app/data
+      - model_cache:/root/.cache/huggingface
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  worker-gpu:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    container_name: findmeme-worker-gpu
+    profiles:
+      - gpu
+      - full
+    command: >
+      celery -A api.tasks.celery_app worker --loglevel=INFO --concurrency=1 --queues=gpu
+    environment:
+      - APP_ENV=development
+      - LOG_LEVEL=INFO
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=${DATABASE_URL:-}
+      - EMBED_DEVICE=cuda
+    volumes:
+      - ../data:/app/data
+      - model_cache:/root/.cache/huggingface
+    depends_on:
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    restart: unless-stopped
+
+  beat:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.worker
+    container_name: findmeme-beat
+    profiles:
+      - full
+    command: >
+      celery -A api.tasks.celery_app beat --loglevel=INFO
+    environment:
+      - APP_ENV=development
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    container_name: findmeme-minio
+    profiles:
+      - storage
+      - full
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ROOT_USER:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${MINIO_ROOT_PASSWORD:-minioadmin}
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:9000/minio/health/live" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  flower:
+    image: mher/flower:2.0
+    container_name: findmeme-flower
+    profiles:
+      - monitoring
+      - full
+    ports:
+      - "5555:5555"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+  minio_data:
+  model_cache:
+    # Persistent cache for Hugging Face models
+    # Prevents re-downloading on container restart
+networks:
+  default:
+    name: findmeme-network

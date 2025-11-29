@@ -380,3 +380,12 @@ uv run python -m alembic revision --autogenerate -m "Initial schema"
 uv run python -m alembic upgrade head
 ```
 
+# Terminal 1: Dependencies only
+  docker compose up redis minio
+
+  # Terminal 2: API with hot-reload
+  uv run uvicorn api.main:app --reload
+
+  # Terminal 3: Celery with auto-reload
+  uv run watchfiles 'celery -A api.tasks.celery_app worker --loglevel=DEBUG
+  --concurrency=1' src/

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from celery import Celery
-from config import settings
+
+from api.config import settings
 
 celery_app = Celery("find_meme", broker=settings.broker_url, backend=settings.result_backend)
 

@@ -5,9 +5,9 @@ from urllib.parse import urlparse
 
 import httpx
 import structlog
-from config import settings
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from api.config import settings
 from api.tasks import celery_app
 from ingestion.annotate import _process_single_image
 from ingestion.embeddings.base import EmbedderConfig
