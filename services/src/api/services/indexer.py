@@ -1,7 +1,7 @@
 import json
 import shutil
 import threading
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -183,7 +183,7 @@ class FaissIndexManager:
 
         index.add(embeddings)  # type: ignore[call-arg]
 
-        version = f"v{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
+        version = f"v{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}"
         version_dir = self.index_dir / version
         version_dir.mkdir(parents=True, exist_ok=True)
 
@@ -199,7 +199,7 @@ class FaissIndexManager:
             "dimension": dimension,
             "num_vectors": n_vectors,
             "index_type": index_type,
-            "created_at": datetime.utcnow().isoformat(),
+            "created_at": datetime.now(UTC).isoformat(),
         }
 
         with open(version_dir / "metadata.json", "w") as f:

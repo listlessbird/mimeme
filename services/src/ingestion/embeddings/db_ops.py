@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import List, Optional, Tuple
 
@@ -17,7 +17,7 @@ ARTIFACT_ROOT = Path(CFG.db_path).parent / "artifacts"
 
 
 def now_iso() -> str:
-    return datetime.utcnow().isoformat(timespec="seconds")
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def ensure_artifact_dir(model_name: str) -> Path:

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 import structlog
 from celery.result import AsyncResult
@@ -52,14 +52,14 @@ async def get_jon(job_id: str) -> JobResponse:
     elif result.state == "FAILURE":
         message = str(result.result) if result.result else "Task Failed"
 
-    created_at = datetime.utcnow()
+    created_at = datetime.now(UTC)
     started_at = None
     completed_at = None
 
     if result.state in ("SUCCESS", "FAILURE"):
-        completed_at = datetime.utcnow()
+        completed_at = datetime.now(UTC)
     if result.state not in ("PENDING",):
-        started_at = datetime.utcnow()
+        started_at = datetime.now(UTC)
 
     result_data = None
     if result.state == "SUCCESS" and result.result:
@@ -99,7 +99,7 @@ async def trigger_rebuild_index(request: RebuildIndexRequest | None = None) -> J
         status=JobStatus.PENDING,
         progress=0.0,
         message="Index rebuild queued",
-        created_at=datetime.utcnow(),
+        created_at=datetime.now(UTC),
     )
 
 
