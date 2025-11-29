@@ -267,3 +267,116 @@ uv run ingest upload --dry-run
 - **artifacts**: Audit trail of model outputs
 - **index_builds**: FAISS index metadata for search
 
+## Database Migrations
+
+This project uses [Alembic](https://alembic.sqlalchemy.org/) for database schema migrations. Alembic tracks schema changes and allows you to version control your database structure.
+
+### Migration Workflow
+
+#### When to Create a Migration
+
+Create a migration whenever you:
+- Add, remove, or modify columns in ORM models
+- Add or remove tables
+- Change column types, constraints, or indexes
+- Modify relationships between tables
+
+#### Creating a New Migration
+
+1. **Make changes to your ORM models** in `src/ingestion/orm.py`
+
+2. **Generate a migration** (Alembic will auto-detect changes):
+   ```bash
+   uv run python -m alembic revision --autogenerate -m "Description of changes"
+   ```
+
+3. **Review the generated migration** in `alembic/versions/`:
+   - Check that the detected changes are correct
+   - Verify both `upgrade()` and `downgrade()` functions
+   - For SQLite: Ensure batch operations are used (should be automatic)
+
+4. **Apply the migration**:
+   ```bash
+   uv run python -m alembic upgrade head
+   ```
+
+#### Common Migration Commands
+
+```bash
+# Check current migration version
+uv run python -m alembic current
+
+# View migration history
+uv run python -m alembic history
+
+# Upgrade to latest version
+uv run python -m alembic upgrade head
+
+# Downgrade one version
+uv run python -m alembic downgrade -1
+
+# Downgrade to specific version
+uv run python -m alembic downgrade <revision_id>
+
+# Show pending migrations
+uv run python -m alembic show head
+```
+
+### SQLite Batch Operations
+
+This project uses SQLite with **batch mode** enabled for migrations. SQLite has limited `ALTER TABLE` support, so Alembic uses a "table recreation" strategy:
+
+1. Creates a new temporary table with the desired schema
+2. Copies data from the old table
+3. Drops the old table and renames the new one
+
+This is handled automatically by the `render_as_batch=True` setting in `alembic/env.py`.
+
+### Migration Best Practices
+
+- **Always review** auto-generated migrations before applying
+- **Test migrations** on a copy of your database first
+- **Commit migrations** to version control along with model changes
+- **Never edit applied migrations** - create a new one instead
+- **Add descriptive messages** to help others understand the change
+
+### Example Migration Workflow
+
+```bash
+# 1. Update your model
+# Edit src/ingestion/orm.py
+
+# 2. Generate migration
+uv run python -m alembic revision --autogenerate -m "Add user_id to images table"
+
+# 3. Review the generated file in alembic/versions/
+
+# 4. Apply migration
+uv run python -m alembic upgrade head
+
+# 5. Verify it worked
+uv run python -m alembic current
+```
+
+### Troubleshooting
+
+**"Table already exists" errors:**
+```bash
+# Clean up leftover temporary tables
+uv run python -c "import sqlite3; conn = sqlite3.connect('data/db.sqlite3'); \
+cursor = conn.cursor(); cursor.execute(\"SELECT name FROM sqlite_master \
+WHERE type='table' AND name LIKE '_alembic_tmp_%'\"); \
+tables = cursor.fetchall(); \
+[cursor.execute(f'DROP TABLE {t[0]}') for t in tables]; conn.commit()"
+```
+
+**Need to start fresh:**
+```bash
+# Delete migration history (WARNING: destructive)
+rm alembic/versions/*.py
+
+# Recreate initial migration
+uv run python -m alembic revision --autogenerate -m "Initial schema"
+uv run python -m alembic upgrade head
+```
+

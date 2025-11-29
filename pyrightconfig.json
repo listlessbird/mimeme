@@ -7,7 +7,11 @@
   ],
   "executionEnvironments": [
     {
-      "root": "services/src"
+      "root": "services/src",
+      "pythonVersion": "3.13"
     }
-  ]
+  ],
+  "typeCheckingMode": "basic",
+  "useLibraryCodeForTypes": true,
+  "reportMissingTypeStubs": false
 }
