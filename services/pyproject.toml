@@ -45,6 +45,7 @@ packages = ["src/ingestion", "src/api"]
 [dependency-groups]
 dev = [
     "ruff>=0.14.6",
+    "celery-types>=0.23.0",
 ]
 
 [tool.ruff]
