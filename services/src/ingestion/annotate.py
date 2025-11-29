@@ -1,14 +1,17 @@
 from __future__ import annotations
+
 from datetime import datetime
 from pathlib import Path
+
 from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 
-from .orm import Annotation, session_scope, Image as ORMImage, Processing, Artifact
+from .config import CFG
+from .orm import Annotation, Artifact, Processing, session_scope
+from .orm import Image as ORMImage
 from .vision.base import create_vision_model
 from .vision.moondream2 import MoonDream2Config
-from .config import CFG
 
 
 def now_iso() -> str:
@@ -59,15 +62,9 @@ def annotate_batch(
     model_name: str = "moondream2",
     show_progress: bool = True,
 ):
-    from rich.progress import (
-        Progress,
-        SpinnerColumn,
-        BarColumn,
-        TextColumn,
-        TimeElapsedColumn,
-    )
-    from rich.table import Table
     from rich.console import Console
+    from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
+    from rich.table import Table
 
     model = create_vision_model(model_name, cfg=MoonDream2Config())
     console = Console()

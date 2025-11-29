@@ -1,11 +1,12 @@
 from __future__ import annotations
-from typing import Callable, List, Optional, Tuple
-from dataclasses import dataclass
-from abc import ABC, abstractmethod
 
-from PIL import Image, ImageFile
+from abc import ABC, abstractmethod
+from collections.abc import Callable
+from dataclasses import dataclass
+
 import numpy as np
 import torch
+from PIL import Image, ImageFile
 
 # Enable loading of truncated images
 ImageFile.LOAD_TRUNCATED_IMAGES = True
@@ -15,7 +16,7 @@ ImageFile.LOAD_TRUNCATED_IMAGES = True
 class EmbedderConfig:
     image_model: str = "google/siglip2-base-patch16-naflex"
     # if none -> uses the same cross modal model's text encoder
-    text_model: Optional[str] = None
+    text_model: str | None = None
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
     use_bnb_4bit: bool = False
     fp16_fallback: bool = True
@@ -36,17 +37,17 @@ class BaseEmbedder(ABC):
         pass
 
     @abstractmethod
-    def encode_images(self, images: List[Image.Image]) -> np.ndarray:
+    def encode_images(self, images: list[Image.Image]) -> np.ndarray:
         pass
 
     @abstractmethod
-    def encode_texts(self, texts: List[str]) -> np.ndarray:
+    def encode_texts(self, texts: list[str]) -> np.ndarray:
         pass
 
     def embed_batch(
-        self, image_paths: List[Tuple[int, str]], text_provider: Callable
-    ) -> List[Tuple[int, np.ndarray, np.ndarray]]:
-        results: List[Tuple[int, np.ndarray, np.ndarray]] = []
+        self, image_paths: list[tuple[int, str]], text_provider: Callable
+    ) -> list[tuple[int, np.ndarray, np.ndarray]]:
+        results: list[tuple[int, np.ndarray, np.ndarray]] = []
 
         batch_size = max(1, min(self.cfg.batch_size, len(image_paths)))
 
