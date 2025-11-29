@@ -8,11 +8,15 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from api.config import settings
 from api.services.indexer import FaissIndexManager
+from api.services.search import SearchService
 
 
 @lru_cache
 def get_index_manager() -> FaissIndexManager:
     return FaissIndexManager(index_dir=settings.index_dir, db_url=settings.db_url)
+
+
+IndexManagerDep = Annotated[FaissIndexManager, Depends(get_index_manager)]
 
 
 @lru_cache
@@ -56,3 +60,15 @@ def get_db() -> Iterator[Session]:
 
 
 DbSession = Annotated[Session, Depends(get_db)]
+
+
+@lru_cache
+def get_search_service() -> SearchService:
+    return SearchService(
+        index_manager=get_index_manager(),
+        model_name=settings.embed_model,
+        device=settings.embed_device,
+    )
+
+
+SearchServiceDep = Annotated[SearchService, Depends(get_search_service)]
