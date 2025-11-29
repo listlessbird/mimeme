@@ -1,9 +1,9 @@
-from typing import List
-from PIL.Image import Image
-from ingestion.embeddings.base import BaseEmbedder
 import numpy as np
 import torch
+from PIL.Image import Image
 from transformers import AutoModel, AutoProcessor, BitsAndBytesConfig
+
+from ingestion.embeddings.base import BaseEmbedder
 
 
 class SiglipEmbedder(BaseEmbedder):
@@ -83,9 +83,9 @@ class SiglipEmbedder(BaseEmbedder):
             variant = "NaFlex" if self.is_naflex else "FixRes"
             print(f"Model type: SigLIP2 ({variant})")
         else:
-            print(f"Model type: SigLIP v1")
+            print("Model type: SigLIP v1")
 
-    def encode_images(self, images: List[Image]) -> np.ndarray:
+    def encode_images(self, images: list[Image]) -> np.ndarray:
         if self.is_siglip2:
             if self.is_naflex:
                 # NaFlex variant: use max_num_patches parameter
@@ -123,7 +123,7 @@ class SiglipEmbedder(BaseEmbedder):
         feats = feats.cpu().numpy()
         return feats
 
-    def encode_texts(self, texts: List[str]) -> np.ndarray:
+    def encode_texts(self, texts: list[str]) -> np.ndarray:
         # SigLIP2 was trained with lowercased text
         if self.is_siglip2:
             texts = [text.lower() for text in texts]

@@ -1,5 +1,7 @@
 import json
+import shutil
 import threading
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -121,3 +123,108 @@ class FaissIndexManager:
                     results.append((image_id, float(score)))
 
             return results
+
+    def get_vector_by_image_id(self, image_id: int) -> np.ndarray | None:
+        with self._lock:
+            if self._index is None:
+                return None
+
+            faiss_idx = self._reverse_mapping.get(image_id)
+            if faiss_idx is None:
+                return None
+
+            return self._index.reconstruct(faiss_idx)  # type: ignore[call-arg]
+
+    def swap_to_version(self, version: str) -> None:
+        version_dir = self.index_dir / version
+
+        if not version_dir.exists():
+            raise FileNotFoundError(f"Index version not found: {version}")
+
+        with self._lock:
+            self._load_index_from_dir(version_dir)
+
+            current_link = self.index_dir / "current"
+            temp_link = self.index_dir / "current.tmp"
+
+            temp_link.symlink_to(version_dir)
+            temp_link.replace(current_link)
+
+        log.info("index_swapped", new_version=version)
+
+    def build_index(
+        self,
+        embeddings: np.ndarray,
+        image_ids: list[int],
+        model_name: str,
+        index_type: str = "flat",
+    ) -> str:
+        if len(embeddings) != len(image_ids):
+            raise ValueError("Embeddings and image_ids must have same length")
+
+        n_vectors, dimension = embeddings.shape
+
+        embeddings = embeddings.astype(np.float32)
+        faiss.normalize_L2(embeddings)
+
+        if index_type == "flat":
+            index = faiss.IndexFlatIP(dimension)
+        elif index_type == "ivf":
+            nlist = min(100, n_vectors // 10)  # around 10 vct per cluster
+            quantizer = faiss.IndexFlatIP(dimension)
+            index = faiss.IndexIVFFlat(quantizer, dimension, nlist, faiss.METRIC_INNER_PRODUCT)
+            index.train(embeddings)  # type: ignore[call-arg]
+
+        elif index_type == "hnsw":
+            index = faiss.IndexHNSWFlat(dimension, 32, faiss.METRIC_INNER_PRODUCT)
+
+        else:
+            raise ValueError(f"Unknown index type: {index_type}")
+
+        index.add(embeddings)  # type: ignore[call-arg]
+
+        version = f"v{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
+        version_dir = self.index_dir / version
+        version_dir.mkdir(parents=True, exist_ok=True)
+
+        faiss.write_index(index, str(version_dir / "index.faiss"))
+
+        mapping = {i: img_id for i, img_id in enumerate(image_ids)}
+        with open(version_dir / "mapping.json", "w") as f:
+            json.dump(mapping, f)
+
+        metadata = {
+            "version": version,
+            "model_name": model_name,
+            "dimension": dimension,
+            "num_vectors": n_vectors,
+            "index_type": index_type,
+            "created_at": datetime.utcnow().isoformat(),
+        }
+
+        with open(version_dir / "metadata.json", "w") as f:
+            json.dump(metadata, f, indent=2)
+
+        log.info(
+            "index_built", version=version, num_vectors=n_vectors, dim=dimension, type=index_type
+        )
+
+        return version
+
+    def garbage_collect(self) -> list[str]:
+        versions = sorted(
+            [d for d in self.index_dir.iterdir() if d.is_dir() and d.name.startswith("v")],
+            reverse=True,
+        )
+
+        removed = []
+
+        for version_dir in versions[self.retain_versions :]:
+            if version_dir.name == self.active_version:
+                continue
+
+            shutil.rmtree(version_dir)
+            removed.append(version_dir.name)
+            log.info("index_version_removed", version=version_dir.name)
+
+        return removed

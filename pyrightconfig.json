@@ -1,13 +1,13 @@
 {
   "include": [
-    "packages/src"
+    "services/src"
   ],
   "extraPaths": [
-    "packages/src"
+    "services/src"
   ],
   "executionEnvironments": [
     {
-      "root": "packages/src"
+      "root": "services/src"
     }
   ]
 }
