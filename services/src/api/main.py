@@ -11,6 +11,7 @@ from prometheus_client import make_asgi_app
 
 from api.deps import get_index_manager
 from api.routers import health, images, jobs, search
+from api.services.storage import get_storage_service
 
 from .config import settings
 
@@ -46,8 +47,16 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     log.info("starting_app", env=settings.app_env)
 
-    settings.index_dir.mkdir(parents=True, exist_ok=True)
-    settings.artifact_dir.mkdir(parents=True, exist_ok=True)
+    settings.cache_dir.mkdir(parents=True, exist_ok=True)
+    settings.index_cache_dir.mkdir(parents=True, exist_ok=True)
+
+    storage = get_storage_service()
+
+    try:
+        storage.ensure_bucket_exists()
+        log.info("s3_bucket_ready", bucket=storage.bucket)
+    except Exception as e:
+        log.warning("s3_bucket_init_failed", error=str(e))
 
     index_manager = get_index_manager()
     try:

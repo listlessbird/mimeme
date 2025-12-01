@@ -25,23 +25,13 @@ class Settings(BaseSettings):
 
     @computed_field
     @property
-    def db_path(self) -> Path:
-        return self.data_dir / "db.sqlite3"
+    def cache_dir(self) -> Path:
+        return self.data_dir / "cache"
 
     @computed_field
     @property
-    def image_root(self) -> Path:
-        return self.data_dir / "raw_memes"
-
-    @computed_field
-    @property
-    def index_dir(self) -> Path:
-        return self.data_dir / "indexes"
-
-    @computed_field
-    @property
-    def artifact_dir(self) -> Path:
-        return self.data_dir / "artifacts"
+    def index_cache_dir(self) -> Path:
+        return self.cache_dir / "indexes"
 
     database_url: str | None = None
 
@@ -50,7 +40,7 @@ class Settings(BaseSettings):
     def db_url(self) -> str:
         if self.database_url:
             return self.database_url
-        return f"sqlite:///{self.db_path}"
+        return "postgresql://findmeme:findmeme@localhost:5432/findmeme"
 
     redis_url: str = "redis://localhost:6379/0"
     celery_broker_url: str | None = None
@@ -66,13 +56,13 @@ class Settings(BaseSettings):
     def result_backend(self) -> str:
         return self.celery_result_backend or self.redis_url
 
-    s3_endpoint_url: str = ""
+    s3_endpoint_url: str = "http://localhost:9000"
     s3_region: str = "auto"
-    s3_bucket: str = ""
-    s3_access_key_id: str = ""
-    s3_secret_access_key: str = ""
+    s3_bucket: str = "findmeme"
+    s3_access_key_id: str = "minioadmin"
+    s3_secret_access_key: str = "minioadmin"
     s3_force_path_style: bool = True
-    s3_prefix: str = "memes"
+    s3_presigned_url_expiry: int = 3600
 
     embed_model: str = "google/siglip2-base-patch16-naflex"
     embed_device: str = "cuda"

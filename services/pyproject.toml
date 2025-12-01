@@ -46,6 +46,7 @@ packages = ["src/ingestion", "src/api"]
 dev = [
     "ruff>=0.14.6",
     "celery-types>=0.23.0",
+    "types-boto3-custom",
 ]
 
 [tool.ruff]
@@ -58,3 +59,6 @@ ignore = ["E501"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.uv.sources]
+types-boto3-custom = { path = "vendored/types_boto3_custom-1.40.59-py3-none-any.whl" }

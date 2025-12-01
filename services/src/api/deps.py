@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from api.config import settings
 from api.services.indexer import FaissIndexManager
 from api.services.search import SearchService
+from api.services.storage import StorageService, get_storage_service
 
 
 @lru_cache
@@ -72,3 +73,10 @@ def get_search_service() -> SearchService:
 
 
 SearchServiceDep = Annotated[SearchService, Depends(get_search_service)]
+
+
+def get_storage() -> StorageService:
+    return get_storage_service()
+
+
+StorageDep = Annotated[StorageService, Depends(get_storage)]

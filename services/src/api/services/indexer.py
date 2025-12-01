@@ -1,5 +1,6 @@
 import json
 import shutil
+import tempfile
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
@@ -8,15 +9,23 @@ from typing import Any
 import faiss
 import numpy as np
 import structlog
+from sqlalchemy.orm import Session
+
+from api.config import settings
+from api.models.orm import IndexBuild
+from api.services.storage import get_storage_service
 
 log = structlog.get_logger()
 
 
 class FaissIndexManager:
     def __init__(self, index_dir: Path, db_url: str, retain_versions: int = 5) -> None:
-        self.index_dir = Path(index_dir)
-        self.db_url = db_url
         self.retain_versions = retain_versions
+        self._cache_dir = settings.index_cache_dir
+
+        self._cache_dir.mkdir(parents=True, exist_ok=True)
+
+        self._storage = get_storage_service()
 
         self._index: faiss.Index | None = None
         self._id_mapping: dict[int, int] = {}  # faiss_idx -> image_id
@@ -25,9 +34,6 @@ class FaissIndexManager:
         self._metadata: dict[str, Any] = {}
 
         self._lock = threading.RLock()
-
-        # prolly not needed, since its already ensured in lifecycle, but w/e
-        self.index_dir.mkdir(parents=True, exist_ok=True)
 
     @property
     def is_loaded(self) -> bool:
@@ -49,55 +55,60 @@ class FaissIndexManager:
             return None
         return self._index.d
 
-    def load_active_index(self) -> None:
+    def load_active_index(self, db: Session) -> None:
         with self._lock:
-            current_link = self.index_dir / "current"
+            active_build = db.query(IndexBuild).filter(IndexBuild.is_active).first()
 
-            if current_link.is_symlink():
-                version_dir = current_link.resolve()
+            if active_build is None:
+                raise FileNotFoundError("No active index found in db")
 
-            else:
-                versions = sorted(
-                    [d for d in self.index_dir.iterdir() if d.is_dir() and d.name.startswith("v")],
-                    reverse=True,
-                )
-                if not versions:
-                    raise FileNotFoundError("No index versions found")
-                version_dir = versions[0]
-            self._load_index_from_dir(version_dir)
+    def _load_index_version(self, version: str) -> None:
+        cache_path = self._cache_dir / version
+        index_file = cache_path / "index.faiss"
+        mapping_file = cache_path / "mapping.json"
+        metadata_file = cache_path / "metadata.json"
 
-    def _load_index_from_dir(self, version_dir: Path) -> None:
-        index_path = version_dir / "index.faiss"
-        mapping_path = version_dir / "mapping.json"
-        metadata_path = version_dir / "metadata.json"
+        if not index_file.exists():
+            log.info("fetching_index_from_s3", version=version)
+            cache_path.mkdir(parents=True, exist_ok=True)
 
-        if not index_path.exists():
-            raise FileNotFoundError(f"Index file not found: {index_path}")
+            index_key = self._storage.build_index_key(version, "index.faiss")
+            mapping_key = self._storage.build_index_key(version, "mapping.json")
+            metadata_key = self._storage.build_index_key(version, "metadata.json")
 
-        index = faiss.read_index(str(index_path))
+            self._storage.download_file(index_key, index_file)
+            self._storage.download_file(mapping_key, mapping_file)
+
+            if self._storage.exists(metadata_key):
+                self._storage.download_file(metadata_key, metadata_file)
+
+        index = faiss.read_index(str(index_file))
 
         id_mapping = {}
-        if mapping_path.exists():
-            with open(mapping_path) as f:
-                raw_mapping = json.load(f)
-                id_mapping = {int(k): v for k, v in raw_mapping.items()}
+
+        if mapping_file.exists():
+            with open(mapping_file) as f:
+                raw = json.load(f)
+                id_mapping = {int(k): v for k, v in raw.items()}
 
         metadata = {}
-        if metadata_path.exists():
-            with open(metadata_path) as f:
+
+        if metadata_file.exists():
+            with open(metadata_file) as f:
                 metadata = json.load(f)
 
         self._index = index
         self._id_mapping = id_mapping
         self._reverse_mapping = {v: k for k, v in id_mapping.items()}
-        self._active_version = version_dir.name
+        self._active_version = version
         self._metadata = metadata
 
         log.info(
-            "faiss index loaded",
-            version=self._active_version,
+            "index_loaded",
+            version=version,
             num_vectors=index.ntotal,
-            dimension=index.d,
+            dimensions=index.d,
+            source="cache" if index_file.exists() else "s3",
         )
 
     def search(self, query_vector: np.ndarray, k: int = 20) -> list[tuple[int, float]]:
@@ -135,21 +146,14 @@ class FaissIndexManager:
 
             return self._index.reconstruct(faiss_idx)  # type: ignore[call-arg]
 
-    def swap_to_version(self, version: str) -> None:
-        version_dir = self.index_dir / version
-
-        if not version_dir.exists():
-            raise FileNotFoundError(f"Index version not found: {version}")
-
+    def swap_to_version(self, version: str, db: Session) -> None:
         with self._lock:
-            self._load_index_from_dir(version_dir)
+            self._load_index_version(version)
 
-            current_link = self.index_dir / "current"
-            temp_link = self.index_dir / "current.tmp"
+            db.query(IndexBuild).filter(IndexBuild.is_active).update({"is_active": False})
+            db.query(IndexBuild).filter(IndexBuild.version == version).update({"is_active": True})
 
-            temp_link.symlink_to(version_dir)
-            temp_link.replace(current_link)
-
+            db.commit()
         log.info("index_swapped", new_version=version)
 
     def build_index(
@@ -158,6 +162,7 @@ class FaissIndexManager:
         image_ids: list[int],
         model_name: str,
         index_type: str = "flat",
+        db: Session | None = None,
     ) -> str:
         if len(embeddings) != len(image_ids):
             raise ValueError("Embeddings and image_ids must have same length")
@@ -184,47 +189,88 @@ class FaissIndexManager:
         index.add(embeddings)  # type: ignore[call-arg]
 
         version = f"v{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}"
-        version_dir = self.index_dir / version
-        version_dir.mkdir(parents=True, exist_ok=True)
 
-        faiss.write_index(index, str(version_dir / "index.faiss"))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_path = Path(tmpdir)
 
-        mapping = {i: img_id for i, img_id in enumerate(image_ids)}
-        with open(version_dir / "mapping.json", "w") as f:
-            json.dump(mapping, f)
+            faiss.write_index(index, str(tmp_path / "index.faiss"))
 
-        metadata = {
-            "version": version,
-            "model_name": model_name,
-            "dimension": dimension,
-            "num_vectors": n_vectors,
-            "index_type": index_type,
-            "created_at": datetime.now(UTC).isoformat(),
-        }
+            mapping = {i: img_id for i, img_id in enumerate(image_ids)}
+            with open(tmp_path / "mapping.json", "w") as f:
+                json.dump(mapping, f)
 
-        with open(version_dir / "metadata.json", "w") as f:
-            json.dump(metadata, f, indent=2)
+            metadata = {
+                "version": version,
+                "model_name": model_name,
+                "dimension": dimension,
+                "num_vectors": n_vectors,
+                "index_type": index_type,
+                "created_at": datetime.now(UTC).isoformat(),
+            }
+
+            with open(tmp_path / "metadata.json", "w") as f:
+                json.dump(metadata, f, indent=2)
+
+            index_key = self._storage.build_index_key(version, "index.faiss")
+            mapping_key = self._storage.build_index_key(version, "mapping.json")
+            metadata_key = self._storage.build_index_key(version, "metadata.json")
+
+            self._storage.upload_file(tmp_path / "index.faiss", index_key)
+            self._storage.upload_file(tmp_path / "mapping.json", mapping_key)
+            self._storage.upload_file(tmp_path / "metadata.json", metadata_key)
+
+            cache_path = self._cache_dir / version
+            cache_path.mkdir(parents=True, exist_ok=True)
+            shutil.copy(tmp_path / "index.faiss", cache_path / "index.faiss")
+            shutil.copy(tmp_path / "mapping.json", cache_path / "mapping.json")
+            shutil.copy(tmp_path / "metadata.json", cache_path / "metadata.json")
+
+        if db is not None:
+            build_record = IndexBuild(
+                version=version,
+                s3_key=index_key,
+                embed_model=model_name,
+                index_type=index_type,
+                num_vectors=n_vectors,
+                dimension=dimension,
+                is_active=False,
+            )
+            db.add(build_record)
+            db.commit()
 
         log.info(
-            "index_built", version=version, num_vectors=n_vectors, dim=dimension, type=index_type
+            "index_built",
+            version=version,
+            num_vectors=n_vectors,
+            dim=dimension,
+            type=index_type,
         )
 
         return version
 
-    def garbage_collect(self) -> list[str]:
-        versions = sorted(
-            [d for d in self.index_dir.iterdir() if d.is_dir() and d.name.startswith("v")],
-            reverse=True,
-        )
-
+    def garbage_collect(self, db: Session) -> list[str]:
         removed = []
 
-        for version_dir in versions[self.retain_versions :]:
-            if version_dir.name == self.active_version:
+        all_builds = db.query(IndexBuild).order_by(IndexBuild.created_at.desc()).all()
+
+        for build in all_builds[: self.retain_versions]:
+            if build.is_active:
                 continue
 
-            shutil.rmtree(version_dir)
-            removed.append(version_dir.name)
-            log.info("index_version_removed", version=version_dir.name)
+            if build.s3_key:
+                prefix = f"{self._storage.INDEXES_PREFIX}/{build.version}"
+                objects = self._storage.list_objects(prefix)
+                for key, _ in objects:
+                    self._storage.delete(key)
+
+            cache_path = self._cache_dir / build.version
+            if cache_path.exists():
+                shutil.rmtree(cache_path)
+
+            db.delete(build)
+            removed.append(build.version)
+            log.info("index_version_removed", version=build.version)
+
+        db.commit()
 
         return removed
