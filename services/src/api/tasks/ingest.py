@@ -14,7 +14,6 @@ from api.models.orm import Annotation, Processing, Session, session_scope
 from api.models.orm import Image as ORMImage
 from api.services.storage import get_storage_service
 from api.tasks import celery_app
-from ingestion.annotate import now_iso
 from ingestion.hashing import compute_phash, compute_sha256
 from ingestion.imaging import image_info
 from ingestion.vision.base import create_vision_model
@@ -210,14 +209,12 @@ def _annotate_image(session: Session, vision_model, img: ORMImage, local_path: P
 
         proc.caption_status = "done"
         proc.caption_model = cap.model
-        proc.caption_updated_at = now_iso()
+        proc.caption_updated_at = datetime.now(UTC)
         proc.ocr_model = ocr.model
-        proc.ocr_updated_at = now_iso()
+        proc.ocr_updated_at = datetime.now(UTC)
 
         session.commit()
     except Exception:
         pass
 
 
-def now_iso() -> str:
-    return datetime.now(UTC).isoformat(timespec="seconds")
