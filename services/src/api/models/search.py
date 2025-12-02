@@ -8,7 +8,6 @@ class SearchResult(BaseModel):
     sha256: str = Field(..., description="Image hash")
     score: float = Field(..., description="Similarity Score")
     url: str | None = Field(None, description="Image url")
-    rel_path: str = Field(..., description="Relative path to img")
     caption: str | None = Field(None, description="Generated Caption")
     ocr_text: str | None = Field(None, description="Extracted text from the image")
     width: int | None = Field(None, description="Image width")
@@ -44,7 +43,6 @@ class SearchResponse(BaseModel):
                         "sha256": "abc123...",
                         "score": 0.95,
                         "url": "https://s3.example.com/memes/ab/c1/abc123.jpg",
-                        "rel_path": "funny-cats/cat1.jpg",
                         "caption": "A cat sleeping on a keyboard",
                         "ocr_text": None,
                         "width": 800,

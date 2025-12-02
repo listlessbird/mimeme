@@ -8,10 +8,12 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from transformers import AutoModel, AutoProcessor
 
+from api.config import settings
+from api.models.orm import Annotation
+from api.models.orm import Image as ORMImage
 from api.models.search import SearchResult
 from api.services.indexer import FaissIndexManager
-from ingestion.orm import Annotation
-from ingestion.orm import Image as ORMImage
+from api.services.storage import get_storage_service
 
 log = structlog.get_logger()
 
@@ -32,6 +34,7 @@ class SearchService:
         self._model_lock = threading.Lock()
 
         self._is_siglip2 = "siglip2" in model_name.lower()
+        self._storage = get_storage_service()
 
     def _ensure_model_loaded(self) -> None:
         if self._model is not None:
@@ -108,7 +111,6 @@ class SearchService:
                 SearchResult(
                     id=image_id,
                     sha256="",
-                    rel_path="",
                     score=score,
                     caption="",
                     height=None,
@@ -140,13 +142,19 @@ class SearchService:
 
             ann = annotation_map.get(image_id)
 
+            url = None
+
+            if img.s3_key:
+                url = self._storage.generate_presigned_url(
+                    img.s3_key, expiration=settings.s3_presigned_url_expiry
+                )
+
             results.append(
                 SearchResult(
                     id=img.id,
                     sha256=img.sha256,
                     score=score,
-                    url=None,  # generate urls later,
-                    rel_path=img.rel_path,
+                    url=url,
                     caption=ann.caption_text if ann else None,
                     ocr_text=ann.ocr_text if ann else None,
                     width=img.width,
@@ -171,7 +179,6 @@ class SearchService:
                 SearchResult(
                     id=image_id,
                     sha256="",
-                    rel_path="",
                     score=score,
                     caption="",
                     height=None,
@@ -209,7 +216,6 @@ class SearchService:
                     sha256=img.sha256,
                     score=score,
                     url=None,
-                    rel_path=img.rel_path,
                     caption=ann.caption_text if ann else None,
                     ocr_text=ann.ocr_text if ann else None,
                     width=img.width,

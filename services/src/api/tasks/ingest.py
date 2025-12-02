@@ -1,23 +1,22 @@
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
 import httpx
 import structlog
+from PIL import Image
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from api.config import settings
+from api.models.orm import Annotation, Processing, Session, session_scope
+from api.models.orm import Image as ORMImage
+from api.services.storage import get_storage_service
 from api.tasks import celery_app
-from ingestion.annotate import _process_single_image
-from ingestion.embeddings.base import EmbedderConfig
-from ingestion.embeddings.db_ops import ensure_artifact_dir, get_image_text, save_embeddings
-from ingestion.embeddings.pipeline import create_embedder
+from ingestion.annotate import now_iso
 from ingestion.hashing import compute_phash, compute_sha256
 from ingestion.imaging import image_info
-from ingestion.orm import Image as ORMImage
-from ingestion.orm import Processing, session_scope
-from ingestion.repositories import images as images_repo
 from ingestion.vision.base import create_vision_model
 
 log = structlog.get_logger()
@@ -30,6 +29,7 @@ def ingest_images_task(
     self,
     urls: list[str],
     tags: list[str] | None = None,
+    dataset: str | None = None,
     priority: str = "normal",
     callback_url: str | None = None,
 ) -> dict[str, Any]:
@@ -38,6 +38,9 @@ def ingest_images_task(
     failed = 0
     duplicates = 0
     result: list[dict] = []
+
+    storage = get_storage_service()
+    storage.ensure_bucket_exists()
 
     self.update_state(
         state="PROGRESS",
@@ -67,103 +70,61 @@ def ingest_images_task(
                 result.append({"url": url, "status": "download_failed"})
                 continue
 
-            sha256 = compute_sha256(local_path)
-            phash = compute_phash(local_path)
+            try:
+                sha256 = compute_sha256(local_path)
+                phash = compute_phash(local_path)
+                width, height, fmt = image_info(local_path)
+                file_size = local_path.stat().st_size
 
-            with session_scope() as session:
-                existing = session.query(ORMImage).filter_by(sha256=sha256).first()
-                if existing:
-                    duplicates += 1
-                    result.append(
-                        {
-                            "url": url,
-                            "status": "duplicate",
-                            "existing_id": existing.id,
-                        }
+                with session_scope() as session:
+                    existing = session.query(ORMImage).filter_by(sha256=sha256).first()
+
+                    if existing:
+                        duplicates += 1
+                        result.append(
+                            {
+                                "url": url,
+                                "status": "duplicate",
+                                "existing_id": existing.id,
+                            }
+                        )
+                        continue
+                ext = fmt or "jpg"
+                s3_key = storage.build_image_key(sha256, dataset, ext)
+                etag = storage.upload_file(local_path, s3_key)
+
+                with session_scope() as session:
+                    img = ORMImage(
+                        sha256=sha256,
+                        dataset=dataset,
+                        original_filename=filename,
+                        s3_key=s3_key,
+                        s3_etag=etag,
+                        width=width,
+                        height=height,
+                        format=fmt,
+                        file_size=file_size,
+                        phash=phash,
                     )
-                    local_path.unlink(missing_ok=True)
-                    continue
+                    session.add(img)
+                    session.flush()
+                    image_id = img.id
 
-            width, height, fmt = image_info(local_path)
-
-            rel_dir = Path(sha256[:2]) / sha256[2:4]
-            rel_path = rel_dir / f"{sha256}.{fmt or 'jpg'}"
-
-            dest_dir = settings.image_root / rel_dir
-            dest_dir.mkdir(parents=True, exist_ok=True)
-            dest_path = settings.image_root / rel_path
-
-            local_path.rename(dest_path)
-
-            with session_scope() as session:
-                images_repo.bulk_upsert(
-                    session,
-                    [
-                        {
-                            "sha256": sha256,
-                            "rel_path": str(rel_path),
-                            "width": width,
-                            "height": height,
-                            "format": fmt,
-                            "phash": phash,
-                        }
-                    ],
-                )
-                session.commit()
-
-                img = session.query(ORMImage).filter_by(sha256=sha256).first()
-                if img is None:
-                    raise RuntimeError(f"Failed to retrieve image after insert: {sha256}")
-                image_id = img.id
-
-                proc = Processing(image_id=image_id)
-                session.add(proc)
-                session.commit()
+                    proc = Processing(image_id=image_id)
+                    session.add(proc)
+                    session.commit()
 
                 if vision_model is None:
                     log.info("loading_vision_model", model=settings.vision_model)
-
                     vision_model = create_vision_model(settings.vision_model)
 
                 with session_scope() as session:
                     img = session.query(ORMImage).filter_by(id=image_id).first()
-                    if img is None:
-                        raise RuntimeError(f"Failed to retrieve image for annotation: {image_id}")
-                    annotation_result = _process_single_image(session, vision_model, img)
+                    if img:
+                        _annotate_image(session, vision_model, img, local_path)
 
-                if embedder is None:
-                    log.info("loading_embedder")
-                    cfg = EmbedderConfig(
-                        image_model=settings.embed_model, device=settings.embed_device
-                    )
-                    embedder = create_embedder(cfg)
-
-                text = get_image_text(image_id)
-
-                artifact_dir = ensure_artifact_dir(embedder.image_model_name)
-
-                batch_results = embedder.embed_batch(
-                    image_paths=[(image_id, str(dest_path))], text_provider=lambda _: text
-                )
-
-                if batch_results:
-                    img_id, img_emb, txt_emb = batch_results[0]
-                    save_embeddings(
-                        image_id=img_id,
-                        image_embedding=img_emb,
-                        text_embedding=txt_emb,
-                        artifact_dir=artifact_dir,
-                        model_name=embedder.image_model_name,
-                    )
-                processed += 1
-                result.append(
-                    {
-                        "url": url,
-                        "status": "success",
-                        "image_id": image_id,
-                        "sha256": sha256,
-                    }
-                )
+            finally:
+                local_path.unlink(missing_ok=True)
 
         except Exception as e:
             log.exception("ingest_failed", url=url)
@@ -223,3 +184,40 @@ def _call_webhook(url: str, data: dict) -> None:
             client.post(url, json=data)
     except Exception as e:
         log.error("webhook_failed", url=url, error=str(e))
+
+
+def _annotate_image(session: Session, vision_model, img: ORMImage, local_path: Path) -> None:
+    try:
+        pil = Image.open(local_path).convert("RGB")
+
+        proc = session.query(Processing).filter_by(image_id=img.id).first()
+
+        if not proc:
+            proc = Processing(image_id=img.id)
+            session.add(proc)
+            session.flush()
+
+        cap = vision_model.caption(pil, length="normal")
+        ocr = vision_model.ocr(pil)
+
+        ann = session.query(Annotation).filter_by(image_id=img.id).first()
+        if not ann:
+            ann = Annotation(image_id=img.id)
+            session.add(ann)
+
+        ann.caption_text = cap.caption
+        ann.ocr_text = ocr.text
+
+        proc.caption_status = "done"
+        proc.caption_model = cap.model
+        proc.caption_updated_at = now_iso()
+        proc.ocr_model = ocr.model
+        proc.ocr_updated_at = now_iso()
+
+        session.commit()
+    except Exception:
+        pass
+
+
+def now_iso() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds")
