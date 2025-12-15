@@ -10,13 +10,15 @@ from PIL import Image
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 from api.config import settings
-from api.models.orm import Annotation, Processing, Session, session_scope
+from api.models.orm import Annotation, Artifact, Processing, Session, session_scope
 from api.models.orm import Image as ORMImage
-from api.services.storage import get_storage_service
+from api.services.storage import StorageService, get_storage_service
 from api.tasks import celery_app
+from ingestion.embeddings.base import BaseEmbedder, EmbedderConfig
+from ingestion.embeddings.pipeline import create_embedder
 from ingestion.hashing import compute_phash, compute_sha256
 from ingestion.imaging import image_info
-from ingestion.vision.base import create_vision_model
+from ingestion.vision.base import VisionModel, create_vision_model
 
 log = structlog.get_logger()
 
@@ -46,8 +48,8 @@ def ingest_images_task(
         meta={"progress": 0, "message": f"Starting ingestion of {total} images"},
     )
 
-    vision_model = None
-    embedder = None
+    vision_model: VisionModel | None = None
+    embedder: BaseEmbedder | None = None
 
     for i, url in enumerate(urls):
         try:
@@ -122,6 +124,39 @@ def ingest_images_task(
                     if img:
                         _annotate_image(session, vision_model, img, local_path)
 
+                if embedder is None:
+                    log.info("loading_embedder")
+                    cfg = EmbedderConfig(
+                        image_model=settings.embed_model, device=settings.embed_device
+                    )
+
+                    embedder = create_embedder(cfg)
+
+                with session_scope() as session:
+                    img = session.query(ORMImage).filter_by(id=image_id).first()
+                    ann = session.query(Annotation).filter_by(image_id=image_id).first()
+                    if img:
+                        text = ""
+                        if ann:
+                            parts = []
+                            if ann.caption_text:
+                                parts.append(ann.caption_text)
+                            if ann.ocr_text:
+                                parts.append(ann.ocr_text)
+                            text = "".join(parts)
+
+                        _embed_image(session, embedder, img, local_path, text, storage)
+
+                processed += 1
+                result.append(
+                    {
+                        "url": url,
+                        "status": "success",
+                        "image_id": image_id,
+                        "sha256": sha256,
+                        "s3_key": s3_key,
+                    }
+                )
             finally:
                 local_path.unlink(missing_ok=True)
 
@@ -185,7 +220,9 @@ def _call_webhook(url: str, data: dict) -> None:
         log.error("webhook_failed", url=url, error=str(e))
 
 
-def _annotate_image(session: Session, vision_model, img: ORMImage, local_path: Path) -> None:
+def _annotate_image(
+    session: Session, vision_model: VisionModel, img: ORMImage, local_path: Path
+) -> None:
     try:
         pil = Image.open(local_path).convert("RGB")
 
@@ -213,8 +250,83 @@ def _annotate_image(session: Session, vision_model, img: ORMImage, local_path: P
         proc.ocr_model = ocr.model
         proc.ocr_updated_at = datetime.now(UTC)
 
+        _add_artifact(session, img.id, "caption", cap.model)
+        _add_artifact(session, img.id, "ocr", ocr.model)
+
         session.commit()
-    except Exception:
-        pass
+    except Exception as e:
+        log.error("annotation_failed", image_id=img.id, error=str(e))
+        if proc:
+            proc.caption_status = "failed"
+            proc.ocr_model = "failed"
+            session.commit()
 
 
+def _embed_image(
+    session: Session,
+    embedder: BaseEmbedder,
+    img: ORMImage,
+    local_path: Path,
+    text: str,
+    storage: StorageService,
+) -> None:
+    try:
+        proc = session.query(Processing).filter_by(image_id=img.id).first()
+        if not proc:
+            proc = Processing(image_id=img.id)
+            session.add(proc)
+            session.flush()
+
+        proc.embed_status = "running"
+        session.commit()
+
+        results = embedder.embed_batch(
+            image_paths=[(img.id, str(local_path))], text_provider=lambda _: text
+        )
+
+        if results:
+            _, img_emb, txt_emb = results[0]
+
+            embed_key = storage.build_embedding_key(
+                img.sha256, embedder.image_model_name, img.dataset
+            )
+
+            storage.upload_numpy(img_emb, embed_key)
+            text_embed_key = embed_key.replace(".npy", "_text.npy")
+            storage.upload_numpy(txt_emb, text_embed_key)
+
+            proc.embed_status = "done"
+            proc.embed_model = embedder.image_model_name
+            proc.embed_dim = int(img_emb.shape[-1])
+            proc.embed_updated_at = datetime.now(UTC)
+            proc.embed_s3_key = embed_key
+
+            _add_artifact(session, img.id, "embed", embedder.image_model_name, embed_key)
+
+            session.commit()
+
+    except Exception as e:
+        log.error("embedding_failed", image_id=img.id, error=str(e))
+        if proc:
+            proc.embed_status = "failed"
+            session.commit()
+
+
+def _add_artifact(
+    session: Session, image_id: int, artifact_type: str, model: str, s3_key: str | None = None
+) -> None:
+    existing = (
+        session.query(Artifact)
+        .filter_by(image_id=image_id, kind=artifact_type, model_version=model)
+        .first()
+    )
+
+    if not existing:
+        session.add(
+            Artifact(
+                image_id=image_id,
+                kind=artifact_type,
+                model_version=model,
+                s3_key=s3_key,
+            )
+        )

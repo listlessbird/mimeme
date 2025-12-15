@@ -14,7 +14,7 @@ from api.services.storage import StorageService, get_storage_service
 
 @lru_cache
 def get_index_manager() -> FaissIndexManager:
-    return FaissIndexManager(index_dir=settings.index_dir, db_url=settings.db_url)
+    return FaissIndexManager(index_dir=settings.index_cache_dir, db_url=settings.db_url)
 
 
 IndexManagerDep = Annotated[FaissIndexManager, Depends(get_index_manager)]
