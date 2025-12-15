@@ -5,7 +5,9 @@ import structlog
 from celery.result import AsyncResult
 from fastapi import APIRouter, HTTPException, Query
 
+from api.deps import DbSession
 from api.models.jobs import JobListResponse, JobResponse, JobStatus, RebuildIndexRequest
+from api.models.orm import IndexBuild
 from api.tasks import celery_app
 from api.tasks.manage_index import rebuild_index_task
 
@@ -128,3 +130,23 @@ async def list_jobs(
         jobs=[],
         total=0,
     )
+
+
+@router.get("/indexes/versions")
+async def list_index_versions(db: DbSession, limit: int = Query(default=10, ge=1, le=50)):
+    builds = db.query(IndexBuild).order_by(IndexBuild.created_at.desc()).limit(limit).all()
+
+    return {
+        "versions": [
+            {
+                "version": b.version,
+                "embed_model": b.embed_model,
+                "index_type": b.index_type,
+                "num_vectors": b.num_vectors,
+                "dimension": b.dimension,
+                "is_active": b.is_active,
+                "created_at": b.created_at.isoformat() if b.created_at else None,
+            }
+            for b in builds
+        ]
+    }
