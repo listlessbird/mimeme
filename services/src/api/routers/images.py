@@ -1,12 +1,13 @@
 import uuid
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 import structlog
 from fastapi import APIRouter, HTTPException, Query
 from prometheus_client import Counter
 from sqlalchemy import func, select
 
-from api.deps import DbSession
+from api.config import settings
+from api.deps import DbSession, StorageDep
 from api.models.images import (
     ImageIngestRequest,
     ImageIngestResponse,
@@ -14,12 +15,8 @@ from api.models.images import (
     ImageResponse,
     ImageStatus,
 )
-from ingestion.orm import Annotation, Processing
-from ingestion.orm import Image as ORMImage
-
-if TYPE_CHECKING:
-    pass
-
+from api.models.orm import Annotation, Artifact, Processing
+from api.models.orm import Image as ORMImage
 from api.tasks.ingest import ingest_images_task
 
 router = APIRouter()
@@ -65,12 +62,17 @@ async def ingest_images(request: ImageIngestRequest, db: DbSession):
 @router.get("", response_model=ImageListResponse)
 async def list_images(
     db: DbSession,
+    storage: StorageDep,
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     status: ImageStatus | None = Query(default=None, description="Filter by status"),
+    dataset: str | None = Query(default=None, description="Filter by dataset"),
     sort: Literal["newest", "oldest"] = Query(default="newest"),
 ) -> ImageListResponse:
     query = select(ORMImage)
+
+    if dataset:
+        query = query.where(ORMImage.dataset == dataset)
 
     if status:
         query = query.join(Processing, ORMImage.id == Processing.image_id, isouter=True)
@@ -123,13 +125,19 @@ async def list_images(
         else:
             img_status = ImageStatus.PENDING
 
+        url = None
+        if img.s3_key:
+            url = storage.generate_presigned_url(
+                img.s3_key, expiration=settings.s3_presigned_url_expiry
+            )
+
         results.append(
             ImageResponse(
                 id=img.id,
                 sha256=img.sha256,
-                rel_path=img.rel_path,
-                url=None,  # TODO: Generate signed URL
+                url=url,
                 s3_key=img.s3_key,
+                dataset=img.dataset,
                 width=img.width,
                 height=img.height,
                 format=img.format,
@@ -155,7 +163,7 @@ async def list_images(
 
 
 @router.get("/{image_id}", response_model=ImageResponse)
-async def get_image(image_id: int, db: DbSession) -> ImageResponse:
+async def get_image(image_id: int, db: DbSession, storage: StorageDep) -> ImageResponse:
     img = db.query(ORMImage).filter_by(id=image_id).first()
 
     if not img:
@@ -176,11 +184,16 @@ async def get_image(image_id: int, db: DbSession) -> ImageResponse:
     else:
         img_status = ImageStatus.PENDING
 
+    url = None
+    if img.s3_key:
+        url = storage.generate_presigned_url(
+            img.s3_key, expiration=settings.s3_presigned_url_expiry
+        )
     return ImageResponse(
         id=img.id,
         sha256=img.sha256,
-        rel_path=img.rel_path,
-        url=None,
+        url=url,
+        dataset=img.dataset,
         s3_key=img.s3_key,
         width=img.width,
         height=img.height,
@@ -201,14 +214,35 @@ async def get_image(image_id: int, db: DbSession) -> ImageResponse:
 async def delete_image(
     image_id: int,
     db: DbSession,
+    storage: StorageDep,
 ) -> None:
     img = db.query(ORMImage).filter_by(id=image_id).first()
     if not img:
         raise HTTPException(status_code=404, detail="Image not found")
 
+    if img.s3_key:
+        try:
+            storage.delete(img.s3_key)
+        except Exception as e:
+            log.error("s3_delete_failed", image_id=image_id, s3_key=img.s3_key, error=str(e))
+
+    proc = db.query(Processing).filter_by(image_id=image_id).first()
+    if proc and proc.embed_s3_key:
+        try:
+            storage.delete(proc.embed_s3_key)
+            text_key = proc.embed_s3_key.replace(".npy", "_text.npy")
+            storage.delete(text_key)
+        except Exception as e:
+            log.error(
+                "s3_delete_failed",
+                image_id=image_id,
+                s3_key=proc.embed_s3_key,
+                error=str(e),
+            )
+
     db.query(Annotation).filter_by(image_id=image_id).delete()
     db.query(Processing).filter_by(image_id=image_id).delete()
-
+    db.query(Artifact).filter_by(image_id=image_id).delete()
     db.delete(img)
     db.commit()
 

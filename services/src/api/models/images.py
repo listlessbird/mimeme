@@ -55,9 +55,9 @@ class ImageStatus(str, Enum):
 class ImageResponse(BaseModel):
     id: int
     sha256: str
-    rel_path: str
     url: str | None = None
     s3_key: str | None = None
+    dataset: str | None = None
     width: int | None = None
     height: int | None = None
     format: str | None = None
