@@ -9,6 +9,7 @@ dependencies = [
   "pydantic>=2.7",
   "sqlalchemy>=2.0",
   "alembic>=1.13",
+  "psycopg2-binary>=2.9",
   "transformers>=4.45",
   "accelerate>=0.34",
   "torch>=2.3",

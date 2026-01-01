@@ -269,7 +269,7 @@ uv run ingest upload --dry-run
 
 ## Database Migrations
 
-This project uses [Alembic](https://alembic.sqlalchemy.org/) for database schema migrations. Alembic tracks schema changes and allows you to version control your database structure.
+This project uses [Alembic](https://alembic.sqlalchemy.org/) for database schema migrations with PostgreSQL. Alembic tracks schema changes and allows you to version control your database structure.
 
 ### Migration Workflow
 
@@ -283,54 +283,55 @@ Create a migration whenever you:
 
 #### Creating a New Migration
 
-1. **Make changes to your ORM models** in `src/ingestion/orm.py`
+1. **Make changes to your ORM models** in `src/api/models/orm.py`
 
 2. **Generate a migration** (Alembic will auto-detect changes):
    ```bash
-   uv run python -m alembic revision --autogenerate -m "Description of changes"
+   uv run alembic revision --autogenerate -m "Description of changes"
    ```
 
 3. **Review the generated migration** in `alembic/versions/`:
    - Check that the detected changes are correct
    - Verify both `upgrade()` and `downgrade()` functions
-   - For SQLite: Ensure batch operations are used (should be automatic)
+   - Alembic will generate proper PostgreSQL DDL
 
 4. **Apply the migration**:
    ```bash
-   uv run python -m alembic upgrade head
+   uv run alembic upgrade head
    ```
 
 #### Common Migration Commands
 
 ```bash
 # Check current migration version
-uv run python -m alembic current
+uv run alembic current
 
 # View migration history
-uv run python -m alembic history
+uv run alembic history
 
 # Upgrade to latest version
-uv run python -m alembic upgrade head
+uv run alembic upgrade head
 
 # Downgrade one version
-uv run python -m alembic downgrade -1
+uv run alembic downgrade -1
 
 # Downgrade to specific version
-uv run python -m alembic downgrade <revision_id>
+uv run alembic downgrade <revision_id>
 
-# Show pending migrations
-uv run python -m alembic show head
+# Show SQL without executing (dry run)
+uv run alembic upgrade head --sql
+
+# Stamp database with specific version (without running migrations)
+uv run alembic stamp head
 ```
 
-### SQLite Batch Operations
+### PostgreSQL-Specific Features
 
-This project uses SQLite with **batch mode** enabled for migrations. SQLite has limited `ALTER TABLE` support, so Alembic uses a "table recreation" strategy:
-
-1. Creates a new temporary table with the desired schema
-2. Copies data from the old table
-3. Drops the old table and renames the new one
-
-This is handled automatically by the `render_as_batch=True` setting in `alembic/env.py`.
+PostgreSQL provides full DDL support, so Alembic can:
+- Add/drop columns without recreating tables
+- Modify column types with automatic type conversion
+- Add/drop constraints and indexes efficiently
+- Use transactional DDL (migrations run in transactions)
 
 ### Migration Best Practices
 
@@ -344,48 +345,255 @@ This is handled automatically by the `render_as_batch=True` setting in `alembic/
 
 ```bash
 # 1. Update your model
-# Edit src/ingestion/orm.py
+# Edit src/api/models/orm.py
 
 # 2. Generate migration
-uv run python -m alembic revision --autogenerate -m "Add user_id to images table"
+uv run alembic revision --autogenerate -m "Add user_id to images table"
 
 # 3. Review the generated file in alembic/versions/
 
 # 4. Apply migration
-uv run python -m alembic upgrade head
+uv run alembic upgrade head
 
 # 5. Verify it worked
-uv run python -m alembic current
+uv run alembic current
+```
+
+### Initial Database Setup
+
+For a fresh PostgreSQL database:
+
+```bash
+# 1. Start PostgreSQL with Docker Compose
+docker compose up postgres -d
+
+# 2. Apply all migrations
+uv run alembic upgrade head
+
+# 3. Verify tables were created
+docker exec findmeme-postgres psql -U findmeme -d findmeme -c "\dt"
 ```
 
 ### Troubleshooting
 
-**"Table already exists" errors:**
+**Check migration status:**
 ```bash
-# Clean up leftover temporary tables
-uv run python -c "import sqlite3; conn = sqlite3.connect('data/db.sqlite3'); \
-cursor = conn.cursor(); cursor.execute(\"SELECT name FROM sqlite_master \
-WHERE type='table' AND name LIKE '_alembic_tmp_%'\"); \
-tables = cursor.fetchall(); \
-[cursor.execute(f'DROP TABLE {t[0]}') for t in tables]; conn.commit()"
+# See current version
+uv run alembic current
+
+# See all migrations and which are applied
+uv run alembic history --verbose
 ```
 
-**Need to start fresh:**
+**Reset database (WARNING: destructive):**
 ```bash
-# Delete migration history (WARNING: destructive)
-rm alembic/versions/*.py
-
-# Recreate initial migration
-uv run python -m alembic revision --autogenerate -m "Initial schema"
-uv run python -m alembic upgrade head
+# Drop all tables and recreate from migrations
+docker compose down -v postgres  # Destroys data!
+docker compose up postgres -d
+uv run alembic upgrade head
 ```
 
-# Terminal 1: Dependencies only
-  docker compose up redis minio
+**Manual database inspection:**
+```bash
+# Connect to PostgreSQL
+docker exec -it findmeme-postgres psql -U findmeme -d findmeme
 
-  # Terminal 2: API with hot-reload
-  uv run uvicorn api.main:app --reload
+# Useful commands in psql:
+# \dt              - list tables
+# \d table_name    - describe table schema
+# \di              - list indexes
+# \df              - list functions
+# \q               - quit
+```
 
-  # Terminal 3: Celery with auto-reload
-  uv run watchfiles 'celery -A api.tasks.celery_app worker --loglevel=DEBUG
-  --concurrency=1' src/
+## Local Development Setup
+
+For the best development experience, run infrastructure services in Docker and your application code locally. This gives you fast iteration, easy debugging, and the ability to set breakpoints.
+
+### Architecture Overview
+
+The application consists of:
+- **FastAPI** - REST API server
+- **Celery Workers** - Async task processors
+- **Celery Beat** - Periodic task scheduler (optional)
+- **PostgreSQL** - Primary database
+- **Redis** - Celery broker and cache
+- **MinIO** - S3-compatible object storage
+
+### Recommended Local Setup
+
+**Run in Docker (infrastructure):**
+- PostgreSQL
+- Redis
+- MinIO
+
+**Run locally (your code):**
+- FastAPI server
+- Celery worker(s)
+- Celery beat (if needed)
+
+### Step-by-Step Instructions
+
+#### 1. Start Infrastructure Services
+
+```bash
+cd services
+
+# Start only core infrastructure
+docker compose up postgres redis minio createbucket
+
+# Or with monitoring tools (Flower for Celery, Drizzle for DB)
+docker compose --profile monitoring up postgres redis minio createbucket flower drizzle-gateway
+```
+
+**Access Points:**
+- MinIO Console: http://localhost:9001 (minioadmin / minioadmin)
+- Flower (Celery monitoring): http://localhost:5555 (with `--profile monitoring`)
+- Drizzle Gateway (DB explorer): http://localhost:4983 (with `--profile monitoring`)
+
+#### 2. Configure Environment Variables
+
+Create or update `.env` file in `services/src/api/` directory:
+
+```bash
+# Database
+DATABASE_URL=postgresql://findmeme:findmeme@localhost:5432/findmeme
+
+# Redis (Celery broker)
+REDIS_URL=redis://localhost:6379/0
+
+# MinIO (S3 storage)
+S3_ENDPOINT_URL=http://localhost:9000
+S3_BUCKET=findmeme
+S3_ACCESS_KEY_ID=minioadmin
+S3_SECRET_ACCESS_KEY=minioadmin
+S3_REGION=us-east-1
+S3_FORCE_PATH_STYLE=true
+
+# Application
+APP_ENV=development
+DEBUG=true
+LOG_LEVEL=INFO
+
+# Model settings
+EMBED_MODEL=clip-vit-base-patch32
+EMBED_DEVICE=cpu  # or 'cuda' if you have GPU
+```
+
+#### 3. Run FastAPI Server
+
+```bash
+# Terminal 1: API with hot-reload
+cd services
+uv run uvicorn api.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Access the API:
+- API: http://localhost:8000
+- API Docs: http://localhost:8000/docs
+- Health Check: http://localhost:8000/live
+
+#### 4. Run Celery Worker
+
+```bash
+# Terminal 2: Celery worker for task processing
+cd services
+uv run celery -A api.tasks.celery_app worker --loglevel=INFO --concurrency=2 --queues=default,ingest,index
+
+# For auto-reload during development (restarts on code changes)
+uv run watchfiles 'celery -A api.tasks.celery_app worker --loglevel=DEBUG --concurrency=1' src/
+```
+
+You'll see task execution logs in this terminal as they're processed.
+
+#### 5. Run Celery Beat (Optional - for scheduled tasks)
+
+```bash
+# Terminal 3: Celery beat scheduler
+cd services
+uv run celery -A api.tasks.celery_app beat --loglevel=INFO
+```
+
+Only needed if you're working with periodic tasks (like daily index rebuilds).
+
+### Docker Compose Profiles
+
+The docker-compose.yml uses profiles to organize services:
+
+```bash
+# Default (no profile) - infrastructure only
+docker compose up
+
+# With monitoring tools
+docker compose --profile monitoring up
+
+# Everything (including GPU worker and beat)
+docker compose --profile full up
+
+# Custom combination
+docker compose --profile monitoring --profile gpu up
+```
+
+**Available profiles:**
+- `monitoring` - Adds Flower (Celery UI) and Drizzle Gateway (DB explorer)
+- `gpu` - Adds GPU-enabled worker for embedding/ML tasks
+- `full` - All services including beat scheduler
+
+### Database Monitoring with Drizzle Gateway
+
+Drizzle Gateway provides a modern web interface for exploring your PostgreSQL database:
+
+1. Start with monitoring profile:
+   ```bash
+   docker compose --profile monitoring up drizzle-gateway
+   ```
+
+2. Access at http://localhost:4983
+
+3. Connect to your database:
+   - Host: `postgres` (from Docker) or `localhost` (if outside Docker)
+   - Port: `5432`
+   - Database: `findmeme`
+   - User: `findmeme`
+   - Password: `findmeme`
+
+You can set a master password via environment variable:
+```bash
+export DRIZZLE_MASTERPASS=your_secure_password
+```
+
+### Development Tips
+
+**Fast Iteration:**
+- Use `--reload` with uvicorn for FastAPI auto-reload
+- Use `watchfiles` with Celery for worker auto-reload
+- Keep terminals visible to see logs in real-time
+
+**Debugging:**
+- Set breakpoints in your IDE for both FastAPI and Celery tasks
+- Use `import pdb; pdb.set_trace()` for interactive debugging
+- Check Flower UI (http://localhost:5555) to monitor task queues
+
+**Testing Tasks:**
+- Submit tasks via API endpoints
+- Watch them execute in the Celery worker terminal
+- Check results in Flower or directly via Redis
+
+**Common Issues:**
+- If services can't connect, ensure Docker services are healthy: `docker compose ps`
+- If tasks aren't executing, check Redis is running and worker is connected
+- For connection errors, verify environment variables match Docker service names vs localhost
+
+### Production Deployment
+
+For production, run everything in Docker:
+
+```bash
+# Full stack with all services
+docker compose --profile full up -d
+
+# Or customize for your needs
+docker compose up -d postgres redis minio api worker worker-gpu beat
+```
+
+This ensures consistent environment and easier deployment to cloud platforms.
