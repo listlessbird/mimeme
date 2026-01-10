@@ -112,7 +112,7 @@ class Image(Base):
         back_populates="image", uselist=False, cascade="all, delete-orphan"
     )
     artifacts: Mapped[list[Artifact]] = relationship(
-        back_populates="image", uselist=False, cascade="all, delete-orphan"
+        back_populates="image", cascade="all, delete-orphan"
     )
 
     ingest_url: Mapped[IngestURL | None] = relationship(back_populates="image", uselist=False)
