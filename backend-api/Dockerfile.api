@@ -1,4 +1,3 @@
-
 FROM python:3.13-slim AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -10,6 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     git \
     libgomp1 \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 FROM base AS builder
@@ -34,7 +34,8 @@ COPY --from=builder /app/.venv /app/.venv
 COPY src ./src
 COPY pyproject.toml ./
 
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONPATH="/app/src"
 
 RUN useradd --create-home --shell /bin/bash appuser && \
     mkdir -p /app/data && \

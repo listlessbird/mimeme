@@ -185,8 +185,13 @@ class Artifact(Base):
 
     image: Mapped[Image] = relationship(back_populates="artifacts")
 
-    __table_args__ = UniqueConstraint(
-        "image_id", "kind", "model_version", name="uq_artifacts_image_kind_version"
+    __table_args__ = (
+        UniqueConstraint(
+            "image_id",
+            "kind",
+            "model_version",
+            name="uq_artifacts_image_kind_version",
+        ),
     )
 
 

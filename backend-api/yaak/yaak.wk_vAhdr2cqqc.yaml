@@ -1,0 +1,15 @@
+type: workspace
+model: workspace
+id: wk_vAhdr2cqqc
+createdAt: 2026-02-05T15:29:41.027289406
+updatedAt: 2026-02-05T15:29:41.027292256
+authentication: {}
+authenticationType: null
+description: ''
+headers: []
+name: find-meme
+encryptionKeyChallenge: null
+settingValidateCertificates: true
+settingFollowRedirects: true
+settingRequestTimeout: 0
+settingDnsOverrides: []

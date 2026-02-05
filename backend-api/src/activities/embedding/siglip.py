@@ -7,7 +7,7 @@ import torch
 from PIL.Image import Image
 from transformers import AutoModel, AutoProcessor, BitsAndBytesConfig
 
-from activities.embeddding.models import EmbedderConfig
+from activities.embedding.models import EmbedderConfig
 
 
 class SiglipEmbedder:
