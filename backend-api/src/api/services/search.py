@@ -87,7 +87,7 @@ class SearchService:
                     sha256=img.sha256,
                     score=score,
                     url=url,
-                    caption=ann.caption if ann else None,
+                    caption=ann.caption_text if ann else None,
                     ocr_text=ann.ocr_text if ann else None,
                     width=img.width,
                     height=img.height,

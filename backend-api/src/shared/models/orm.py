@@ -91,7 +91,7 @@ class Image(Base):
 
     sha256: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
 
-    dataset: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    dataset: Mapped[str | None] = mapped_column(String(64), nullable=False, index=True)
     original_filename: Mapped[str | None] = mapped_column(Text, nullable=True)
     s3_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     s3_etag: Mapped[str | None] = mapped_column(String(64), nullable=True)
