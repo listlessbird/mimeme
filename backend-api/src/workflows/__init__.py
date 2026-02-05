@@ -6,11 +6,9 @@ from workflows.models import (
     RebuildIndexWorkflowOutput,
 )
 from workflows.rebuild_index import RebuildIndexWorkflow
+from workflows.search import EncodeQueryWorkflow
 
-ALL_WORKFLOWS = [
-    IngestWorkflow,
-    RebuildIndexWorkflow,
-]
+ALL_WORKFLOWS = [IngestWorkflow, RebuildIndexWorkflow, EncodeQueryWorkflow]
 
 __all__ = [
     "ALL_WORKFLOWS",
@@ -20,4 +18,5 @@ __all__ = [
     "RebuildIndexWorkflow",
     "RebuildIndexWorkflowInput",
     "RebuildIndexWorkflowOutput",
+    "EncodeQueryWorkflow",
 ]

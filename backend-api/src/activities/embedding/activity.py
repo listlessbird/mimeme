@@ -7,8 +7,14 @@ from typing import cast
 from PIL import Image as PILImage
 from temporalio import activity
 
-from activities.embeddding.models import EmbedBatchInput, EmbedBatchOutput, EmbedImageOutput
-from activities.embeddding.siglip import SiglipEmbedder
+from activities.embedding.models import (
+    EmbedBatchInput,
+    EmbedBatchOutput,
+    EmbedImageOutput,
+    EncodeQueryInput,
+    EncodeQueryOutput,
+)
+from activities.embedding.siglip import SiglipEmbedder
 from shared.db import session_scope
 from shared.models import ORMImage
 from shared.services import get_storage_service
@@ -75,3 +81,15 @@ async def embed_batch_activity(input: EmbedBatchInput) -> EmbedBatchOutput:
             failed_ids.append(item.image_id)
 
     return EmbedBatchOutput(results=results, failed_ids=failed_ids)
+
+
+@activity.defn
+async def encode_query_activity(input: EncodeQueryInput) -> EncodeQueryOutput:
+    embedder = SiglipEmbedder.get_instance()
+    query_embedding = embedder.encode_texts([input.query])[0]
+
+    return EncodeQueryOutput(
+        embedding=query_embedding.tolist(),
+        model=embedder.image_model_name,
+        dimension=len(query_embedding),
+    )

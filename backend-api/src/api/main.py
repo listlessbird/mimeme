@@ -1,19 +1,19 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import cast
 
 import structlog
 import uvicorn
+from api.routers import health, images, jobs, search
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from prometheus_client import make_asgi_app
 
 from api.deps import get_index_manager
-from api.routers import health, images, jobs, search
-from api.services.storage import get_storage_service
-
-from .config import settings
+from shared.config import settings
+from shared.db import get_db
+from shared.services.storage import StorageService, get_storage_service
 
 
 def setup_logging():
@@ -47,10 +47,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     log.info("starting_app", env=settings.app_env)
 
-    settings.cache_dir.mkdir(parents=True, exist_ok=True)
     settings.index_cache_dir.mkdir(parents=True, exist_ok=True)
 
-    storage = get_storage_service()
+    storage = cast(StorageService, get_storage_service())
 
     try:
         storage.ensure_bucket_exists()
@@ -59,15 +58,28 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.warning("s3_bucket_init_failed", error=str(e))
 
     index_manager = get_index_manager()
+
     try:
-        index_manager.load_active_index()
-        log.info(
-            "index_loaded",
-            version=index_manager.active_version,
-            num_vectors=index_manager.num_vectors,
-        )
+        db_gen = get_db()
+        db = next(db_gen)
+
+        try:
+            index_manager.load_active_index(db)
+            log.info(
+                "index_loaded",
+                version=index_manager.active_version,
+                num_vectors=index_manager.num_vectors,
+            )
+        finally:
+            try:
+                next(db_gen)
+            except StopIteration:
+                pass
+
     except FileNotFoundError:
-        log.warning("no_index_found", message="Index will be built on first image ingestion")
+        log.warning("no_index_found", message="Index will be built on first rebuild")
+    except Exception as e:
+        log.warning("index_load_failed", error=str(e))
 
     yield
 
@@ -104,9 +116,6 @@ def create_app() -> FastAPI:
     app.include_router(search.router, prefix="/search", tags=["Search"])
     app.include_router(images.router, prefix="/images", tags=["Images"])
     app.include_router(jobs.router, prefix="/jobs", tags=["Jobs"])
-
-    metrics_app = make_asgi_app()
-    app.mount("/metrics", metrics_app)
 
     return app
 
