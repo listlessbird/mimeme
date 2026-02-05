@@ -1,12 +1,12 @@
-from activities.embeddding.activity import embed_batch_activity
-from activities.embeddding.models import (
+from activities.embedding.activity import embed_batch_activity
+from activities.embedding.models import (
     EmbedBatchInput,
     EmbedBatchOutput,
     EmbedderConfig,
     EmbedImageInput,
     EmbedImageOutput,
 )
-from activities.embeddding.siglip import SiglipEmbedder
+from activities.embedding.siglip import SiglipEmbedder
 
 __all__ = [
     "EmbedderConfig",
