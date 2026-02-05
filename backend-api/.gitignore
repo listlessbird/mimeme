@@ -13,3 +13,7 @@ wheels/
 data/raw_memes/**/*.*
 
 *.npy
+
+.env.*
+.env
+!.env.example

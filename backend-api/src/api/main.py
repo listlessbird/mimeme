@@ -1,22 +1,24 @@
+from __future__ import annotations
+
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import cast
 
 import structlog
 import uvicorn
-from api.routers import health, images, jobs, search
 from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
 
 from api.deps import get_index_manager
+from api.routers import images, jobs, search
 from shared.config import settings
 from shared.db import get_db
-from shared.services.storage import StorageService, get_storage_service
+from shared.services.storage import get_storage_service
 
 
-def setup_logging():
+def setup_logging() -> None:
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
@@ -42,15 +44,13 @@ def setup_logging():
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log = structlog.get_logger()
-
     setup_logging()
 
     log.info("starting_app", env=settings.app_env)
 
     settings.index_cache_dir.mkdir(parents=True, exist_ok=True)
 
-    storage = cast(StorageService, get_storage_service())
-
+    storage = get_storage_service()
     try:
         storage.ensure_bucket_exists()
         log.info("s3_bucket_ready", bucket=storage.bucket)
@@ -58,11 +58,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.warning("s3_bucket_init_failed", error=str(e))
 
     index_manager = get_index_manager()
-
     try:
         db_gen = get_db()
         db = next(db_gen)
-
         try:
             index_manager.load_active_index(db)
             log.info(
@@ -75,7 +73,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
                 next(db_gen)
             except StopIteration:
                 pass
-
     except FileNotFoundError:
         log.warning("no_index_found", message="Index will be built on first rebuild")
     except Exception as e:
@@ -87,20 +84,23 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app() -> FastAPI:
+    middleware = [
+        Middleware(
+            CORSMiddleware,  # ty:ignore[invalid-argument-type]
+            allow_origins=["*"] if settings.debug else [],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+    ]
     app = FastAPI(
         title="Find-Meme API",
         description="Semantic meme search powered by SigLIP embeddings and FAISS",
+        version="0.3.0",
         lifespan=lifespan,
         docs_url="/docs" if settings.debug else None,
         redoc_url="/redoc" if settings.debug else None,
-    )
-
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"] if settings.debug else [],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        middleware=middleware,
     )
 
     @app.exception_handler(Exception)
@@ -112,7 +112,6 @@ def create_app() -> FastAPI:
             content={"detail": "Internal server error"},
         )
 
-    app.include_router(health.router, tags=["Health"])
     app.include_router(search.router, prefix="/search", tags=["Search"])
     app.include_router(images.router, prefix="/images", tags=["Images"])
     app.include_router(jobs.router, prefix="/jobs", tags=["Jobs"])
