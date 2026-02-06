@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime
 from enum import Enum
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
+from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -40,7 +40,7 @@ class Job(Base):
     status: Mapped[JobStatus] = mapped_column(
         SAEnum(JobStatus), default=JobStatus.PENDING, nullable=False
     )
-    progress: Mapped[float] = mapped_column(Text, nullable=False)
+    progress: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
     result: Mapped[str | None] = mapped_column(Text, nullable=True)
     workflow_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
@@ -87,22 +87,20 @@ class Image(Base):
     __tablename__ = "images"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    file_path: Mapped[str] = mapped_column(Text, nullable=False)
+    sha256: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
 
-    sha256: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
-
-    dataset: Mapped[str | None] = mapped_column(String(64), nullable=False, index=True)
+    dataset: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     original_filename: Mapped[str | None] = mapped_column(Text, nullable=True)
     s3_key: Mapped[str | None] = mapped_column(Text, nullable=True)
-    s3_etag: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    s3_etag: Mapped[str | None] = mapped_column(Text, nullable=True)
     width: Mapped[int | None] = mapped_column(Integer, nullable=True)
     height: Mapped[int | None] = mapped_column(Integer, nullable=True)
     format: Mapped[str | None] = mapped_column(String(10), nullable=True)
     file_size: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    phash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    phash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(), server_default=func.now(), nullable=False
     )
 
     processing: Mapped[Processing | None] = relationship(
@@ -128,26 +126,26 @@ class Processing(Base):
     ocr_status: Mapped[ProcessingStatus] = mapped_column(
         SAEnum(ProcessingStatus), default=ProcessingStatus.PENDING, nullable=False
     )
-    ocr_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    ocr_model: Mapped[str | None] = mapped_column(Text, nullable=True)
     ocr_updated_at: Mapped[datetime.datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        DateTime(), nullable=True
     )
 
     caption_status: Mapped[ProcessingStatus] = mapped_column(
         SAEnum(ProcessingStatus), default=ProcessingStatus.PENDING, nullable=False
     )
-    caption_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    caption_model: Mapped[str | None] = mapped_column(Text, nullable=True)
     caption_updated_at: Mapped[datetime.datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        DateTime(), nullable=True
     )
 
     embed_status: Mapped[ProcessingStatus] = mapped_column(
         SAEnum(ProcessingStatus), default=ProcessingStatus.PENDING, nullable=False
     )
-    embed_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    embed_model: Mapped[str | None] = mapped_column(Text, nullable=True)
     embed_dim: Mapped[int | None] = mapped_column(Integer, nullable=True)
     embed_updated_at: Mapped[datetime.datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
+        DateTime(), nullable=True
     )
     embed_s3_key: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -170,30 +168,19 @@ class Annotation(Base):
 class Artifact(Base):
     __tablename__ = "artifacts"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
     image_id: Mapped[int] = mapped_column(
-        ForeignKey("images.id", ondelete="CASCADE"), nullable=False, index=True
+        ForeignKey("images.id", ondelete="CASCADE"), primary_key=True, nullable=False
     )
-    kind: Mapped[str] = mapped_column(String(20), nullable=False)
-    model_version: Mapped[str] = mapped_column(String(255), nullable=False)
+    kind: Mapped[str] = mapped_column(String(20), primary_key=True, nullable=False)
+    model_version: Mapped[str] = mapped_column(Text, primary_key=True, nullable=False)
     s3_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     checksum: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
     created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(), server_default=func.now(), nullable=False
     )
 
     image: Mapped[Image] = relationship(back_populates="artifacts")
-
-    __table_args__ = (
-        UniqueConstraint(
-            "image_id",
-            "kind",
-            "model_version",
-            name="uq_artifacts_image_kind_version",
-        ),
-    )
-
 
 class IndexBuild(Base):
     __tablename__ = "index_builds"
@@ -201,12 +188,12 @@ class IndexBuild(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     version: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
     s3_key: Mapped[str | None] = mapped_column(Text, nullable=True)
-    embed_model: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    embed_model: Mapped[str | None] = mapped_column(Text, nullable=True)
     index_type: Mapped[str | None] = mapped_column(String(20), nullable=True)
     num_vectors: Mapped[int | None] = mapped_column(Integer, nullable=True)
     dimension: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_active: Mapped[bool] = mapped_column(default=False, nullable=False)
 
     created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
+        DateTime(), server_default=func.now(), nullable=False
     )

@@ -11,6 +11,17 @@ from activities.storage import (
     process_image_activity,
 )
 from activities.vision import caption_activity, ocr_activity
+from activities.workflow_state import (
+    complete_ingest_job_activity,
+    complete_rebuild_job_activity,
+    ingest_initialize_activity,
+    mark_ingest_url_done_activity,
+    mark_ingest_url_failed_activity,
+    save_annotations_activity,
+    save_embedding_info_activity,
+    start_rebuild_job_activity,
+    update_job_progress_activity,
+)
 
 CPU_ACTIVITIES = [
     download_image_activity,
@@ -20,6 +31,15 @@ CPU_ACTIVITIES = [
     build_index_activity,
     swap_index_activity,
     garbage_collect_indexes_activity,
+    ingest_initialize_activity,
+    mark_ingest_url_failed_activity,
+    mark_ingest_url_done_activity,
+    save_annotations_activity,
+    save_embedding_info_activity,
+    update_job_progress_activity,
+    complete_ingest_job_activity,
+    start_rebuild_job_activity,
+    complete_rebuild_job_activity,
 ]
 
 GPU_ACTIVITIES = [
@@ -43,4 +63,13 @@ __all__ = [
     "build_index_activity",
     "swap_index_activity",
     "garbage_collect_indexes_activity",
+    "ingest_initialize_activity",
+    "mark_ingest_url_failed_activity",
+    "mark_ingest_url_done_activity",
+    "save_annotations_activity",
+    "save_embedding_info_activity",
+    "update_job_progress_activity",
+    "complete_ingest_job_activity",
+    "start_rebuild_job_activity",
+    "complete_rebuild_job_activity",
 ]

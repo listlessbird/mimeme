@@ -6,6 +6,7 @@ from typing import Annotated
 from fastapi import Depends
 from sqlalchemy.orm import Session
 from temporalio.client import Client
+from temporalio.contrib.pydantic import pydantic_data_converter
 
 from activities.indexing import FaissIndexManager
 from shared.config import settings
@@ -36,7 +37,10 @@ _temporal_client: Client | None = None
 async def get_temporal_client() -> Client:
     global _temporal_client
     if _temporal_client is None:
-        _temporal_client = await Client.connect(settings.temporal_host)
+        _temporal_client = await Client.connect(
+            settings.temporal_host,
+            data_converter=pydantic_data_converter,
+        )
     return _temporal_client
 
 

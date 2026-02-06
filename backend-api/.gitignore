@@ -11,7 +11,7 @@ wheels/
 
 # Data
 data/raw_memes/**/*.*
-
+data/cache
 *.npy
 
 .env.*

@@ -13,7 +13,7 @@ from shared.config import settings
 def get_engine() -> Engine:
     return create_engine(
         settings.db_url_str,
-        echo=settings.debug,
+        echo=False,
         future=True,
         pool_pre_ping=True,
         pool_size=5,

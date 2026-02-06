@@ -5,14 +5,30 @@ import uuid
 from datetime import timedelta
 
 from fastapi import APIRouter, HTTPException, Query
+from sqlalchemy.orm import Session
 
 from api.deps import DbSession, IndexManagerDep, TemporalClientDep
 from api.models.search import SearchResponse
 from api.services.search import SearchService
 from shared.config import settings
+from shared.models import IndexBuild
 from workflows import EncodeQueryWorkflow
 
 router = APIRouter()
+
+
+def _ensure_index_loaded(db: Session, index_manager: IndexManagerDep) -> None:
+    active_build = db.query(IndexBuild).filter(IndexBuild.is_active).first()
+    if active_build is None:
+        raise HTTPException(status_code=503, detail="Search index not loaded")
+
+    if (not index_manager.is_loaded) or (index_manager.active_version != active_build.version):
+        try:
+            index_manager.load_active_index(db)
+        except FileNotFoundError:
+            raise HTTPException(status_code=503, detail="Search index not loaded")
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to load search index: {exc}")
 
 
 @router.get("", response_model=SearchResponse)
@@ -26,8 +42,7 @@ async def search(
 ) -> SearchResponse:
     start_time = time.perf_counter()
 
-    if not index_manager.is_loaded:
-        raise HTTPException(status_code=503, detail="Search index not loaded")
+    _ensure_index_loaded(db, index_manager)
 
     try:
         workflow_id = f"search-{uuid.uuid4().hex[:12]}"
@@ -77,8 +92,7 @@ async def find_similar(
 ) -> SearchResponse:
     start_time = time.perf_counter()
 
-    if not index_manager.is_loaded:
-        raise HTTPException(status_code=503, detail="Search index not loaded")
+    _ensure_index_loaded(db, index_manager)
 
     search_service = SearchService(index_manager)
 

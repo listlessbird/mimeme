@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import threading
+import time
 
 import numpy as np
+import structlog
 import torch
 from PIL.Image import Image
 from transformers import AutoModel, AutoProcessor, BitsAndBytesConfig
@@ -13,6 +15,7 @@ from activities.embedding.models import EmbedderConfig
 class SiglipEmbedder:
     _instance: SiglipEmbedder | None = None
     _lock = threading.Lock()
+    _log = structlog.get_logger().bind(component="siglip_embedder")
 
     def __init__(self, config: EmbedderConfig) -> None:
         self.config = config
@@ -32,46 +35,103 @@ class SiglipEmbedder:
         return cls._instance
 
     def _load_models(self) -> None:
+        started = time.monotonic()
+        outcome = "success"
+        error_type: str | None = None
+        error_message: str | None = None
+        log = self._log.bind(
+            model_name=self.image_model_name,
+            device=str(self.device),
+            use_bnb_4bit=self.config.use_bnb_4bit,
+        )
         quant_cfg = None
 
         if self.config.use_bnb_4bit:
             quant_cfg = BitsAndBytesConfig(load_in_4bit=True, bnb_4bit_compute_dtype=torch.bfloat16)
 
         try:
-            if quant_cfg:
-                self.processor = AutoProcessor.from_pretrained(
-                    self.image_model_name, trust_remote_code=True
+            log.info("embedding_step", step="model_load_primary_start")
+            try:
+                if quant_cfg:
+                    self.processor = AutoProcessor.from_pretrained(
+                        self.image_model_name, trust_remote_code=True
+                    )
+
+                    self.model = AutoModel.from_pretrained(
+                        self.image_model_name,
+                        trust_remote_code=True,
+                        quantization_config=quant_cfg,
+                        device_map="auto",
+                        dtype=torch.bfloat16,
+                        attn_implementation="sdpa",
+                    )
+
+                else:
+                    dtype = torch.float16 if self.config.fp16_fallback else torch.float32
+
+                    self.processor = AutoProcessor.from_pretrained(
+                        self.image_model_name,
+                        trust_remote_code=True,
+                        dtype=(torch.float16 if dtype == torch.float16 else None),
+                        device_map="auto" if self.device.type == "cuda" else None,
+                    )
+                    self.model = AutoModel.from_pretrained(
+                        self.image_model_name,
+                        trust_remote_code=True,
+                        device_map="auto" if self.device.type == "cuda" else None,
+                        dtype=(torch.float16 if dtype == torch.float16 else None),
+                        attn_implementation="sdpa" if self.device.type == "cuda" else None,
+                    )
+                log.info("embedding_step", step="model_load_primary_complete")
+            except Exception as primary_exc:
+                log.warning(
+                    "embedding_step",
+                    step="model_load_primary_failed",
+                    error_type=type(primary_exc).__name__,
+                    error=str(primary_exc),
+                )
+                # try with a stable fallback model
+                self.image_model_name = "google/siglip-so400m-patch14-384"
+                log.info(
+                    "embedding_step",
+                    step="model_load_fallback_start",
+                    fallback_model=self.image_model_name,
+                )
+                self.processor = AutoProcessor.from_pretrained(self.image_model_name)
+                self.model = AutoModel.from_pretrained(self.image_model_name)
+                log.info(
+                    "embedding_step",
+                    step="model_load_fallback_complete",
+                    fallback_model=self.image_model_name,
                 )
 
-                self.model = AutoModel.from_pretrained(
-                    self.image_model_name,
-                    trust_remote_code=True,
-                    quantization_config=quant_cfg,
-                    device_map="auto",
-                    dtype=torch.bfloat16,
-                    attn_implementation="sdpa",
-                )
-
-            else:
-                dtype = torch.float16 if self.config.fp16_fallback else torch.float32
-
-                self.processor = AutoProcessor.from_pretrained(
-                    self.image_model_name,
-                    trust_remote_code=True,
-                    dtype=(torch.float16 if dtype == torch.float16 else None),
-                    device_map="auto" if self.device.type == "cuda" else None,
-                )
-
-        except Exception:
-            # try with siglip
-            self.image_model_name = "google/siglip-so400m-patch14-384"
-            self.processor = AutoProcessor.from_pretrained(self.image_model_name)
-            self.model = AutoModel.from_pretrained(self.image_model_name)
-
-        self.has_get_image_features = hasattr(self.model, "get_image_features")
-        self.has_get_text_features = hasattr(self.model, "get_text_features")
-        self.is_siglip2 = "siglip2" in self.image_model_name.lower()
-        self.is_naflex = "naflex" in self.image_model_name.lower()
+            self.has_get_image_features = hasattr(self.model, "get_image_features")
+            self.has_get_text_features = hasattr(self.model, "get_text_features")
+            self.is_siglip2 = "siglip2" in self.image_model_name.lower()
+            self.is_naflex = "naflex" in self.image_model_name.lower()
+        except Exception as exc:
+            outcome = "error"
+            error_type = type(exc).__name__
+            error_message = str(exc)
+            log.error(
+                "embedding_step",
+                step="model_init_failed",
+                error_type=error_type,
+                error=error_message,
+                exc_info=True,
+            )
+            raise
+        finally:
+            log.info(
+                "embedding_wide_event",
+                event_type="embedding_wide_event",
+                phase="model_init",
+                outcome=outcome,
+                duration_ms=int((time.monotonic() - started) * 1000),
+                model_name=self.image_model_name,
+                error_type=error_type,
+                error=error_message,
+            )
 
     def encode_images(self, images: list[Image]) -> np.ndarray:
         if self.is_siglip2:
