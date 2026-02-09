@@ -27,6 +27,21 @@ variable "environment" {
   }
 }
 
+variable "neon_api_key" {
+  type      = string
+  sensitive = true
+}
+
+variable "neon_region" {
+  type    = string
+  default = "aws-ap-southeast-1"
+}
+
+variable "neon_org_id" {
+  type      = string
+  sensitive = true
+}
+
 variable "project_name" {
   type = string
 }
