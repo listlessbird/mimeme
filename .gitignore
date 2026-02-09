@@ -1,6 +1,12 @@
 source.txt
 repomix-output.xml
 
+# Environment files
+.env
+.env.local
+**/.env
+**/.env.local
+
 # Terraform
 infra/terraform.tfvars
 infra/terraform.tfstate
