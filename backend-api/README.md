@@ -38,3 +38,6 @@ uv run python -m workers.gpu_worker
 ## api
 uv run uvicorn api.main:app --reload
 
+# modal setup
+uv run modal setup
+uv run modal secret create findmeme-s3

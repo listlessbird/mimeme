@@ -25,6 +25,7 @@ dependencies = [
     "faiss-cpu>=1.13.0",
     "structlog>=25.5.0",
     "temporalio>=1.9.0",
+    "modal>=0.73",
 ]
 
 [project.scripts]

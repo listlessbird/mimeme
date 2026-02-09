@@ -1,2 +1,14 @@
 source.txt
 repomix-output.xml
+
+# Terraform
+infra/terraform.tfvars
+infra/terraform.tfstate
+infra/terraform.tfstate.backup
+infra/.terraform/
+infra/.terraform.lock.hcl.backup
+infra/*.tfplan
+infra/*.tfplan.json
+infra/crash.log
+infra/override.tf
+infra/override.tf.json

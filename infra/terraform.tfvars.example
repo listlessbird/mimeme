@@ -1,0 +1,4 @@
+cloudflare_api_token  = "your-cloudflare-api-token"
+cloudflare_account_id = "your-cloudflare-account-id"
+neon_api_key          = "your-neon-api-key"
+environment           = "dev"
