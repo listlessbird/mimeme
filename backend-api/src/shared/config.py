@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, PostgresDsn, RedisDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -37,6 +38,9 @@ class Settings(BaseSettings):
 
     index_type: str = Field(default="flat")
     index_cache_dir: Path = Field(default=Path("data/cache/indexes"))
+
+    # modal integration in prod
+    gpu_backend: Literal["local", "modal"] = Field(default="local")
 
     @field_validator("index_cache_dir", mode="before")
     @classmethod
