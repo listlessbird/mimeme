@@ -55,24 +55,22 @@ class SearchService:
     ) -> list[SearchResult]:
         image_ids = [r[0] for r in raw_results]
 
-        images = db.execute(select(ORMImage).where(ORMImage.id.in_(image_ids))).scalars().all()
+        image_rows = db.execute(
+            select(ORMImage, Annotation)
+            .outerjoin(Annotation, Annotation.image_id == ORMImage.id)
+            .where(ORMImage.id.in_(image_ids))
+        ).all()
 
-        image_map = {img.id: img for img in images}
-
-        annotations = (
-            db.execute(select(Annotation).where(Annotation.image_id.in_(image_ids))).scalars().all()
-        )
-
-        annotation_map = {ann.image_id: ann for ann in annotations}
+        image_map = {img.id: (img, ann) for img, ann in image_rows}
 
         results: list[SearchResult] = []
 
         for image_id, score in raw_results:
-            img = image_map.get(image_id)
-            if not img:
+            row = image_map.get(image_id)
+            if row is None:
                 continue
 
-            ann = annotation_map.get(image_id)
+            img, ann = row
 
             url = None
 
