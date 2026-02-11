@@ -41,7 +41,11 @@ packages = [ "src/api", "src/shared"]
 
 [dependency-groups]
 dev = [
+    "ipykernel>=7.2.0",
+    "matplotlib>=3.10.8",
+    "pandas>=3.0.0",
     "ruff>=0.14.6",
+    "seaborn>=0.13.2",
     "types-boto3-custom",
 ]
 

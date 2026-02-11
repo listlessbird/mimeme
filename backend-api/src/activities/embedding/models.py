@@ -16,6 +16,8 @@ class EmbedImageInput(BaseModel):
     image_id: int
     s3_key: str
     text: str = Field(default="")
+    sha256: str
+    dataset: str | None = Field(default=None)
 
 
 class EmbedImageOutput(BaseModel):

@@ -47,3 +47,7 @@ uv run modal secret create findmeme-s3 \
   S3_SECRET_ACCESS_KEY=your-secret \
   S3_BUCKET=findmeme \
   S3_FORCE_PATH_STYLE=false
+
+
+# apply migrations on prod
+DB_URL=$(terraform -chdir=../infra output -raw neon_connection_uri | sed 's|^postgres://|postgresql://|') uv run alembic upgrade head
