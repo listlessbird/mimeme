@@ -160,7 +160,9 @@ class FaissIndexManager:
         if index_type == "flat":
             index = faiss.IndexFlatIP(dimension)
         elif index_type == "ivf":
-            nlist = min(100, n_vectors // 10)
+            # FAISS requires nlist >= 1; very small datasets (<10 vectors)
+            # previously produced nlist=0 and raised at index construction time.
+            nlist = max(1, min(100, n_vectors // 10))
             quantizer = faiss.IndexFlatIP(dimension)
             index = faiss.IndexIVFFlat(quantizer, dimension, nlist, faiss.METRIC_INNER_PRODUCT)
             index.train(embeddings)  # type: ignore[call-arg]
