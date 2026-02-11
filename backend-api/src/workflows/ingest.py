@@ -236,6 +236,8 @@ class IngestWorkflow:
                                         image_id=process_result.image_id,
                                         s3_key=process_result.s3_key,
                                         text=text,
+                                        sha256=process_result.sha256,
+                                        dataset=input.dataset,
                                     )
                                 ],
                                 dataset=input.dataset,
@@ -369,7 +371,9 @@ class IngestWorkflow:
                     "failed": failed,
                     "duplicates": duplicates,
                     "last_step": last_step,
-                    "outcome": "error" if error_message else ("failed" if failed > 0 else "success"),
+                    "outcome": "error"
+                    if error_message
+                    else ("failed" if failed > 0 else "success"),
                     "error": error_message,
                 },
             )

@@ -49,6 +49,9 @@ GPU_ACTIVITIES = [
     encode_query_activity,
 ]
 
+ALL_ACTIVITIES = CPU_ACTIVITIES + GPU_ACTIVITIES
+
+
 __all__ = [
     "CPU_ACTIVITIES",
     "GPU_ACTIVITIES",
