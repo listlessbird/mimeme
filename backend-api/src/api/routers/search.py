@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 from datetime import timedelta
@@ -42,7 +43,7 @@ async def search(
 ) -> SearchResponse:
     start_time = time.perf_counter()
 
-    _ensure_index_loaded(db, index_manager)
+    await asyncio.to_thread(_ensure_index_loaded, db, index_manager)
 
     try:
         workflow_id = f"search-{uuid.uuid4().hex[:12]}"
@@ -59,7 +60,8 @@ async def search(
     search_service = SearchService(index_manager)
 
     try:
-        results = search_service.search_by_embedding(
+        results = await asyncio.to_thread(
+            search_service.search_by_embedding,
             embedding=encode_result.embedding,
             limit=limit + offset,
             db=db,
@@ -92,12 +94,13 @@ async def find_similar(
 ) -> SearchResponse:
     start_time = time.perf_counter()
 
-    _ensure_index_loaded(db, index_manager)
+    await asyncio.to_thread(_ensure_index_loaded, db, index_manager)
 
     search_service = SearchService(index_manager)
 
     try:
-        results = search_service.find_similar(
+        results = await asyncio.to_thread(
+            search_service.find_similar,
             image_id=image_id,
             limit=limit + 1,
             db=db,
