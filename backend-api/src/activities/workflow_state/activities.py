@@ -26,6 +26,23 @@ from .models import (
 log = structlog.get_logger()
 
 
+def _activity_context() -> dict[str, object]:
+    try:
+        info = activity.info()
+    except RuntimeError:
+        return {}
+    return {
+        "workflow_id": info.workflow_id,
+        "run_id": info.workflow_run_id,
+        "workflow_type": info.workflow_type,
+        "activity_id": info.activity_id,
+        "activity_type": info.activity_type,
+        "attempt": info.attempt,
+        "task_queue": info.task_queue,
+        "is_local": info.is_local,
+    }
+
+
 def _emit_activity_event(
     *,
     activity_name: str,
@@ -39,6 +56,7 @@ def _emit_activity_event(
         "activity_name": activity_name,
         "outcome": outcome,
         "duration_ms": int((time.monotonic() - started_at) * 1000),
+        **_activity_context(),
     }
     event.update(fields)
     if error:

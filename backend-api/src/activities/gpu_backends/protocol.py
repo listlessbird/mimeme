@@ -1,14 +1,15 @@
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-from activities.embedding import (
-    EmbedBatchInput,
-    EmbedBatchOutput,
-    EncodeQueryInput,
-    EncodeQueryOutput,
-)
-from activities.vision import CaptionInput, CaptionOutput, OCRInput, OCROutput
+if TYPE_CHECKING:
+    from activities.embedding.models import (
+        EmbedBatchInput,
+        EmbedBatchOutput,
+        EncodeQueryInput,
+        EncodeQueryOutput,
+    )
+    from activities.vision.models import CaptionInput, CaptionOutput, OCRInput, OCROutput
 
 
 @runtime_checkable

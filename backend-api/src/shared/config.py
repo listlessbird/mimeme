@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     s3_presigned_url_expiry: int = Field(default=3600)
 
     vision_model: str = Field(default="vikhyatk/moondream2")
-    vision_model_revision: str | None = Field(default="2025-01-09")
+    vision_model_revision: str | None = Field(default="2025-06-21")
     embed_model: str = Field(default="google/siglip2-base-patch16-naflex")
     embed_device: str = Field(default="cuda")
 
@@ -49,7 +49,11 @@ class Settings(BaseSettings):
 
     @property
     def db_url_str(self) -> str:
-        return str(self.db_url)
+        # SQLAlchemy expects the dialect name "postgresql", not "postgres".
+        db_url = str(self.db_url)
+        if db_url.startswith("postgres://"):
+            return "postgresql://" + db_url[len("postgres://") :]
+        return db_url
 
 
 @lru_cache(maxsize=1)

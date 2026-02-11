@@ -5,7 +5,7 @@ from pydantic import BaseModel, Field
 
 class VisionModelConfig(BaseModel):
     model_id: str = Field(default="vikhyatk/moondream2")
-    revision: str | None = Field(default="2025-01-09")
+    revision: str | None = Field(default="2025-06-21")
     device: str = Field(default="cuda")
     compile_model: bool = Field(default=True)
 
