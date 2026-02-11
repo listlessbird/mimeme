@@ -8,10 +8,11 @@ from datetime import timedelta
 from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy.orm import Session
 
-from api.deps import DbSession, IndexManagerDep, TemporalClientDep
+from api.deps import IndexManagerDep, TemporalClientDep
 from api.models.search import SearchResponse
 from api.services.search import SearchService
 from shared.config import settings
+from shared.db import session_scope
 from shared.models import IndexBuild
 from workflows import EncodeQueryWorkflow
 
@@ -32,9 +33,41 @@ def _ensure_index_loaded(db: Session, index_manager: IndexManagerDep) -> None:
             raise HTTPException(status_code=500, detail=f"Failed to load search index: {exc}")
 
 
+def _ensure_index_loaded_for_thread(index_manager: IndexManagerDep) -> None:
+    with session_scope() as db:
+        _ensure_index_loaded(db, index_manager)
+
+
+def _search_by_embedding_for_thread(
+    index_manager: IndexManagerDep,
+    embedding: list[float],
+    limit: int,
+) -> list:
+    with session_scope() as db:
+        search_service = SearchService(index_manager)
+        return search_service.search_by_embedding(
+            embedding=embedding,
+            limit=limit,
+            db=db,
+        )
+
+
+def _find_similar_for_thread(
+    index_manager: IndexManagerDep,
+    image_id: int,
+    limit: int,
+) -> list:
+    with session_scope() as db:
+        search_service = SearchService(index_manager)
+        return search_service.find_similar(
+            image_id=image_id,
+            limit=limit,
+            db=db,
+        )
+
+
 @router.get("", response_model=SearchResponse)
 async def search(
-    db: DbSession,
     index_manager: IndexManagerDep,
     temporal: TemporalClientDep,
     q: str = Query(..., min_length=1, max_length=200, description="Search query"),
@@ -43,7 +76,7 @@ async def search(
 ) -> SearchResponse:
     start_time = time.perf_counter()
 
-    await asyncio.to_thread(_ensure_index_loaded, db, index_manager)
+    await asyncio.to_thread(_ensure_index_loaded_for_thread, index_manager)
 
     try:
         workflow_id = f"search-{uuid.uuid4().hex[:12]}"
@@ -57,14 +90,12 @@ async def search(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to encode query: {e}")
 
-    search_service = SearchService(index_manager)
-
     try:
         results = await asyncio.to_thread(
-            search_service.search_by_embedding,
-            embedding=encode_result.embedding,
-            limit=limit + offset,
-            db=db,
+            _search_by_embedding_for_thread,
+            index_manager,
+            encode_result.embedding,
+            limit + offset,
         )
         paginated = results[offset : offset + limit]
         elapsed_ms = (time.perf_counter() - start_time) * 1000
@@ -88,22 +119,19 @@ async def search(
 @router.get("/similar/{image_id}", response_model=SearchResponse)
 async def find_similar(
     image_id: int,
-    db: DbSession,
     index_manager: IndexManagerDep,
     limit: int = Query(default=20, ge=1, le=100),
 ) -> SearchResponse:
     start_time = time.perf_counter()
 
-    await asyncio.to_thread(_ensure_index_loaded, db, index_manager)
-
-    search_service = SearchService(index_manager)
+    await asyncio.to_thread(_ensure_index_loaded_for_thread, index_manager)
 
     try:
         results = await asyncio.to_thread(
-            search_service.find_similar,
-            image_id=image_id,
-            limit=limit + 1,
-            db=db,
+            _find_similar_for_thread,
+            index_manager,
+            image_id,
+            limit + 1,
         )
 
         results = [r for r in results if r.id != image_id][:limit]
