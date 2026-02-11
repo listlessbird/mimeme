@@ -5,14 +5,14 @@ from typing import TYPE_CHECKING
 
 import modal
 
-from activities.embedding import (
+from activities.embedding.models import (
     EmbedBatchInput,
     EmbedBatchOutput,
     EmbedImageOutput,
     EncodeQueryInput,
     EncodeQueryOutput,
 )
-from activities.vision import CaptionInput, CaptionOutput, OCRInput, OCROutput
+from activities.vision.models import CaptionInput, CaptionOutput, OCRInput, OCROutput
 
 if TYPE_CHECKING:
     from modal_app import EmbeddingService, VisionService

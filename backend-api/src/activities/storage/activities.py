@@ -22,16 +22,52 @@ from shared.services import StorageService, get_storage_service
 log = structlog.get_logger()
 
 
+def _activity_context() -> dict[str, object]:
+    try:
+        info = activity.info()
+    except RuntimeError:
+        return {}
+    return {
+        "workflow_id": info.workflow_id,
+        "run_id": info.workflow_run_id,
+        "workflow_type": info.workflow_type,
+        "activity_id": info.activity_id,
+        "activity_type": info.activity_type,
+        "attempt": info.attempt,
+        "task_queue": info.task_queue,
+        "is_local": info.is_local,
+    }
+
+
+def _emit_activity_event(
+    *,
+    activity_name: str,
+    started_at: float,
+    outcome: str,
+    error: str | None = None,
+    **fields: object,
+) -> None:
+    event: dict[str, object] = {
+        "event_type": "activity_wide_event",
+        "activity_name": activity_name,
+        "outcome": outcome,
+        "duration_ms": int((time.monotonic() - started_at) * 1000),
+        **_activity_context(),
+    }
+    event.update(fields)
+    if error:
+        event["error"] = error
+    log.info("activity_wide_event", **event)
+
+
 @activity.defn
 async def download_image_activity(input: DownloadImageInput) -> DownloadImageOutput:
     started = time.monotonic()
-    event: dict[str, object] = {
-        "event_type": "activity_wide_event",
-        "activity_name": "download_image_activity",
-        "job_id": input.job_id,
-        "ingest_url_id": input.ingest_url_id,
-        "url": input.url,
-    }
+    outcome = "success"
+    error_message: str | None = None
+    status_code: int | None = None
+    content_type: str | None = None
+    bytes_downloaded: int | None = None
     log.info(
         "activity_step",
         activity_name="download_image_activity",
@@ -70,29 +106,28 @@ async def download_image_activity(input: DownloadImageInput) -> DownloadImageOut
                 ingest_url_id=input.ingest_url_id,
                 status_code=response.status_code,
             )
-            event["status_code"] = response.status_code
-            event["content_type"] = response.headers.get("content-type")
+            status_code = response.status_code
+            content_type = response.headers.get("content-type")
             response.raise_for_status()
 
-            content_type = response.headers.get("content-type", "")
+            resolved_content_type = response.headers.get("content-type", "")
 
-            if not content_type.startswith("image/"):
-                event["outcome"] = "failed"
-                event["error"] = f"non_image_content_type:{content_type}"
+            if not resolved_content_type.startswith("image/"):
+                outcome = "failed"
+                error_message = f"non_image_content_type:{resolved_content_type}"
                 return DownloadImageOutput(
                     ingest_url_id=input.ingest_url_id,
                     local_path="",
                     filename="",
                     success=False,
-                    error=f"Couldnt resolve an image from the url {input.url}, got {content_type} as content type",
+                    error=f"Couldnt resolve an image from the url {input.url}, got {resolved_content_type} as content type",
                 )
 
             suffix = Path(filename).suffix or ".jpg"
 
             with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
                 f.write(response.content)
-                event["outcome"] = "success"
-                event["bytes"] = len(response.content)
+                bytes_downloaded = len(response.content)
 
                 return DownloadImageOutput(
                     ingest_url_id=input.ingest_url_id,
@@ -110,8 +145,8 @@ async def download_image_activity(input: DownloadImageInput) -> DownloadImageOut
             ingest_url_id=input.ingest_url_id,
             error=str(e),
         )
-        event["outcome"] = "failed"
-        event["error"] = str(e)
+        outcome = "failed"
+        error_message = str(e)
         return DownloadImageOutput(
             ingest_url_id=input.ingest_url_id,
             local_path="",
@@ -120,12 +155,28 @@ async def download_image_activity(input: DownloadImageInput) -> DownloadImageOut
             error=str(e),
         )
     finally:
-        event["duration_ms"] = int((time.monotonic() - started) * 1000)
-        log.info("activity_wide_event", **event)
+        _emit_activity_event(
+            activity_name="download_image_activity",
+            started_at=started,
+            outcome=outcome,
+            error=error_message,
+            job_id=input.job_id,
+            ingest_url_id=input.ingest_url_id,
+            url=input.url,
+            status_code=status_code,
+            content_type=content_type,
+            bytes=bytes_downloaded,
+        )
 
 
 @activity.defn
 async def process_image_activity(input: ProcessImageInput) -> ProcessImageOutput:
+    started = time.monotonic()
+    outcome = "success"
+    error_message: str | None = None
+    image_id: int | None = None
+    is_duplicate: bool | None = None
+    s3_key: str | None = None
     storage = cast(StorageService, get_storage_service())
 
     local_path = Path(input.local_path)
@@ -144,6 +195,10 @@ async def process_image_activity(input: ProcessImageInput) -> ProcessImageOutput
             existing = session.query(ORMImage).filter_by(sha256=sha256).first()
 
             if existing:
+                image_id = existing.id
+                is_duplicate = True
+                s3_key = existing.s3_key or ""
+                outcome = "duplicate"
                 log.info(
                     "activity_step",
                     activity_name="process_image_activity",
@@ -188,6 +243,7 @@ async def process_image_activity(input: ProcessImageInput) -> ProcessImageOutput
             session.add(img)
             session.flush()
             image_id = img.id
+            is_duplicate = False
 
             proc = Processing(image_id=image_id)
             session.add(proc)
@@ -210,6 +266,10 @@ async def process_image_activity(input: ProcessImageInput) -> ProcessImageOutput
             format=format,
             is_duplicate=False,
         )
+    except Exception as exc:
+        outcome = "error"
+        error_message = str(exc)
+        raise
 
     finally:
         log.info(
@@ -220,8 +280,36 @@ async def process_image_activity(input: ProcessImageInput) -> ProcessImageOutput
             local_path=str(local_path),
         )
         local_path.unlink(missing_ok=True)
+        _emit_activity_event(
+            activity_name="process_image_activity",
+            started_at=started,
+            outcome=outcome,
+            error=error_message,
+            ingest_url_id=input.ingest_url_id,
+            dataset=input.dataset,
+            local_path=str(local_path),
+            image_id=image_id,
+            is_duplicate=is_duplicate,
+            s3_key=s3_key,
+        )
 
 
 @activity.defn
 async def cleanup_temp_file_activity(local_path: str) -> None:
-    Path(local_path).unlink(missing_ok=True)
+    started = time.monotonic()
+    outcome = "success"
+    error_message: str | None = None
+    try:
+        Path(local_path).unlink(missing_ok=True)
+    except Exception as exc:
+        outcome = "error"
+        error_message = str(exc)
+        raise
+    finally:
+        _emit_activity_event(
+            activity_name="cleanup_temp_file_activity",
+            started_at=started,
+            outcome=outcome,
+            error=error_message,
+            local_path=local_path,
+        )

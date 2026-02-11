@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 
 import structlog
 from temporalio.client import Client
@@ -23,48 +24,54 @@ async def main() -> None:
         settings.temporal_host,
         data_converter=pydantic_data_converter,
     )
+    activity_executor = ThreadPoolExecutor(max_workers=64, thread_name_prefix="activity")
 
-    if use_modal:
-        log.info(
-            "worker_started",
-            worker_type="cpu+modal",
-            cpu_queue=settings.temporal_task_queue_cpu,
-            gpu_queue=settings.temporal_task_queue_gpu,
-            activities=len(ALL_ACTIVITIES),
-            workflows=len(ALL_WORKFLOWS),
-        )
-
-        cpu_worker = Worker(
-            client,
-            task_queue=settings.temporal_task_queue_cpu,
-            workflows=ALL_WORKFLOWS,
-            activities=ALL_ACTIVITIES,
-        )
-
-        if settings.temporal_task_queue_gpu != settings.temporal_task_queue_cpu:
-            gpu_worker = Worker(
-                client, task_queue=settings.temporal_task_queue_gpu, activities=GPU_ACTIVITIES
+    try:
+        if use_modal:
+            log.info(
+                "worker_started",
+                worker_type="cpu+modal",
+                cpu_queue=settings.temporal_task_queue_cpu,
+                gpu_queue=settings.temporal_task_queue_gpu,
+                activities=len(ALL_ACTIVITIES),
+                workflows=len(ALL_WORKFLOWS),
             )
 
-            await asyncio.gather(cpu_worker.run(), gpu_worker.run())
-        else:
-            await cpu_worker.run()
-    else:
-        log.info(
-            "worker_started",
-            worker_type="cpu",
-            task_queue=settings.temporal_task_queue_cpu,
-            activities=len(CPU_ACTIVITIES),
-            workflows=len(ALL_WORKFLOWS),
-        )
+            cpu_worker = Worker(
+                client,
+                task_queue=settings.temporal_task_queue_cpu,
+                workflows=ALL_WORKFLOWS,
+                activities=ALL_ACTIVITIES,
+                activity_executor=activity_executor,
+            )
 
-        worker = Worker(
-            client,
-            task_queue=settings.temporal_task_queue_cpu,
-            workflows=ALL_WORKFLOWS,
-            activities=CPU_ACTIVITIES,
-        )
-        await worker.run()
+            if settings.temporal_task_queue_gpu != settings.temporal_task_queue_cpu:
+                gpu_worker = Worker(
+                    client, task_queue=settings.temporal_task_queue_gpu, activities=GPU_ACTIVITIES
+                )
+
+                await asyncio.gather(cpu_worker.run(), gpu_worker.run())
+            else:
+                await cpu_worker.run()
+        else:
+            log.info(
+                "worker_started",
+                worker_type="cpu",
+                task_queue=settings.temporal_task_queue_cpu,
+                activities=len(CPU_ACTIVITIES),
+                workflows=len(ALL_WORKFLOWS),
+            )
+
+            worker = Worker(
+                client,
+                task_queue=settings.temporal_task_queue_cpu,
+                workflows=ALL_WORKFLOWS,
+                activities=CPU_ACTIVITIES,
+                activity_executor=activity_executor,
+            )
+            await worker.run()
+    finally:
+        activity_executor.shutdown(wait=False)
 
 
 if __name__ == "__main__":

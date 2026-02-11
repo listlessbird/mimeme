@@ -104,7 +104,7 @@ class Moondream2:
         return CaptionOutput(image_id=0, caption=cap, model=self.model_version)
 
     def ocr(self, image: Image, prompt: str = _ocr_prompt) -> OCROutput:
-        out = self.model.query(image=image, question=prompt, stream=False)
+        out = self.model.query(image, prompt)
         text = out.get("answer", "") if isinstance(out, dict) else str(out)
 
         if not isinstance(text, str):
