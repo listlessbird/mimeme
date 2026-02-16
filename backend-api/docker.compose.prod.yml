@@ -1,68 +1,17 @@
 services:
-  temporal:
-    image: temporalio/auto-setup:latest
-    platform: linux/arm64
-    environment:
-      - DB=postgres12
-      - DB_PORT=5432
-      - POSTGRES_SEEDS=${TEMPORAL_DB_HOST}
-      - POSTGRES_USER=${TEMPORAL_DB_USER}
-      - POSTGRES_PWD=${TEMPORAL_DB_PASSWORD}
-      - DBNAME=temporal
-      - VISIBILITY_DBNAME=temporal_visibility
-      - POSTGRES_TLS_ENABLED=true
-      - POSTGRES_TLS_DISABLE_HOST_VERIFICATION=false
-      - DYNAMIC_CONFIG_FILE_PATH=config/dynamicconfig/production.yaml
-      - SKIP_DEFAULT_NAMESPACE_CREATION=false
-      - DEFAULT_NAMESPACE=default
-      - LOG_LEVEL=warn
-    volumes:
-      - ./dynamicconfig:/etc/temporal/config/dynamicconfig:ro
-    ports:
-      - "127.0.0.1:7233:7233"
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-    restart: unless-stopped
-    healthcheck:
-      test: [ "CMD", "tctl", "--address", "temporal:7233", "cluster", "health" ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-
-  temporal-ui:
-    image: temporalio/ui:latest
-    platform: linux/arm64
-    environment:
-      - TEMPORAL_ADDRESS=temporal:7233
-      - TEMPORAL_UI_PORT=8080
-    ports:
-      - "127.0.0.1:8080:8080"
-    depends_on:
-      temporal:
-        condition: service_healthy
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-    restart: unless-stopped
-
   api:
     build:
       context: .
       dockerfile: Dockerfile.cpu
       target: api
-    env_file: .env.prod
+    env_file: .env
     environment:
-      - TEMPORAL_HOST=temporal:7233
+      - TEMPORAL_HOST=host.docker.internal:7233
       - APP_ENV=production
     ports:
       - "127.0.0.1:8000:8000"
-    depends_on:
-      temporal:
-        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     deploy:
       resources:
         limits:
@@ -80,16 +29,15 @@ services:
       context: .
       dockerfile: Dockerfile.cpu
       target: worker
-    env_file: .env.prod
+    env_file: .env
     environment:
-      - TEMPORAL_HOST=temporal:7233
+      - TEMPORAL_HOST=host.docker.internal:7233
       - GPU_BACKEND=modal
       - APP_ENV=production
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - faiss_data:/app/data
-    depends_on:
-      temporal:
-        condition: service_healthy
     deploy:
       resources:
         limits:
