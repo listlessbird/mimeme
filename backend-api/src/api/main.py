@@ -12,7 +12,7 @@ from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 
 from api.deps import get_index_manager
-from api.routers import images, jobs, search
+from api.routers import health, images, jobs, search
 from shared.config import settings
 from shared.db import get_db
 from shared.services.storage import get_storage_service
@@ -112,6 +112,7 @@ def create_app() -> FastAPI:
             content={"detail": "Internal server error"},
         )
 
+    app.include_router(health.router, tags=["Health"])
     app.include_router(search.router, prefix="/search", tags=["Search"])
     app.include_router(images.router, prefix="/images", tags=["Images"])
     app.include_router(jobs.router, prefix="/jobs", tags=["Jobs"])
