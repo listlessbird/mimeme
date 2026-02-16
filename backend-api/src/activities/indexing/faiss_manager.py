@@ -4,6 +4,7 @@ import json
 import shutil
 import tempfile
 import threading
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -82,11 +83,19 @@ class FaissIndexManager:
             mapping_key = self._storage.build_index_key(version, "mapping.json")
             metadata_key = self._storage.build_index_key(version, "metadata.json")
 
-            self._storage.download_file(index_key, index_file)
-            self._storage.download_file(mapping_key, mapping_file)
+            download_jobs: list[tuple[str, Path]] = [(index_key, index_file), (mapping_key, mapping_file)]
 
             if self._storage.exists(metadata_key):
-                self._storage.download_file(metadata_key, metadata_file)
+                download_jobs.append((metadata_key, metadata_file))
+
+            worker_count = min(4, len(download_jobs))
+            with ThreadPoolExecutor(max_workers=worker_count) as executor:
+                futures = [
+                    executor.submit(self._storage.download_file, key, path)
+                    for key, path in download_jobs
+                ]
+                for future in futures:
+                    future.result()
 
         index = faiss.read_index(str(index_file))
 
@@ -199,9 +208,27 @@ class FaissIndexManager:
             mapping_key = self._storage.build_index_key(version, "mapping.json")
             metadata_key = self._storage.build_index_key(version, "metadata.json")
 
-            self._storage.upload_file(tmp_path / "index.faiss", index_key)
-            self._storage.upload_file(tmp_path / "mapping.json", mapping_key)
-            self._storage.upload_file(tmp_path / "metadata.json", metadata_key)
+            upload_jobs = [
+                (tmp_path / "index.faiss", index_key),
+                (tmp_path / "mapping.json", mapping_key),
+                (tmp_path / "metadata.json", metadata_key),
+            ]
+            try:
+                with ThreadPoolExecutor(max_workers=len(upload_jobs)) as executor:
+                    futures = [
+                        executor.submit(self._storage.upload_file, local_path, key)
+                        for local_path, key in upload_jobs
+                    ]
+                    for future in futures:
+                        future.result()
+            except Exception:
+                prefix = f"{self._storage.INDEXES_PREFIX}/{version}"
+                for key, _ in self._storage.list_objects(prefix):
+                    try:
+                        self._storage.delete(key)
+                    except Exception:
+                        pass
+                raise
 
             cache_path = self._cache_dir / version
             cache_path.mkdir(parents=True, exist_ok=True)
@@ -244,8 +271,11 @@ class FaissIndexManager:
             if build.s3_key:
                 prefix = f"{self._storage.INDEXES_PREFIX}/{build.version}"
                 objects = self._storage.list_objects(prefix)
-                for key, _ in objects:
-                    self._storage.delete(key)
+                if objects:
+                    with ThreadPoolExecutor(max_workers=min(8, len(objects))) as executor:
+                        futures = [executor.submit(self._storage.delete, key) for key, _ in objects]
+                        for future in futures:
+                            future.result()
 
             cache_path = self._cache_dir / build.version
             if cache_path.exists():
