@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # modal integration in prod
     gpu_backend: Literal["local", "modal"] = Field(default="local")
 
+    # local text encoder for search (bypasses Temporal+Modal)
+    search_text_encoder_device: str = Field(default="cpu")
+
     @field_validator("index_cache_dir", mode="before")
     @classmethod
     def parse_path(cls, v: str | Path) -> Path:

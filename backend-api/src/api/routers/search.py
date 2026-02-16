@@ -1,24 +1,22 @@
-from __future__ import annotations
-
 import asyncio
 import time
-import uuid
-from datetime import timedelta
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
 from api.auth import ReadonlyRequired
-from api.deps import IndexManagerDep, TemporalClientDep
+from api.deps import IndexManagerDep
 from api.models.search import SearchResponse
 from api.rate_limit import SEARCH_LIMIT, limiter
 from api.services.search import SearchService
-from shared.config import settings
+from api.services.text_encoder import SearchTextEncoder
 from shared.db import session_scope
 from shared.models import IndexBuild
-from workflows import EncodeQueryWorkflow
 
 router = APIRouter()
+
+_last_index_check: float = 0.0
+_INDEX_CHECK_INTERVAL: float = 60.0
 
 
 def _ensure_index_loaded(db: Session, index_manager: IndexManagerDep) -> None:
@@ -36,8 +34,13 @@ def _ensure_index_loaded(db: Session, index_manager: IndexManagerDep) -> None:
 
 
 def _ensure_index_loaded_for_thread(index_manager: IndexManagerDep) -> None:
+    global _last_index_check
+    now = time.monotonic()
+    if index_manager.is_loaded and (now - _last_index_check) < _INDEX_CHECK_INTERVAL:
+        return
     with session_scope() as db:
         _ensure_index_loaded(db, index_manager)
+    _last_index_check = now
 
 
 def _search_by_embedding_for_thread(
@@ -74,7 +77,6 @@ async def search(
     request: Request,
     _auth: ReadonlyRequired,
     index_manager: IndexManagerDep,
-    temporal: TemporalClientDep,
     q: str = Query(..., min_length=1, max_length=200, description="Search query"),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -83,15 +85,11 @@ async def search(
 
     await asyncio.to_thread(_ensure_index_loaded_for_thread, index_manager)
 
+    # Encode query locally on CPU — no Temporal/Modal round-trip
     try:
-        workflow_id = f"search-{uuid.uuid4().hex[:12]}"
-        encode_result = await temporal.execute_workflow(
-            EncodeQueryWorkflow.run,
-            q,
-            id=workflow_id,
-            task_queue=settings.temporal_task_queue_cpu,
-            execution_timeout=timedelta(seconds=60),
-        )
+        encoder = SearchTextEncoder.get_instance()
+        embedding_arr = await asyncio.to_thread(encoder.encode, q)
+        embedding = embedding_arr.tolist()
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to encode query: {e}")
 
@@ -99,7 +97,7 @@ async def search(
         results = await asyncio.to_thread(
             _search_by_embedding_for_thread,
             index_manager,
-            encode_result.embedding,
+            embedding,
             limit + offset,
         )
         paginated = results[offset : offset + limit]
