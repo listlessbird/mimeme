@@ -1,0 +1,72 @@
+FROM python:3.13-slim AS base
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONFAULTHANDLER=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    git \
+    libgomp1 \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+FROM base AS builder
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+WORKDIR /app
+
+COPY requirements.cpu.txt ./
+COPY src ./src
+COPY pyproject.toml ./
+
+RUN uv venv /app/.venv && \
+    . /app/.venv/bin/activate && \
+    uv pip install -r requirements.cpu.txt
+
+FROM base AS api
+
+WORKDIR /app
+
+COPY --from=builder /app/.venv /app/.venv
+COPY src ./src
+COPY pyproject.toml ./
+COPY alembic ./alembic
+COPY alembic.ini ./
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONPATH="/app/src"
+
+RUN useradd --create-home --shell /bin/bash appuser && \
+    mkdir -p /app/data && \
+    chown -R appuser:appuser /app
+
+USER appuser
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/live || exit 1
+
+CMD ["sh", "-c", "alembic upgrade head && uvicorn api.main:app --host 0.0.0.0 --port 8000"]
+
+FROM base AS worker
+
+WORKDIR /app
+
+COPY --from=builder /app/.venv /app/.venv
+COPY src ./src
+COPY pyproject.toml ./
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONPATH="/app/src"
+
+RUN useradd --create-home --shell /bin/bash appuser && \
+    mkdir -p /app/data && \
+    chown -R appuser:appuser /app
+
+USER appuser
+
+CMD ["python", "-m", "workers.cpu_worker"]
