@@ -23,6 +23,9 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /app
 
+# vendored wheels are referenced in [tool.uv.sources] and must be present for resolution
+COPY vendored ./vendored
+
 # install dependencies first (cached layer)
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
