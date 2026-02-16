@@ -3,9 +3,10 @@ from __future__ import annotations
 import uuid
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy import func, select
 
+from api.auth import AdminRequired
 from api.deps import DbSession, StorageDep, TemporalClientDep
 from api.models.images import (
     ImageIngestRequest,
@@ -14,6 +15,7 @@ from api.models.images import (
     ImageResponse,
     ImageStatus,
 )
+from api.rate_limit import ADMIN_LIMIT, limiter
 from shared.config import settings
 from shared.models import Annotation, Artifact, IngestURL, Job, JobType, Processing
 from shared.models import ORMImage as Image
@@ -23,12 +25,15 @@ router = APIRouter()
 
 
 @router.post("", response_model=ImageIngestResponse, status_code=202)
+@limiter.limit(ADMIN_LIMIT)
 async def ingest_images(
-    request: ImageIngestRequest,
+    request: Request,
+    _auth: AdminRequired,
+    ingest_request: ImageIngestRequest,
     db: DbSession,
     temporal: TemporalClientDep,
 ) -> ImageIngestResponse:
-    urls = [str(url) for url in request.urls]
+    urls = [str(url) for url in ingest_request.urls]
     unique_urls = list(dict.fromkeys(urls))
     duplicates = len(urls) - len(unique_urls)
 
@@ -48,9 +53,9 @@ async def ingest_images(
         IngestWorkflow.run,
         IngestWorkflowInput(
             job_id=job_id,
-            dataset=request.dataset,
-            tags=request.tags,
-            callback_url=str(request.callback_url) if request.callback_url else None,
+            dataset=ingest_request.dataset,
+            tags=ingest_request.tags,
+            callback_url=str(ingest_request.callback_url) if ingest_request.callback_url else None,
         ),
         id=f"ingest-workflow-{job_id}",
         task_queue=settings.temporal_task_queue_cpu,
@@ -65,7 +70,9 @@ async def ingest_images(
 
 
 @router.get("", response_model=ImageListResponse)
+@limiter.limit(ADMIN_LIMIT)
 async def list_images(
+    _auth: AdminRequired,
     db: DbSession,
     storage: StorageDep,
     limit: int = Query(default=20, ge=1, le=100),
@@ -152,6 +159,7 @@ async def list_images(
 
 @router.get("/{image_id}", response_model=ImageResponse)
 async def get_image(
+    _auth: AdminRequired,
     image_id: int,
     db: DbSession,
     storage: StorageDep,
@@ -194,6 +202,7 @@ async def get_image(
 
 @router.delete("/{image_id}", status_code=204)
 async def delete_image(
+    _auth: AdminRequired,
     image_id: int,
     db: DbSession,
     storage: StorageDep,
