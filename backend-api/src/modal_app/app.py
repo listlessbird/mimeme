@@ -5,6 +5,7 @@ import logging
 import os
 import tempfile
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
@@ -395,49 +396,86 @@ class EmbeddingService:
         results = []
         failed_ids = []
 
-        for item in items:
+        def _prepare_item(item: dict) -> tuple[dict, Any]:
+            tmp_path = _download_image(item["s3_key"])
             try:
-                tmp_path = _download_image(item["s3_key"])
-                try:
-                    pil = Image.open(tmp_path)
+                with Image.open(tmp_path) as pil:
                     if pil.mode == "P" and "transparency" in pil.info:
                         pil = pil.convert("RGBA")
-                    pil = pil.convert("RGB")
+                    rgb = pil.convert("RGB")
+                    return item, rgb.copy()
+            finally:
+                tmp_path.unlink(missing_ok=True)
 
-                    img_feats = self._encode_images([pil])
-                    txt_feats = self._encode_texts([item.get("text", "")])
-
-                    model_slug = self.model_name.replace("/", "_")
-                    source = item.get("dataset") or "api-ingested"
-                    sha = item["sha256"]
-
-                    img_key = f"embeddings/{model_slug}/{source}/{sha}.npy"
-                    txt_key = f"embeddings/{model_slug}/{source}/{sha}_text.npy"
-
-                    _upload_numpy(img_feats[0], img_key)
-                    _upload_numpy(txt_feats[0], txt_key)
-
-                    results.append(
-                        {
-                            "image_id": item["image_id"],
-                            "image_embedding_key": img_key,
-                            "text_embedding_key": txt_key,
-                            "model": self.model_name,
-                            "dimension": int(img_feats.shape[-1]),
-                        }
+        prepared: list[tuple[dict, Any]] = []
+        with ThreadPoolExecutor(max_workers=min(8, len(items) or 1)) as executor:
+            future_to_item = {executor.submit(_prepare_item, item): item for item in items}
+            for future in as_completed(future_to_item):
+                item = future_to_item[future]
+                try:
+                    prepared.append(future.result())
+                except Exception as exc:
+                    failed_ids.append(item["image_id"])
+                    log.error(
+                        "modal_step",
+                        operation="embed_batch",
+                        step="item_prepare_failed",
+                        image_id=item.get("image_id"),
+                        s3_key=item.get("s3_key"),
+                        error=str(exc),
                     )
-                finally:
-                    tmp_path.unlink(missing_ok=True)
-            except Exception as exc:
-                failed_ids.append(item["image_id"])
-                log.error(
-                    "modal_step",
-                    operation="embed_batch",
-                    step="item_failed",
-                    image_id=item.get("image_id"),
-                    s3_key=item.get("s3_key"),
-                    error=str(exc),
-                )
+
+        if prepared:
+            ordered_items = [item for item, _ in prepared]
+            images = [image for _, image in prepared]
+            texts = [item.get("text", "") for item in ordered_items]
+
+            img_feats = self._encode_images(images)
+            txt_feats = self._encode_texts(texts)
+            model_slug = self.model_name.replace("/", "_")
+            dimension = int(img_feats.shape[-1])
+
+            def _upload_one(position: int) -> dict:
+                item = ordered_items[position]
+                source = item.get("dataset") or "api-ingested"
+                sha = item["sha256"]
+
+                img_key = f"embeddings/{model_slug}/{source}/{sha}.npy"
+                txt_key = f"embeddings/{model_slug}/{source}/{sha}_text.npy"
+
+                _upload_numpy(img_feats[position], img_key)
+                _upload_numpy(txt_feats[position], txt_key)
+
+                return {
+                    "image_id": item["image_id"],
+                    "image_embedding_key": img_key,
+                    "text_embedding_key": txt_key,
+                    "model": self.model_name,
+                    "dimension": dimension,
+                }
+
+            with ThreadPoolExecutor(max_workers=min(8, len(ordered_items))) as executor:
+                future_to_item = {
+                    executor.submit(_upload_one, position): ordered_items[position]
+                    for position in range(len(ordered_items))
+                }
+                for future in as_completed(future_to_item):
+                    item = future_to_item[future]
+                    try:
+                        results.append(future.result())
+                    except Exception as exc:
+                        failed_ids.append(item["image_id"])
+                        log.error(
+                            "modal_step",
+                            operation="embed_batch",
+                            step="item_upload_failed",
+                            image_id=item.get("image_id"),
+                            s3_key=item.get("s3_key"),
+                            error=str(exc),
+                        )
+
+        if results:
+            results.sort(key=lambda result: int(result["image_id"]))
 
         if failed_ids:
             outcome = "partial_failure" if results else "failed"
