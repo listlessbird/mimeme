@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -13,6 +14,7 @@ from starlette.middleware.cors import CORSMiddleware
 
 from api.deps import get_index_manager
 from api.routers import health, images, jobs, search
+from api.services.text_encoder import SearchTextEncoder
 from shared.config import settings
 from shared.db import get_db
 from shared.services.storage import get_storage_service
@@ -77,6 +79,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         log.warning("no_index_found", message="Index will be built on first rebuild")
     except Exception as e:
         log.warning("index_load_failed", error=str(e))
+
+    log.info("preloading_text_encoder")
+    await asyncio.to_thread(SearchTextEncoder.get_instance)
+    log.info("text_encoder_ready")
 
     yield
 
