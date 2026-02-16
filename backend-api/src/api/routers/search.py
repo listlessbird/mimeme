@@ -5,11 +5,13 @@ import time
 import uuid
 from datetime import timedelta
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
+from api.auth import ReadonlyRequired
 from api.deps import IndexManagerDep, TemporalClientDep
 from api.models.search import SearchResponse
+from api.rate_limit import SEARCH_LIMIT, limiter
 from api.services.search import SearchService
 from shared.config import settings
 from shared.db import session_scope
@@ -67,7 +69,10 @@ def _find_similar_for_thread(
 
 
 @router.get("", response_model=SearchResponse)
+@limiter.limit(SEARCH_LIMIT)
 async def search(
+    request: Request,
+    _auth: ReadonlyRequired,
     index_manager: IndexManagerDep,
     temporal: TemporalClientDep,
     q: str = Query(..., min_length=1, max_length=200, description="Search query"),
@@ -117,7 +122,10 @@ async def search(
 
 
 @router.get("/similar/{image_id}", response_model=SearchResponse)
+@limiter.limit(SEARCH_LIMIT)
 async def find_similar(
+    request: Request,
+    _auth: ReadonlyRequired,
     image_id: int,
     index_manager: IndexManagerDep,
     limit: int = Query(default=20, ge=1, le=100),

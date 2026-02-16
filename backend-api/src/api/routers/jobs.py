@@ -5,6 +5,7 @@ import uuid
 
 from fastapi import APIRouter, HTTPException, Query
 
+from api.auth import AdminRequired
 from api.deps import DbSession, TemporalClientDep
 from api.models.jobs import JobListResponse, JobResponse, RebuildIndexRequest
 from shared.config import settings
@@ -15,7 +16,7 @@ router = APIRouter()
 
 
 @router.get("/{job_id}", response_model=JobResponse)
-async def get_job(job_id: str, db: DbSession) -> JobResponse:
+async def get_job(_auth: AdminRequired, job_id: str, db: DbSession) -> JobResponse:
     job = db.query(Job).filter_by(id=job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -42,6 +43,7 @@ async def get_job(job_id: str, db: DbSession) -> JobResponse:
 
 @router.post("/rebuild-index", response_model=JobResponse, status_code=202)
 async def trigger_rebuild_index(
+    _auth: AdminRequired,
     db: DbSession,
     temporal: TemporalClientDep,
     request: RebuildIndexRequest | None = None,
@@ -75,7 +77,9 @@ async def trigger_rebuild_index(
 
 
 @router.delete("/{job_id}", status_code=204)
-async def cancel_job(job_id: str, db: DbSession, temporal: TemporalClientDep) -> None:
+async def cancel_job(
+    _auth: AdminRequired, job_id: str, db: DbSession, temporal: TemporalClientDep
+) -> None:
     job = db.query(Job).filter_by(id=job_id).first()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -93,6 +97,7 @@ async def cancel_job(job_id: str, db: DbSession, temporal: TemporalClientDep) ->
 
 @router.get("", response_model=JobListResponse)
 async def list_jobs(
+    _auth: AdminRequired,
     db: DbSession,
     status: JobStatus | None = Query(default=None),
     job_type: JobType | None = Query(default=None),
@@ -129,6 +134,7 @@ async def list_jobs(
 
 @router.get("/indexes/versions")
 async def list_index_versions(
+    _auth: AdminRequired,
     db: DbSession,
     limit: int = Query(default=10, ge=1, le=50),
 ) -> dict:
