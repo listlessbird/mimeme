@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     db_url: PostgresDsn = "postgresql://postgres:postgres@localhost:5432/findmeme"  # ty:ignore[invalid-assignment]
     redis_url: RedisDsn = "redis://localhost:6379/0"  # ty:ignore[invalid-assignment]
 
+    api_key_admin: str | None = None
+    api_key_readonly: str | None = None
+
     temporal_host: str = Field(default="localhost:7233")
     temporal_namespace: str = Field(default="default")
     temporal_task_queue_cpu: str = Field(default="cpu-queue")
