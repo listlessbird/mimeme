@@ -2,7 +2,7 @@ import io
 import tempfile
 from functools import lru_cache
 from pathlib import Path
-from typing import BinaryIO, cast
+from typing import TYPE_CHECKING, BinaryIO, cast
 
 import boto3
 import numpy as np
@@ -10,9 +10,11 @@ from boto3.s3.transfer import TransferConfig
 from botocore.client import ClientError
 from botocore.config import Config as BotoConfig
 from pydantic import BaseModel
-from types_boto3_s3 import S3Client
 
 from shared.config import settings
+
+if TYPE_CHECKING:
+    from types_boto3_s3 import S3Client
 
 
 class S3Config(BaseModel):
