@@ -213,13 +213,22 @@ class FaissIndexManager:
                 (tmp_path / "mapping.json", mapping_key),
                 (tmp_path / "metadata.json", metadata_key),
             ]
-            with ThreadPoolExecutor(max_workers=len(upload_jobs)) as executor:
-                futures = [
-                    executor.submit(self._storage.upload_file, local_path, key)
-                    for local_path, key in upload_jobs
-                ]
-                for future in futures:
-                    future.result()
+            try:
+                with ThreadPoolExecutor(max_workers=len(upload_jobs)) as executor:
+                    futures = [
+                        executor.submit(self._storage.upload_file, local_path, key)
+                        for local_path, key in upload_jobs
+                    ]
+                    for future in futures:
+                        future.result()
+            except Exception:
+                prefix = f"{self._storage.INDEXES_PREFIX}/{version}"
+                for key, _ in self._storage.list_objects(prefix):
+                    try:
+                        self._storage.delete(key)
+                    except Exception:
+                        pass
+                raise
 
             cache_path = self._cache_dir / version
             cache_path.mkdir(parents=True, exist_ok=True)
