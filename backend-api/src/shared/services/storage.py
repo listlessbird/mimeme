@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import io
 import tempfile
 from functools import lru_cache
@@ -76,7 +78,7 @@ class StorageService:
     @property
     def client(self) -> S3Client:
         if self._client is None:
-            self._client = cast(S3Client, get_s3_client())
+            self._client = cast("S3Client", get_s3_client())
         return self._client
 
     @property
