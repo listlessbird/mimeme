@@ -72,6 +72,7 @@ async def ingest_images(
 @router.get("", response_model=ImageListResponse)
 @limiter.limit(ADMIN_LIMIT)
 async def list_images(
+    request: Request,
     _auth: AdminRequired,
     db: DbSession,
     storage: StorageDep,
