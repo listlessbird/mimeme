@@ -41,17 +41,17 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # ── api ──────────────────────────────────────────────────────────────
 FROM base AS api
 
+RUN useradd --create-home --shell /bin/bash appuser
+
 WORKDIR /app
 
-COPY --from=builder /app/.venv /app/.venv
-COPY alembic ./alembic
-COPY alembic.ini ./
+COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
+COPY --chown=appuser:appuser alembic ./alembic
+COPY --chown=appuser:appuser alembic.ini ./
+
+RUN mkdir -p /app/data && chown appuser:appuser /app/data
 
 ENV PATH="/app/.venv/bin:$PATH"
-
-RUN useradd --create-home --shell /bin/bash appuser && \
-    mkdir -p /app/data && \
-    chown -R appuser:appuser /app
 
 USER appuser
 
@@ -65,15 +65,15 @@ CMD ["sh", "-c", "alembic upgrade head && uvicorn api.main:app --host 0.0.0.0 --
 # ── worker ───────────────────────────────────────────────────────────
 FROM base AS worker
 
+RUN useradd --create-home --shell /bin/bash appuser
+
 WORKDIR /app
 
-COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
+
+RUN mkdir -p /app/data && chown appuser:appuser /app/data
 
 ENV PATH="/app/.venv/bin:$PATH"
-
-RUN useradd --create-home --shell /bin/bash appuser && \
-    mkdir -p /app/data && \
-    chown -R appuser:appuser /app
 
 USER appuser
 
