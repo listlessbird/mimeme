@@ -408,22 +408,23 @@ class EmbeddingService:
                 tmp_path.unlink(missing_ok=True)
 
         prepared: list[tuple[dict, Any]] = []
-        with ThreadPoolExecutor(max_workers=min(8, len(items) or 1)) as executor:
-            future_to_item = {executor.submit(_prepare_item, item): item for item in items}
-            for future in as_completed(future_to_item):
-                item = future_to_item[future]
-                try:
-                    prepared.append(future.result())
-                except Exception as exc:
-                    failed_ids.append(item["image_id"])
-                    log.error(
-                        "modal_step",
-                        operation="embed_batch",
-                        step="item_prepare_failed",
-                        image_id=item.get("image_id"),
-                        s3_key=item.get("s3_key"),
-                        error=str(exc),
-                    )
+        if items:
+            with ThreadPoolExecutor(max_workers=min(8, len(items))) as executor:
+                future_to_item = {executor.submit(_prepare_item, item): item for item in items}
+                for future in as_completed(future_to_item):
+                    item = future_to_item[future]
+                    try:
+                        prepared.append(future.result())
+                    except Exception as exc:
+                        failed_ids.append(item["image_id"])
+                        log.error(
+                            "modal_step",
+                            operation="embed_batch",
+                            step="item_prepare_failed",
+                            image_id=item.get("image_id"),
+                            s3_key=item.get("s3_key"),
+                            error=str(exc),
+                        )
 
         if prepared:
             ordered_items = [item for item, _ in prepared]
@@ -432,6 +433,7 @@ class EmbeddingService:
 
             img_feats = self._encode_images(images)
             txt_feats = self._encode_texts(texts)
+            del images, prepared
             model_slug = self.model_name.replace("/", "_")
             dimension = int(img_feats.shape[-1])
 
