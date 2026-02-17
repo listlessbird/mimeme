@@ -9,10 +9,12 @@ import structlog
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from slowapi.errors import RateLimitExceeded
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 
 from api.deps import get_index_manager
+from api.rate_limit import limiter, rate_limit_exceeded_handler
 from api.routers import health, images, jobs, search
 from api.services.text_encoder import SearchTextEncoder
 from shared.config import settings
@@ -108,6 +110,9 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if settings.debug else None,
         middleware=middleware,
     )
+
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception) -> JSONResponse:
