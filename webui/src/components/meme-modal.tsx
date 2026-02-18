@@ -1,49 +1,74 @@
 
-import { useEffect, useCallback } from "react"
-import { X, Download, Copy, Link } from "lucide-react"
+import { useEffect, useCallback, useState } from "react"
+import { motion, useReducedMotion } from "motion/react"
+import { X, Download, Copy, Link, Check } from "lucide-react"
 import type { SearchResult } from "@/lib/api"
 
 interface MemeModalProps {
-    meme: SearchResult | null
-    isOpen: boolean
+    meme: SearchResult
     onClose: () => void
 }
 
-export function MemeModal({ meme, isOpen, onClose }: MemeModalProps) {
+const easeOutQuint = [0.23, 1, 0.32, 1] as const
+
+export function MemeModal({ meme, onClose }: MemeModalProps) {
+    const shouldReduceMotion = useReducedMotion()
+    const [copied, setCopied] = useState<"url" | "img" | null>(null)
+
     const handleKeyDown = useCallback(
         (e: KeyboardEvent) => {
-            if (e.key === "Escape") {
-                onClose()
-            }
+            if (e.key === "Escape") onClose()
         },
         [onClose],
     )
 
     useEffect(() => {
-        if (isOpen) {
-            document.addEventListener("keydown", handleKeyDown)
-            document.body.style.overflow = "hidden"
-        }
+        document.addEventListener("keydown", handleKeyDown)
+        document.body.style.overflow = "hidden"
         return () => {
             document.removeEventListener("keydown", handleKeyDown)
             document.body.style.overflow = "unset"
         }
-    }, [isOpen, handleKeyDown])
+    }, [handleKeyDown])
 
-    if (!meme || !isOpen) return null
+    const copyToClipboard = async (text: string, type: "url" | "img") => {
+        await navigator.clipboard.writeText(text)
+        setCopied(type)
+        setTimeout(() => setCopied(null), 1500)
+    }
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-background/90 backdrop-blur-sm" onClick={onClose} />
+        <motion.div
+            className="fixed inset-0 z-50 flex items-end sm:items-center justify-center"
+            initial={shouldReduceMotion ? false : { opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2, ease: easeOutQuint }}
+        >
+            <motion.div
+                className="absolute inset-0 bg-background/90 backdrop-blur-sm"
+                onClick={onClose}
+                initial={shouldReduceMotion ? false : { opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2, ease: easeOutQuint }}
+            />
 
-            <div className="relative z-10 w-full max-w-2xl bg-card border border-border rounded-md overflow-hidden">
-                <div className="flex items-center justify-between p-4 border-b border-border">
-                    <span className="text-sm text-foreground truncate pr-4">{meme.caption || "untitled"}</span>
+            <motion.div
+                className="relative z-10 w-full max-w-2xl bg-card border border-border rounded-t-lg sm:rounded-lg overflow-hidden will-change-transform"
+                initial={shouldReduceMotion ? false : { opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.97, y: 10 }}
+                transition={{ duration: 0.2, ease: easeOutQuint }}
+            >
+                {/* Header — close only */}
+                <div className="flex items-center justify-end p-4 border-b border-border">
                     <button onClick={onClose} className="text-muted-foreground hover:text-foreground transition-colors">
                         <X className="w-4 h-4" />
                     </button>
                 </div>
 
+                {/* Image */}
                 <div className="p-4">
                     <img
                         src={meme.url}
@@ -52,33 +77,53 @@ export function MemeModal({ meme, isOpen, onClose }: MemeModalProps) {
                     />
                 </div>
 
-                {meme.ocr_text && (
-                    <div className="px-4 pb-2">
-                        <p className="text-xs text-muted-foreground italic">"{meme.ocr_text}"</p>
-                    </div>
-                )}
+                {/* Info — bottom panel */}
+                <div className="px-4 pt-3 pb-4 space-y-2">
+                    {meme.caption && (
+                        <p className="text-sm text-foreground leading-relaxed">{meme.caption}</p>
+                    )}
 
-                <div className="flex items-center justify-between p-4 border-t border-border">
-                    <span className="text-xs text-muted-foreground">
-                        score: {meme.score.toFixed(3)}
-                    </span>
+                    {meme.ocr_text && (
+                        <p className="text-xs text-muted-foreground italic leading-relaxed">"{meme.ocr_text}"</p>
+                    )}
 
-                    <div className="flex items-center gap-3">
-                        <button className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5 transition-colors">
-                            <Copy className="w-3 h-3" />
-                            copy
-                        </button>
-                        <button className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5 transition-colors">
-                            <Link className="w-3 h-3" />
-                            link
-                        </button>
-                        <button className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1.5 transition-colors">
-                            <Download className="w-3 h-3" />
-                            save
-                        </button>
+                    <div className="flex items-center justify-between pt-2 border-t border-border">
+                        <span className="text-[10px] text-muted-foreground/60 tabular-nums tracking-wider uppercase">
+                            {meme.score.toFixed(3)} · {meme.width}×{meme.height}
+                        </span>
+
+                        <div className="flex items-center gap-1">
+                            <ActionButton
+                                icon={copied === "img" ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                                label={copied === "img" ? "copied" : "copy"}
+                                onClick={() => copyToClipboard(meme.url, "img")}
+                            />
+                            <ActionButton
+                                icon={copied === "url" ? <Check className="w-3 h-3" /> : <Link className="w-3 h-3" />}
+                                label={copied === "url" ? "copied" : "link"}
+                                onClick={() => copyToClipboard(meme.url, "url")}
+                            />
+                            <ActionButton
+                                icon={<Download className="w-3 h-3" />}
+                                label="save"
+                                onClick={() => window.open(meme.url, "_blank")}
+                            />
+                        </div>
                     </div>
                 </div>
-            </div>
-        </div>
+            </motion.div>
+        </motion.div>
+    )
+}
+
+function ActionButton({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
+    return (
+        <button
+            onClick={onClick}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs text-muted-foreground hover:text-foreground hover:bg-secondary/80 transition-colors"
+        >
+            {icon}
+            {label}
+        </button>
     )
 }
