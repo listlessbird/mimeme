@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { env } from "@/env";
+import { logInfo, serializeError } from "@/lib/observability";
 
 export interface SearchResult {
 	id: number;
@@ -21,24 +22,78 @@ export interface SearchResponse {
 	search_time_ms: number;
 }
 
+class SearchApiError extends Error {
+	public readonly statusCode?: number;
+	public readonly responseBody?: string;
+
+	constructor(
+		message: string,
+		options?: { statusCode?: number; responseBody?: string; cause?: unknown },
+	) {
+		super(message, { cause: options?.cause });
+		this.name = "SearchApiError";
+		this.statusCode = options?.statusCode;
+		this.responseBody = options?.responseBody;
+	}
+}
+
 export const searchMemes = createServerFn({ method: "GET" })
 	.inputValidator(
 		(input: { q: string; limit?: number; offset?: number }) => input,
 	)
 	.handler(async ({ data }) => {
+		const start = Date.now();
+		const requestId = crypto.randomUUID();
+		const wideEvent: Record<string, unknown> = {
+			request_id: requestId,
+			operation: "search_memes",
+			method: "GET",
+			endpoint: "/search",
+			query: data.q,
+			query_length: data.q.length,
+			limit: data.limit,
+			offset: data.offset,
+		};
+
 		const params = new URLSearchParams({ q: data.q });
 		if (data.limit) params.set("limit", String(data.limit));
 		if (data.offset) params.set("offset", String(data.offset));
 
-		const res = await fetch(`${env.API_BASE_URL}/search?${params}`, {
-			headers: {
-				"X-API-Key": env.API_KEY_READONLY,
-			},
-		});
+		try {
+			const res = await fetch(`${env.API_BASE_URL}/search?${params}`, {
+				headers: {
+					"X-API-Key": env.API_KEY_READONLY,
+					"X-Request-ID": requestId,
+				},
+			});
 
-		if (!res.ok) {
-			throw new Error(`API error: ${res.status} ${res.statusText}`);
+			wideEvent.status_code = res.status;
+
+			if (!res.ok) {
+				const responseBody = await res.text();
+				throw new SearchApiError("Search API returned a non-success status", {
+					statusCode: res.status,
+					responseBody,
+				});
+			}
+
+			const payload = (await res.json()) as SearchResponse;
+			wideEvent.outcome = "success";
+			wideEvent.result_count = payload.results.length;
+			wideEvent.search_time_ms = payload.search_time_ms;
+
+			return payload;
+		} catch (error) {
+			wideEvent.outcome = "error";
+			wideEvent.error = serializeError(error);
+
+			if (error instanceof SearchApiError) {
+				throw error;
+			}
+
+			throw new SearchApiError("Search API request failed", { cause: error });
+		} finally {
+			wideEvent.duration_ms = Date.now() - start;
+			logInfo("search_memes.request", wideEvent);
 		}
-
-		return (await res.json()) as SearchResponse;
 	});
