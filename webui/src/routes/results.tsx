@@ -35,9 +35,19 @@ function ResultsPage() {
 	const data = Route.useLoaderData();
 
 	return (
-		<div className="min-h-screen bg-background p-4 md:p-6">
-			<div className="max-w-6xl mx-auto">
-				<SearchBar live />
+		<div className="min-h-screen bg-background">
+			<div className="sticky top-0 z-40 bg-background/80 backdrop-blur-sm border-b border-border/50">
+				<div className="max-w-6xl mx-auto px-4 md:px-6 pt-4 md:pt-6 pb-3">
+					<SearchBar live />
+					{data && data.results.length > 0 && (
+						<div className="text-xs text-muted-foreground">
+							{data.total} results for "{data.query}" ({data.search_time_ms.toFixed(0)}ms)
+						</div>
+					)}
+				</div>
+			</div>
+
+			<div className="max-w-6xl mx-auto px-4 md:px-6 pt-4 pb-6">
 				{data ? (
 					<MemeGrid data={data} />
 				) : (
