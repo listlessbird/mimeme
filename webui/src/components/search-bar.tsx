@@ -108,6 +108,7 @@ function NavigateSearchBar({ isSearching }: { isSearching: boolean }) {
                     onChange={(e) => setQuery(e.target.value)}
                     placeholder="describe the meme you're looking for..."
                     className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+                    autoFocus
                 />
                 <button
                     type="submit"
