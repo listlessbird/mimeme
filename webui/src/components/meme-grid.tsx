@@ -30,17 +30,6 @@ export function MemeGrid({ data }: MemeGridProps) {
     return (
         <>
             <motion.div
-                className="mb-4 text-xs text-muted-foreground"
-                initial={shouldReduceMotion ? false : { opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: 0.25 }}
-            >
-                <span>
-                    {data.total} results for "{data.query}" ({data.search_time_ms.toFixed(0)}ms)
-                </span>
-            </motion.div>
-
-            <motion.div
                 className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"
                 key={data.query}
                 initial="hidden"
