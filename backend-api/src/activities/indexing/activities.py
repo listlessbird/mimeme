@@ -13,7 +13,6 @@ from activities.indexing.faiss_manager import FaissIndexManager
 from activities.indexing.models import (
     BuildIndexInput,
     BuildIndexOutput,
-    CollectEmbeddingsOutput,
     GarbageCollectOutput,
     SwapIndexInput,
 )
@@ -61,46 +60,6 @@ def _emit_activity_event(
     if error:
         event["error"] = error
     log.info("activity_wide_event", **event)
-
-
-@activity.defn
-def collect_embeddings_activity() -> CollectEmbeddingsOutput:
-    started = time.monotonic()
-    outcome = "success"
-    error_message: str | None = None
-    total: int | None = None
-    try:
-        with session_scope() as session:
-            done_procs = (
-                session.query(Processing)
-                .filter(
-                    Processing.embed_status == ProcessingStatus.DONE,
-                    Processing.embed_s3_key.isnot(None),
-                )
-                .all()
-            )
-
-            embedding_keys = [p.embed_s3_key for p in done_procs if p.embed_s3_key]
-            image_ids = [p.image_id for p in done_procs]
-            total = len(done_procs)
-
-            return CollectEmbeddingsOutput(
-                embedding_keys=embedding_keys,
-                image_ids=image_ids,
-                total=total,
-            )
-    except Exception as exc:
-        outcome = "error"
-        error_message = str(exc)
-        raise
-    finally:
-        _emit_activity_event(
-            activity_name="collect_embeddings_activity",
-            started_at=started,
-            outcome=outcome,
-            error=error_message,
-            total=total,
-        )
 
 
 @activity.defn

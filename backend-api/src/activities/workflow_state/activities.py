@@ -13,6 +13,7 @@ from shared.models import Annotation, IngestURL, Job, JobStatus, ORMImage, Proce
 from .models import (
     CompleteIngestJobInput,
     CompleteRebuildJobInput,
+    FailRebuildJobInput,
     IngestInitOutput,
     IngestUrlItem,
     MarkIngestUrlDoneInput,
@@ -311,12 +312,41 @@ async def start_rebuild_job_activity(input: StartRebuildJobInput) -> None:
     try:
         with session_scope() as session:
             job = session.query(Job).filter_by(id=input.job_id).first()
-            found = job is not None
-            if job:
-                job.status = JobStatus.RUNNING
-                job.started_at = datetime.now(UTC)
+            if not job:
+                raise ValueError(f"Job {input.job_id} not found")
+            job.status = JobStatus.RUNNING
+            job.started_at = datetime.now(UTC)
         _emit_activity_event(
             activity_name="start_rebuild_job_activity",
+            started_at=started,
+            outcome="success",
+            job_id=input.job_id,
+        )
+    except Exception as exc:
+        _emit_activity_event(
+            activity_name="start_rebuild_job_activity",
+            started_at=started,
+            outcome="error",
+            job_id=input.job_id,
+            error=str(exc),
+        )
+        raise
+
+
+@activity.defn
+async def fail_rebuild_job_activity(input: FailRebuildJobInput) -> None:
+    started = time.monotonic()
+    try:
+        error_message = input.error[:2000] if input.error else input.error
+        with session_scope() as session:
+            job = session.query(Job).filter_by(id=input.job_id).first()
+            found = job is not None
+            if job:
+                job.status = JobStatus.FAILED
+                job.message = error_message
+                job.completed_at = datetime.now(UTC)
+        _emit_activity_event(
+            activity_name="fail_rebuild_job_activity",
             started_at=started,
             outcome="success",
             job_id=input.job_id,
@@ -324,7 +354,7 @@ async def start_rebuild_job_activity(input: StartRebuildJobInput) -> None:
         )
     except Exception as exc:
         _emit_activity_event(
-            activity_name="start_rebuild_job_activity",
+            activity_name="fail_rebuild_job_activity",
             started_at=started,
             outcome="error",
             job_id=input.job_id,
@@ -339,25 +369,24 @@ async def complete_rebuild_job_activity(input: CompleteRebuildJobInput) -> None:
     try:
         with session_scope() as session:
             job = session.query(Job).filter_by(id=input.job_id).first()
-            found = job is not None
-            if job:
-                job.status = JobStatus.COMPLETED
-                job.progress = 100.0
-                job.completed_at = datetime.now(UTC)
-                job.result = json.dumps(
-                    {
-                        "version": input.version,
-                        "num_vectors": input.num_vectors,
-                        "dimension": input.dimension,
-                        "removed_versions": input.removed_versions,
-                    }
-                )
+            if not job:
+                raise ValueError(f"Job {input.job_id} not found")
+            job.status = JobStatus.COMPLETED
+            job.progress = 100.0
+            job.completed_at = datetime.now(UTC)
+            job.result = json.dumps(
+                {
+                    "version": input.version,
+                    "num_vectors": input.num_vectors,
+                    "dimension": input.dimension,
+                    "removed_versions": input.removed_versions,
+                }
+            )
         _emit_activity_event(
             activity_name="complete_rebuild_job_activity",
             started_at=started,
             outcome="success",
             job_id=input.job_id,
-            found=found,
             version=input.version,
             num_vectors=input.num_vectors,
             dimension=input.dimension,

@@ -54,6 +54,11 @@ class StartRebuildJobInput(BaseModel):
     job_id: str
 
 
+class FailRebuildJobInput(BaseModel):
+    job_id: str
+    error: str
+
+
 class CompleteRebuildJobInput(BaseModel):
     job_id: str
     version: str
