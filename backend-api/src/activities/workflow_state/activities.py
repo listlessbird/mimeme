@@ -8,7 +8,15 @@ import structlog
 from temporalio import activity
 
 from shared.db import session_scope
-from shared.models import Annotation, IngestURL, Job, JobStatus, ORMImage, Processing, ProcessingStatus
+from shared.models import (
+    Annotation,
+    IngestURL,
+    Job,
+    JobStatus,
+    ORMImage,
+    Processing,
+    ProcessingStatus,
+)
 
 from .models import (
     CompleteIngestJobInput,
