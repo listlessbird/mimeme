@@ -13,6 +13,7 @@ with workflow.unsafe.imports_passed_through():
     )
     from activities.workflow_state import (
         CompleteRebuildJobInput,
+        FailRebuildJobInput,
         StartRebuildJobInput,
         UpdateJobProgressInput,
     )
@@ -195,6 +196,21 @@ class RebuildIndexWorkflow:
             )
         except Exception as exc:
             error_message = str(exc)
+            try:
+                await workflow.execute_activity(
+                    "fail_rebuild_job_activity",
+                    FailRebuildJobInput(
+                        job_id=input.job_id,
+                        error=f"Failed at step '{last_step}': {error_message}",
+                    ),
+                    task_queue=settings.temporal_task_queue_cpu,
+                    start_to_close_timeout=timedelta(minutes=1),
+                )
+            except Exception:
+                workflow.logger.error(
+                    "fail_rebuild_job_activity_error",
+                    extra={"job_id": input.job_id, "original_error": error_message},
+                )
             raise
         finally:
             workflow.logger.info(

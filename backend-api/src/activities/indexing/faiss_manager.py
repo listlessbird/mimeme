@@ -4,6 +4,7 @@ import json
 import shutil
 import tempfile
 import threading
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
@@ -182,7 +183,7 @@ class FaissIndexManager:
 
         index.add(embeddings)  # type: ignore[call-arg]
 
-        version = f"v{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}"
+        version = f"v{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:8]}"
 
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp_path = Path(tmpdir)

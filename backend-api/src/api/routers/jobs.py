@@ -55,6 +55,7 @@ async def trigger_rebuild_index(
     db.add(job)
     db.commit()
 
+    workflow_id = f"rebuild-workflow-{job_id}"
     await temporal.start_workflow(
         RebuildIndexWorkflow.run,
         RebuildIndexWorkflowInput(
@@ -62,9 +63,12 @@ async def trigger_rebuild_index(
             force=request.force,
             model_name=request.model_name,
         ),
-        id=f"rebuild-workflow-{job_id}",
+        id=workflow_id,
         task_queue=settings.temporal_task_queue_cpu,
     )
+
+    job.workflow_id = workflow_id
+    db.commit()
 
     return JobResponse(
         id=job_id,
