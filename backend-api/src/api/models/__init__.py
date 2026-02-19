@@ -1,5 +1,3 @@
-from api.models.jobs import JobListResponse, JobResponse, RebuildIndexRequest
-
 from api.models.images import (
     ImageIngestRequest,
     ImageIngestResponse,
@@ -7,6 +5,7 @@ from api.models.images import (
     ImageResponse,
     ImageStatus,
 )
+from api.models.jobs import JobListResponse, JobResponse, RebuildIndexRequest
 from api.models.search import SearchRequest, SearchResponse, SearchResult
 
 __all__ = [
