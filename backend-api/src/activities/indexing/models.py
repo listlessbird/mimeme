@@ -16,12 +16,6 @@ class BuildIndexOutput(BaseModel):
     s3_key: str
 
 
-class CollectEmbeddingsOutput(BaseModel):
-    embedding_keys: list[str]
-    image_ids: list[int]
-    total: int
-
-
 class SwapIndexInput(BaseModel):
     version: str
 
