@@ -13,6 +13,7 @@ from activities.vision import caption_activity, ocr_activity
 from activities.workflow_state import (
     complete_ingest_job_activity,
     complete_rebuild_job_activity,
+    fail_rebuild_job_activity,
     ingest_initialize_activity,
     mark_ingest_url_done_activity,
     mark_ingest_url_failed_activity,
@@ -37,6 +38,7 @@ CPU_ACTIVITIES = [
     update_job_progress_activity,
     complete_ingest_job_activity,
     start_rebuild_job_activity,
+    fail_rebuild_job_activity,
     complete_rebuild_job_activity,
 ]
 
@@ -71,5 +73,6 @@ __all__ = [
     "update_job_progress_activity",
     "complete_ingest_job_activity",
     "start_rebuild_job_activity",
+    "fail_rebuild_job_activity",
     "complete_rebuild_job_activity",
 ]
