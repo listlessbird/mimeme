@@ -18,3 +18,4 @@ infra/*.tfplan.json
 infra/crash.log
 infra/override.tf
 infra/override.tf.json
+backend-api/data/
