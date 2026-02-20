@@ -98,17 +98,6 @@ class FaissIndexManager:
             if self._storage.exists(metadata_key):
                 download_jobs.append((metadata_key, metadata_file))
 
-            # Also download text index files to disk cache (lazy – not loaded into memory)
-            text_index_key = self._storage.build_index_key(version, "text_index.faiss")
-            text_mapping_key = self._storage.build_index_key(version, "text_mapping.json")
-            text_metadata_key = self._storage.build_index_key(version, "text_metadata.json")
-
-            if self._storage.exists(text_index_key):
-                download_jobs.append((text_index_key, cache_path / "text_index.faiss"))
-                download_jobs.append((text_mapping_key, cache_path / "text_mapping.json"))
-                if self._storage.exists(text_metadata_key):
-                    download_jobs.append((text_metadata_key, cache_path / "text_metadata.json"))
-
             worker_count = min(8, len(download_jobs))
             with ThreadPoolExecutor(max_workers=worker_count) as executor:
                 futures = [
@@ -117,6 +106,32 @@ class FaissIndexManager:
                 ]
                 for future in futures:
                     future.result()
+
+        # Fetch text index artifacts independently of the image index cache.
+        # A node may already have index.faiss cached from before text indexes
+        # existed, so this must run even when the image index is already on disk.
+        text_index_local = cache_path / "text_index.faiss"
+        if not text_index_local.exists():
+            text_index_key = self._storage.build_index_key(version, "text_index.faiss")
+            text_mapping_key = self._storage.build_index_key(version, "text_mapping.json")
+            text_metadata_key = self._storage.build_index_key(version, "text_metadata.json")
+
+            if self._storage.exists(text_index_key):
+                cache_path.mkdir(parents=True, exist_ok=True)
+                text_jobs: list[tuple[str, Path]] = [
+                    (text_index_key, text_index_local),
+                    (text_mapping_key, cache_path / "text_mapping.json"),
+                ]
+                if self._storage.exists(text_metadata_key):
+                    text_jobs.append((text_metadata_key, cache_path / "text_metadata.json"))
+
+                with ThreadPoolExecutor(max_workers=len(text_jobs)) as executor:
+                    futures = [
+                        executor.submit(self._storage.download_file, key, path)
+                        for key, path in text_jobs
+                    ]
+                    for future in futures:
+                        future.result()
 
         index = faiss.read_index(str(index_file))
 
