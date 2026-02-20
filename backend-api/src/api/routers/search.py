@@ -1,5 +1,6 @@
 import asyncio
 import time
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy.orm import Session
@@ -47,6 +48,7 @@ def _search_by_embedding_for_thread(
     index_manager: IndexManagerDep,
     embedding: list[float],
     limit: int,
+    mode: Literal["image", "text", "hybrid"] = "hybrid",
 ) -> list:
     with session_scope() as db:
         search_service = SearchService(index_manager)
@@ -54,6 +56,7 @@ def _search_by_embedding_for_thread(
             embedding=embedding,
             limit=limit,
             db=db,
+            mode=mode,
         )
 
 
@@ -80,6 +83,10 @@ async def search(
     q: str = Query(..., min_length=1, max_length=200, description="Search query"),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    mode: Literal["image", "text", "hybrid"] = Query(
+        default="hybrid",
+        description="Search mode: image (visual), text (caption/OCR), hybrid (both via RRF)",
+    ),
 ) -> SearchResponse:
     start_time = time.perf_counter()
 
@@ -99,6 +106,7 @@ async def search(
             index_manager,
             embedding,
             limit + offset,
+            mode,
         )
         paginated = results[offset : offset + limit]
         elapsed_ms = (time.perf_counter() - start_time) * 1000
