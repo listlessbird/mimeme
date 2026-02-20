@@ -177,9 +177,19 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
                             text_embedding_matrix = np.empty(
                                 (total_candidates, text_dim), dtype=np.float32
                             )
-                        text_image_ids[text_loaded] = image_id
-                        text_embedding_matrix[text_loaded, :] = text_embedding
-                        text_loaded += 1
+                        if int(text_embedding.shape[0]) != text_dim:
+                            log.warning(
+                                "activity_step",
+                                activity_name="build_index_activity",
+                                step="text_embedding_dim_mismatch",
+                                image_id=image_id,
+                                expected=text_dim,
+                                got=int(text_embedding.shape[0]),
+                            )
+                        else:
+                            text_image_ids[text_loaded] = image_id
+                            text_embedding_matrix[text_loaded, :] = text_embedding
+                            text_loaded += 1
 
             if loaded == 0 or embedding_matrix is None:
                 raise ValueError("Failed to load any embeddings from storage")
