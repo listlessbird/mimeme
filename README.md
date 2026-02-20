@@ -1,5 +1,5 @@
-# find-meme
-Monorepo for the Find Meme project.
+# mimeme
+Monorepo for the mìmeme (觅meme) project.
 
 ## Projects
 

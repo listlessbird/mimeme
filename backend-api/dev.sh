@@ -1,7 +1,7 @@
 #!/bin/bash
 # Development environment with 4-pane split view
 
-SESSION="findmeme-dev"
+SESSION="mimeme-dev"
 STAGING_MODE=false
 
 # Parse command line arguments

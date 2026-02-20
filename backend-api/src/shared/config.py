@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     debug: bool = Field(default=True)
     log_level: str = Field(default="INFO")
 
-    db_url: PostgresDsn = "postgresql://postgres:postgres@localhost:5432/findmeme"  # ty:ignore[invalid-assignment]
+    db_url: PostgresDsn = "postgresql://postgres:postgres@localhost:5432/mimeme"  # ty:ignore[invalid-assignment]
     redis_url: RedisDsn = "redis://localhost:6379/0"  # ty:ignore[invalid-assignment]
 
     api_key_admin: str | None = None
@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     s3_region: str = Field(default="us-east-1")
     s3_access_key_id: str = Field(default="minioadmin")
     s3_secret_access_key: str = Field(default="minioadmin")
-    s3_bucket: str = Field(default="findmeme")
+    s3_bucket: str = Field(default="mimeme")
     s3_force_path_style: bool = Field(default=True)
     s3_presigned_url_expiry: int = Field(default=3600)
 

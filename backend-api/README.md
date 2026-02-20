@@ -42,12 +42,12 @@ uv run uvicorn api.main:app --reload
 
 # modal setup
 uv run modal setup
-uv run modal secret create findmeme-s3 \
+uv run modal secret create mimeme-s3 \
   S3_ENDPOINT_URL=https://your-s3-endpoint \
   S3_REGION=us-east-1 \
   S3_ACCESS_KEY_ID=your-key \
   S3_SECRET_ACCESS_KEY=your-secret \
-  S3_BUCKET=findmeme \
+  S3_BUCKET=mimeme \
   S3_FORCE_PATH_STYLE=false
 
 
