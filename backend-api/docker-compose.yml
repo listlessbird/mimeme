@@ -1,11 +1,11 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: findmeme-postgres
+    container_name: mimeme-postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: findmeme
+      POSTGRES_DB: mimeme
     ports:
       - "5432:5432"
     volumes:
@@ -19,7 +19,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: findmeme-redis
+    container_name: mimeme-redis
     ports:
       - "6379:6379"
     volumes:
@@ -34,7 +34,7 @@ services:
 
   minio:
     image: minio/minio:latest
-    container_name: findmeme-minio
+    container_name: mimeme-minio
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -53,7 +53,7 @@ services:
 
   temporal:
     image: temporalio/auto-setup:latest
-    container_name: findmeme-temporal
+    container_name: mimeme-temporal
     ports:
       - "7233:7233"
     environment:
@@ -69,7 +69,7 @@ services:
 
   temporal-ui:
     image: temporalio/ui:latest
-    container_name: findmeme-temporal-ui
+    container_name: mimeme-temporal-ui
     ports:
       - "8088:8080"
     environment:
@@ -83,17 +83,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.api
-    container_name: findmeme-api
+    container_name: mimeme-api
     ports:
       - "8000:8000"
     environment:
       - APP_ENV=development
       - DEBUG=true
       - LOG_LEVEL=INFO
-      - DB_URL=postgresql://postgres:postgres@postgres:5432/findmeme
+      - DB_URL=postgresql://postgres:postgres@postgres:5432/mimeme
       - TEMPORAL_HOST=temporal:7233
       - S3_ENDPOINT_URL=http://minio:9000
-      - S3_BUCKET=findmeme
+      - S3_BUCKET=mimeme
       - S3_ACCESS_KEY_ID=minioadmin
       - S3_SECRET_ACCESS_KEY=minioadmin
     volumes:
@@ -119,15 +119,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    container_name: findmeme-cpu-worker
+    container_name: mimeme-cpu-worker
     command: python -m workers.cpu_worker
     environment:
       - APP_ENV=development
       - LOG_LEVEL=INFO
-      - DB_URL=postgresql://postgres:postgres@postgres:5432/findmeme
+      - DB_URL=postgresql://postgres:postgres@postgres:5432/mimeme
       - TEMPORAL_HOST=temporal:7233
       - S3_ENDPOINT_URL=http://minio:9000
-      - S3_BUCKET=findmeme
+      - S3_BUCKET=mimeme
       - S3_ACCESS_KEY_ID=minioadmin
       - S3_SECRET_ACCESS_KEY=minioadmin
       - EMBED_DEVICE=cpu
@@ -147,17 +147,17 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    container_name: findmeme-gpu-worker
+    container_name: mimeme-gpu-worker
     profiles:
       - gpu
     command: python -m workers.gpu_worker
     environment:
       - APP_ENV=development
       - LOG_LEVEL=INFO
-      - DB_URL=postgresql://postgres:postgres@postgres:5432/findmeme
+      - DB_URL=postgresql://postgres:postgres@postgres:5432/mimeme
       - TEMPORAL_HOST=temporal:7233
       - S3_ENDPOINT_URL=http://minio:9000
-      - S3_BUCKET=findmeme
+      - S3_BUCKET=mimeme
       - S3_ACCESS_KEY_ID=minioadmin
       - S3_SECRET_ACCESS_KEY=minioadmin
       - EMBED_DEVICE=cuda
@@ -189,4 +189,4 @@ volumes:
 
 networks:
   default:
-    name: findmeme-network
+    name: mimeme-network

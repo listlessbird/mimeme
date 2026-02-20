@@ -816,7 +816,7 @@ wheels = [
 ]
 
 [[package]]
-name = "find-meme-backend-api"
+name = "mimeme-backend-api"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
