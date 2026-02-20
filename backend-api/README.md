@@ -15,6 +15,8 @@ apply it by
 alembic revision --autogenerate -m "drop unique on images.dataset"
 
 
+uv run ty check src
+
 ## Start infrastructure 
 docker compose up -d postgres redis minio
 
