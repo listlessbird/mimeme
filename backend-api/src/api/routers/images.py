@@ -15,7 +15,7 @@ from api.models.images import (
 )
 from api.rate_limit import ADMIN_LIMIT, limiter
 from shared.config import settings
-from shared.models import Annotation, Artifact, IngestURL, Job, JobType, Processing
+from shared.models import Annotation, Artifact, IngestURL, Job, JobType, Processing, ProcessingStatus
 from shared.models import ORMImage as Image
 from workflows import IngestWorkflow, IngestWorkflowInput
 
@@ -89,16 +89,17 @@ async def list_images(
         query = query.join(Processing, Image.id == Processing.image_id, isouter=True)
 
         if status == ImageStatus.DONE:
-            query = query.where(Processing.embed_status == "done")
+            query = query.where(Processing.embed_status == ProcessingStatus.DONE)
         elif status == ImageStatus.PENDING:
             query = query.where(
-                (Processing.embed_status == "pending") | (Processing.embed_status.is_(None))
+                (Processing.embed_status == ProcessingStatus.PENDING)
+                | (Processing.embed_status.is_(None))
             )
         elif status == ImageStatus.FAILED:
             query = query.where(
-                (Processing.ocr_status == "failed")
-                | (Processing.caption_status == "failed")
-                | (Processing.embed_status == "failed")
+                (Processing.ocr_status == ProcessingStatus.FAILED)
+                | (Processing.caption_status == ProcessingStatus.FAILED)
+                | (Processing.embed_status == ProcessingStatus.FAILED)
             )
 
     count_query = select(func.count()).select_from(query.subquery())
@@ -236,16 +237,16 @@ def _compute_status(proc: Processing | None) -> ImageStatus:
     if not proc:
         return ImageStatus.PENDING
 
-    if proc.embed_status.value == "done":
+    if proc.embed_status == ProcessingStatus.DONE:
         return ImageStatus.DONE
 
-    if any(s.value == "failed" for s in [proc.ocr_status, proc.caption_status, proc.embed_status]):
+    if any(s == ProcessingStatus.FAILED for s in [proc.ocr_status, proc.caption_status, proc.embed_status]):
         return ImageStatus.FAILED
 
-    if proc.embed_status.value == "running":
+    if proc.embed_status == ProcessingStatus.RUNNING:
         return ImageStatus.EMBEDDING
 
-    if proc.caption_status.value == "running" or proc.ocr_status.value == "running":
+    if proc.caption_status == ProcessingStatus.RUNNING or proc.ocr_status == ProcessingStatus.RUNNING:
         return ImageStatus.ANNOTATING
 
     return ImageStatus.PENDING
