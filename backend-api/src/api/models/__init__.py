@@ -1,3 +1,4 @@
+from api.models.health import HealthResponse, IndexVersionResponse, IndexVersionsResponse
 from api.models.images import (
     ImageIngestRequest,
     ImageIngestResponse,
@@ -14,6 +15,9 @@ __all__ = [
     "ImageListResponse",
     "ImageResponse",
     "ImageStatus",
+    "HealthResponse",
+    "IndexVersionResponse",
+    "IndexVersionsResponse",
     "JobListResponse",
     "JobResponse",
     "RebuildIndexRequest",
