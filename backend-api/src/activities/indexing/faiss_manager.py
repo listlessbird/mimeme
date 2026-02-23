@@ -8,7 +8,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import faiss  # type: ignore[import-untyped]
 import numpy as np
@@ -17,6 +17,12 @@ from sqlalchemy.orm import Session
 from shared.config import settings
 from shared.models import IndexBuild
 from shared.services.storage import get_storage_service
+
+
+class BuildResult(NamedTuple):
+    version: str
+    text_num_vectors: int | None
+    text_s3_key: str | None
 
 
 class FaissIndexManager:
@@ -283,7 +289,7 @@ class FaissIndexManager:
         db: Session | None = None,
         text_embeddings: np.ndarray | None = None,
         text_image_ids: list[int] | None = None,
-    ) -> str:
+    ) -> BuildResult:
         if len(embeddings) != len(image_ids):
             raise ValueError("Embeddings and image_ids must have same length")
 
@@ -380,6 +386,10 @@ class FaissIndexManager:
             for local_path, _ in upload_jobs:
                 shutil.copy(local_path, cache_path / local_path.name)
 
+        text_built = (tmp_path / "text_index.faiss").exists()
+        text_s3_key = self._storage.build_index_key(version, "text_index.faiss") if text_built else None
+        text_n_built = len(text_image_ids) if text_built and text_image_ids is not None else None
+
         if db is not None:
             build_record = IndexBuild(
                 version=version,
@@ -393,7 +403,11 @@ class FaissIndexManager:
             db.add(build_record)
             db.commit()
 
-        return version
+        return BuildResult(
+            version=version,
+            text_num_vectors=text_n_built,
+            text_s3_key=text_s3_key,
+        )
 
     def swap_to_version(self, version: str, db: Session) -> None:
         with self._index_lock:

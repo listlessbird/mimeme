@@ -72,6 +72,7 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
     num_vectors: int | None = None
     dimension: int | None = None
     version: str | None = None
+    text_num_vectors: int | None = None
     storage = get_storage_service()
     index_manager = FaissIndexManager.get_instance()
     try:
@@ -225,7 +226,7 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
                     "dimension": dimension,
                 }
             )
-            version = index_manager.build_index(
+            build_result = index_manager.build_index(
                 embeddings=embedding_matrix,
                 image_ids=image_ids,
                 model_name=input.model_name,
@@ -235,12 +236,17 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
                 text_image_ids=final_text_image_ids,
             )
 
+            version = build_result.version
+            text_num_vectors = build_result.text_num_vectors
+
             index_key = storage.build_index_key(version, "index.faiss")
             return BuildIndexOutput(
                 version=version,
                 num_vectors=num_vectors,
                 dimension=dimension,
                 s3_key=index_key,
+                text_num_vectors=text_num_vectors,
+                text_s3_key=build_result.text_s3_key,
             )
     except Exception as exc:
         outcome = "error"
@@ -260,6 +266,7 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
             version=version,
             num_vectors=num_vectors,
             dimension=dimension,
+            text_num_vectors=text_num_vectors,
         )
 
 

@@ -388,6 +388,7 @@ async def complete_rebuild_job_activity(input: CompleteRebuildJobInput) -> None:
                     "num_vectors": input.num_vectors,
                     "dimension": input.dimension,
                     "removed_versions": input.removed_versions,
+                    "text_num_vectors": input.text_num_vectors,
                 }
             )
         _emit_activity_event(
@@ -399,6 +400,7 @@ async def complete_rebuild_job_activity(input: CompleteRebuildJobInput) -> None:
             num_vectors=input.num_vectors,
             dimension=input.dimension,
             removed_versions=len(input.removed_versions),
+            text_num_vectors=input.text_num_vectors,
         )
     except Exception as exc:
         _emit_activity_event(
