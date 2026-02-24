@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import structlog
-from fastapi import APIRouter, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Response, status
 from sqlalchemy import text
 from temporalio.client import Client
 from temporalio.contrib.pydantic import pydantic_data_converter
 
+from api.models.health import HealthResponse
 from shared.config import settings
 from shared.db import get_engine
 from shared.services.storage import get_storage_service
@@ -49,8 +49,8 @@ async def _check_temporal() -> bool:
         return False
 
 
-@router.get("/live")
-async def healthcheck() -> JSONResponse:
+@router.get("/live", response_model=HealthResponse)
+async def healthcheck(response: Response) -> HealthResponse:
     pg_ok = _check_postgres()
     s3_ok = _check_s3()
     temporal_ok = await _check_temporal()
@@ -67,4 +67,5 @@ async def healthcheck() -> JSONResponse:
 
     status_code = status.HTTP_200_OK if healthy else status.HTTP_503_SERVICE_UNAVAILABLE
 
-    return JSONResponse(status_code=status_code, content={"status": "ok" if healthy else "degraded"})
+    response.status_code = status_code
+    return HealthResponse(status="ok" if healthy else "degraded")

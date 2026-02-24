@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from api.auth import AdminRequired
 from api.deps import DbSession, TemporalClientDep
+from api.models.health import IndexVersionResponse, IndexVersionsResponse
 from api.models.jobs import JobListResponse, JobResponse, RebuildIndexRequest
 from shared.config import settings
 from shared.models import IndexBuild, Job, JobStatus, JobType
@@ -136,25 +137,25 @@ async def list_jobs(
     )
 
 
-@router.get("/indexes/versions")
+@router.get("/indexes/versions", response_model=IndexVersionsResponse)
 async def list_index_versions(
     _auth: AdminRequired,
     db: DbSession,
     limit: int = Query(default=10, ge=1, le=50),
-) -> dict:
+) -> IndexVersionsResponse:
     builds = db.query(IndexBuild).order_by(IndexBuild.created_at.desc()).limit(limit).all()
 
-    return {
-        "versions": [
-            {
-                "version": b.version,
-                "embed_model": b.embed_model,
-                "index_type": b.index_type,
-                "num_vectors": b.num_vectors,
-                "dimension": b.dimension,
-                "is_active": b.is_active,
-                "created_at": b.created_at.isoformat() if b.created_at else None,
-            }
+    return IndexVersionsResponse(
+        versions=[
+            IndexVersionResponse(
+                version=b.version,
+                embed_model=b.embed_model,
+                index_type=b.index_type,
+                num_vectors=b.num_vectors,
+                dimension=b.dimension,
+                is_active=b.is_active,
+                created_at=b.created_at.isoformat() if b.created_at else None,
+            )
             for b in builds
         ]
-    }
+    )
