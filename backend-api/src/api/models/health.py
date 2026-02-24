@@ -8,11 +8,11 @@ class HealthResponse(BaseModel):
 
 
 class IndexVersionResponse(BaseModel):
-    version: int
-    embed_model: str
-    index_type: str
-    num_vectors: int
-    dimension: int
+    version: str
+    embed_model: str | None = None
+    index_type: str | None = None
+    num_vectors: int | None = None
+    dimension: int | None = None
     is_active: bool
     created_at: str | None = None
 
