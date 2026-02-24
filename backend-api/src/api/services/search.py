@@ -24,9 +24,9 @@ def reciprocal_rank_fusion(
     For each result, score = 1 / (rank + k), summed across both lists.
     """
     scores: dict[int, float] = {}
-    for rank, (image_id, _) in enumerate(image_results):
+    for rank, (image_id, _) in enumerate(image_results, start=1):
         scores[image_id] = scores.get(image_id, 0) + 1 / (rank + k)
-    for rank, (image_id, _) in enumerate(text_results):
+    for rank, (image_id, _) in enumerate(text_results, start=1):
         scores[image_id] = scores.get(image_id, 0) + 1 / (rank + k)
     return sorted(scores.items(), key=lambda x: x[1], reverse=True)
 

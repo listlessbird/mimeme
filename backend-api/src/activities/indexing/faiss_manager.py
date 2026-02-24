@@ -12,6 +12,7 @@ from typing import Any, NamedTuple
 
 import faiss  # type: ignore[import-untyped]
 import numpy as np
+import structlog
 from sqlalchemy.orm import Session
 
 from shared.config import settings
@@ -117,27 +118,35 @@ class FaissIndexManager:
         # A node may already have index.faiss cached from before text indexes
         # existed, so this must run even when the image index is already on disk.
         text_index_local = cache_path / "text_index.faiss"
-        if not text_index_local.exists():
-            text_index_key = self._storage.build_index_key(version, "text_index.faiss")
-            text_mapping_key = self._storage.build_index_key(version, "text_mapping.json")
-            text_metadata_key = self._storage.build_index_key(version, "text_metadata.json")
+        text_mapping_local = cache_path / "text_mapping.json"
+        if not (text_index_local.exists() and text_mapping_local.exists()):
+            try:
+                text_index_key = self._storage.build_index_key(version, "text_index.faiss")
+                text_mapping_key = self._storage.build_index_key(version, "text_mapping.json")
+                text_metadata_key = self._storage.build_index_key(version, "text_metadata.json")
 
-            if self._storage.exists(text_index_key):
-                cache_path.mkdir(parents=True, exist_ok=True)
-                text_jobs: list[tuple[str, Path]] = [
-                    (text_index_key, text_index_local),
-                    (text_mapping_key, cache_path / "text_mapping.json"),
-                ]
-                if self._storage.exists(text_metadata_key):
-                    text_jobs.append((text_metadata_key, cache_path / "text_metadata.json"))
-
-                with ThreadPoolExecutor(max_workers=len(text_jobs)) as executor:
-                    futures = [
-                        executor.submit(self._storage.download_file, key, path)
-                        for key, path in text_jobs
+                if self._storage.exists(text_index_key):
+                    cache_path.mkdir(parents=True, exist_ok=True)
+                    text_jobs: list[tuple[str, Path]] = [
+                        (text_index_key, text_index_local),
+                        (text_mapping_key, text_mapping_local),
                     ]
-                    for future in futures:
-                        future.result()
+                    if self._storage.exists(text_metadata_key):
+                        text_jobs.append((text_metadata_key, cache_path / "text_metadata.json"))
+
+                    with ThreadPoolExecutor(max_workers=len(text_jobs)) as executor:
+                        futures = [
+                            executor.submit(self._storage.download_file, key, path)
+                            for key, path in text_jobs
+                        ]
+                        for future in futures:
+                            future.result()
+            except Exception:
+                structlog.get_logger().warning(
+                    "text_index_fetch_failed",
+                    version=version,
+                    exc_info=True,
+                )
 
         index = faiss.read_index(str(index_file))
 
@@ -386,9 +395,9 @@ class FaissIndexManager:
             for local_path, _ in upload_jobs:
                 shutil.copy(local_path, cache_path / local_path.name)
 
-        text_built = (tmp_path / "text_index.faiss").exists()
-        text_s3_key = self._storage.build_index_key(version, "text_index.faiss") if text_built else None
-        text_n_built = len(text_image_ids) if text_built and text_image_ids is not None else None
+            text_built = (tmp_path / "text_index.faiss").exists()
+            text_s3_key = self._storage.build_index_key(version, "text_index.faiss") if text_built else None
+            text_n_built = len(text_image_ids) if text_built and text_image_ids is not None else None
 
         if db is not None:
             build_record = IndexBuild(
