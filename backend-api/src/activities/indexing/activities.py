@@ -72,6 +72,7 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
     num_vectors: int | None = None
     dimension: int | None = None
     version: str | None = None
+    text_num_vectors: int | None = None
     storage = get_storage_service()
     index_manager = FaissIndexManager.get_instance()
     try:
@@ -96,8 +97,11 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
 
             total_candidates = len(candidates)
             image_ids: list[int] = [0] * total_candidates
+            text_image_ids: list[int] = [0] * total_candidates
             embedding_matrix: np.ndarray | None = None
+            text_embedding_matrix: np.ndarray | None = None
             loaded = 0
+            text_loaded = 0
 
             log.info(
                 "activity_step",
@@ -108,12 +112,22 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
                 index_type=input.index_type,
             )
 
-            def _download_one(candidate: tuple[int, str]) -> tuple[int, np.ndarray] | None:
+            def _download_one(
+                candidate: tuple[int, str],
+            ) -> tuple[int, np.ndarray, np.ndarray | None] | None:
                 image_id, embed_s3_key = candidate
                 try:
-                    return image_id, storage.download_numpy(embed_s3_key)
+                    img_emb = storage.download_numpy(embed_s3_key)
                 except ClientError:
                     return None
+                # Try to download the companion text embedding
+                text_key = embed_s3_key.replace(".npy", "_text.npy")
+                txt_emb: np.ndarray | None = None
+                try:
+                    txt_emb = storage.download_numpy(text_key)
+                except Exception:
+                    pass
+                return image_id, img_emb, txt_emb
 
             with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_DOWNLOAD_WORKERS) as executor:
                 futures = [
@@ -128,6 +142,7 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
                                 "scanned": i,
                                 "total": total_candidates,
                                 "loaded": loaded,
+                                "text_loaded": text_loaded,
                                 "missing": missing_vectors,
                                 "workers": MAX_DOWNLOAD_WORKERS,
                             }
@@ -137,7 +152,7 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
                     if result is None:
                         missing_vectors += 1
                         continue
-                    image_id, embedding = result
+                    image_id, embedding, text_embedding = result
                     embedding = embedding.astype(np.float32, copy=False)
 
                     if embedding_matrix is None:
@@ -155,6 +170,28 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
                     embedding_matrix[loaded, :] = embedding
                     loaded += 1
 
+                    # Collect text embeddings when available
+                    if text_embedding is not None:
+                        text_embedding = text_embedding.astype(np.float32, copy=False)
+                        if text_embedding_matrix is None:
+                            text_dim = int(text_embedding.shape[0])
+                            text_embedding_matrix = np.empty(
+                                (total_candidates, text_dim), dtype=np.float32
+                            )
+                        if int(text_embedding.shape[0]) != text_dim:
+                            log.warning(
+                                "activity_step",
+                                activity_name="build_index_activity",
+                                step="text_embedding_dim_mismatch",
+                                image_id=image_id,
+                                expected=text_dim,
+                                got=int(text_embedding.shape[0]),
+                            )
+                        else:
+                            text_image_ids[text_loaded] = image_id
+                            text_embedding_matrix[text_loaded, :] = text_embedding
+                            text_loaded += 1
+
             if loaded == 0 or embedding_matrix is None:
                 raise ValueError("Failed to load any embeddings from storage")
 
@@ -164,11 +201,19 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
             num_vectors = loaded
             dimension = int(embedding_matrix.shape[1])
 
+            # Trim text embedding matrix
+            final_text_embeddings: np.ndarray | None = None
+            final_text_image_ids: list[int] | None = None
+            if text_loaded > 0 and text_embedding_matrix is not None:
+                final_text_embeddings = text_embedding_matrix[:text_loaded]
+                final_text_image_ids = text_image_ids[:text_loaded]
+
             log.info(
                 "activity_step",
                 activity_name="build_index_activity",
                 step="embeddings_collected",
                 loaded=loaded,
+                text_loaded=text_loaded,
                 missing=missing_vectors,
                 total_candidates=total_candidates,
             )
@@ -177,16 +222,22 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
                 {
                     "stage": "build_faiss_index",
                     "loaded": loaded,
+                    "text_loaded": text_loaded,
                     "dimension": dimension,
                 }
             )
-            version = index_manager.build_index(
+            build_result = index_manager.build_index(
                 embeddings=embedding_matrix,
                 image_ids=image_ids,
                 model_name=input.model_name,
                 index_type=input.index_type,
                 db=session,
+                text_embeddings=final_text_embeddings,
+                text_image_ids=final_text_image_ids,
             )
+
+            version = build_result.version
+            text_num_vectors = build_result.text_num_vectors
 
             index_key = storage.build_index_key(version, "index.faiss")
             return BuildIndexOutput(
@@ -194,6 +245,8 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
                 num_vectors=num_vectors,
                 dimension=dimension,
                 s3_key=index_key,
+                text_num_vectors=text_num_vectors,
+                text_s3_key=build_result.text_s3_key,
             )
     except Exception as exc:
         outcome = "error"
@@ -213,6 +266,7 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
             version=version,
             num_vectors=num_vectors,
             dimension=dimension,
+            text_num_vectors=text_num_vectors,
         )
 
 

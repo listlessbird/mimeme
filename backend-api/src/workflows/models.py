@@ -30,3 +30,4 @@ class RebuildIndexWorkflowOutput(BaseModel):
     num_vectors: int
     dimension: int
     removed_versions: list[str]
+    text_num_vectors: int | None = None

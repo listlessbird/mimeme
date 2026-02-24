@@ -14,6 +14,8 @@ class BuildIndexOutput(BaseModel):
     num_vectors: int
     dimension: int
     s3_key: str
+    text_num_vectors: int | None = None
+    text_s3_key: str | None = None
 
 
 class SwapIndexInput(BaseModel):

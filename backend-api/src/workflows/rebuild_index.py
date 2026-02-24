@@ -182,6 +182,7 @@ class RebuildIndexWorkflow:
                     num_vectors=build_result.num_vectors,
                     dimension=build_result.dimension,
                     removed_versions=gc_result.removed_versions,
+                    text_num_vectors=build_result.text_num_vectors,
                 ),
                 task_queue=settings.temporal_task_queue_cpu,
                 start_to_close_timeout=timedelta(minutes=1),
@@ -193,6 +194,7 @@ class RebuildIndexWorkflow:
                 num_vectors=build_result.num_vectors,
                 dimension=build_result.dimension,
                 removed_versions=gc_result.removed_versions,
+                text_num_vectors=build_result.text_num_vectors,
             )
         except Exception as exc:
             error_message = str(exc)
@@ -229,6 +231,7 @@ class RebuildIndexWorkflow:
                     "version": build_result.version if build_result else None,
                     "num_vectors": build_result.num_vectors if build_result else None,
                     "dimension": build_result.dimension if build_result else None,
+                    "text_num_vectors": build_result.text_num_vectors if build_result else None,
                     "removed_versions": len(gc_result.removed_versions) if gc_result else None,
                 },
             )
