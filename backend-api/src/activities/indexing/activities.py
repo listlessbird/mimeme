@@ -125,7 +125,7 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
                 txt_emb: np.ndarray | None = None
                 try:
                     txt_emb = storage.download_numpy(text_key)
-                except ClientError:
+                except Exception:
                     pass
                 return image_id, img_emb, txt_emb
 
