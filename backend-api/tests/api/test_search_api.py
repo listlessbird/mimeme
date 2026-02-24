@@ -29,7 +29,7 @@ def test_search_happy_path_supports_pagination(
     monkeypatch.setattr(search_router, "_ensure_index_loaded_for_thread", lambda _im: None)
     monkeypatch.setattr(search_router, "SearchTextEncoder", type("Enc", (), {"get_instance": _DummyEncoder}))
 
-    def _fake_search(_index_manager, _embedding, _limit):
+    def _fake_search(_index_manager, _embedding, _limit, _mode="hybrid"):
         return [
             SearchResult(id=11, sha256="a", score=0.9, url="u1", caption="c1", ocr_text="o1"),
             SearchResult(id=12, sha256="b", score=0.8, url="u2", caption="c2", ocr_text="o2"),
