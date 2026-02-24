@@ -44,6 +44,7 @@ packages = ["src/activities", "src/api", "src/modal_app", "src/shared", "src/wor
 dev = [
     "ipykernel>=7.2.0",
     "matplotlib>=3.10.8",
+    "nbstripout>=0.9.1",
     "pandas>=3.0.0",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
