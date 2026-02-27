@@ -2,6 +2,7 @@ import asyncio
 import time
 from typing import Literal
 
+import structlog
 from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,7 @@ from shared.db import session_scope
 from shared.models import IndexBuild
 
 router = APIRouter()
+log = structlog.get_logger()
 
 _last_index_check: float = 0.0
 _INDEX_CHECK_INTERVAL: float = 60.0
@@ -31,6 +33,7 @@ def _ensure_index_loaded(db: Session, index_manager: IndexManagerDep) -> None:
         except FileNotFoundError:
             raise HTTPException(status_code=503, detail="Search index not loaded")
         except Exception as exc:
+            log.exception("search_index_reload_failed")
             raise HTTPException(status_code=500, detail=f"Failed to load search index: {exc}")
 
 
@@ -98,6 +101,7 @@ async def search(
         embedding_arr = await asyncio.to_thread(encoder.encode, q)
         embedding = embedding_arr.tolist()
     except Exception as e:
+        log.exception("search_query_encoding_failed", query=q, mode=mode)
         raise HTTPException(status_code=500, detail=f"Failed to encode query: {e}")
 
     try:
@@ -124,6 +128,13 @@ async def search(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception:
+        log.exception(
+            "search_query_failed",
+            query=q,
+            mode=mode,
+            limit=limit,
+            offset=offset,
+        )
         raise HTTPException(status_code=500, detail="Search failed")
 
 
