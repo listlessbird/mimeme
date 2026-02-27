@@ -39,6 +39,7 @@
     "drizzle-kit": "^0.31.8",
     "drizzle-orm": "^0.45.0",
     "embla-carousel-react": "^8.6.0",
+    "evlog": "^2.0.0",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.574.0",
     "motion": "^12.34.1",

@@ -44,23 +44,26 @@ export const searchMemes = createServerFn({ method: "GET" })
 	.handler(async ({ data }) => {
 		const start = Date.now();
 		const requestId = crypto.randomUUID();
+		const endpointPath = "/search";
+		const requestUrl = new URL(endpointPath, env.API_BASE_URL);
+		requestUrl.searchParams.set("q", data.q);
+		if (data.limit) requestUrl.searchParams.set("limit", String(data.limit));
+		if (data.offset) requestUrl.searchParams.set("offset", String(data.offset));
+
 		const wideEvent: Record<string, unknown> = {
 			request_id: requestId,
 			operation: "search_memes",
 			method: "GET",
-			endpoint: "/search",
+			endpoint: endpointPath,
+			endpoint_url: requestUrl.toString(),
 			query: data.q,
 			query_length: data.q.length,
 			limit: data.limit,
 			offset: data.offset,
 		};
 
-		const params = new URLSearchParams({ q: data.q });
-		if (data.limit) params.set("limit", String(data.limit));
-		if (data.offset) params.set("offset", String(data.offset));
-
 		try {
-			const res = await fetch(`${env.API_BASE_URL}/search?${params}`, {
+			const res = await fetch(requestUrl, {
 				headers: {
 					"X-API-Key": env.API_KEY_READONLY,
 					"X-Request-ID": requestId,

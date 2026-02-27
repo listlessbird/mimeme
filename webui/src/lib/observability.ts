@@ -1,38 +1,54 @@
 export type LogLevel = "info" | "error";
 
-interface LogEnvelope {
-	level: LogLevel;
-	event: string;
-	timestamp: string;
-	service: "webui";
-	environment: {
-		runtime: "server" | "client";
-		region?: string;
-		commit_hash?: string;
-		service_version?: string;
-	};
-	data: Record<string, unknown>;
-}
+import { initLogger, log, parseError } from "evlog";
 
 const isServer = typeof window === "undefined";
+const runtimeNodeEnv =
+	isServer && typeof process !== "undefined"
+		? process.env.NODE_ENV
+		: import.meta.env.MODE;
+let loggerInitialized = false;
 
-function environmentContext(): LogEnvelope["environment"] {
-	if (!isServer) {
-		return {
-			runtime: "client",
-			service_version: import.meta.env.VITE_APP_VERSION,
-		};
+function isPrettyLoggingEnabled(): boolean {
+	if (isServer) {
+		return process.env.LOG_PRETTY === "1" || runtimeNodeEnv !== "production";
 	}
 
+	return (
+		import.meta.env.VITE_LOG_PRETTY === "1" || runtimeNodeEnv !== "production"
+	);
+}
+
+function environmentContext(): {
+	region?: string;
+	commitHash?: string;
+	version?: string;
+} {
+	if (!isServer) return {};
+
 	return {
-		runtime: "server",
 		region: process.env.CF_REGION ?? process.env.AWS_REGION,
-		commit_hash:
+		commitHash:
 			process.env.COMMIT_SHA ??
 			process.env.CF_PAGES_COMMIT_SHA ??
 			process.env.VERCEL_GIT_COMMIT_SHA,
-		service_version: process.env.npm_package_version,
+		version: process.env.npm_package_version,
 	};
+}
+
+function initializeLogger(): void {
+	if (loggerInitialized) return;
+
+	initLogger({
+		env: {
+			service: "webui",
+			environment: runtimeNodeEnv ?? "development",
+			...environmentContext(),
+		},
+		pretty: isPrettyLoggingEnabled(),
+	});
+
+	loggerInitialized = true;
 }
 
 function emit(
@@ -40,21 +56,19 @@ function emit(
 	event: string,
 	data: Record<string, unknown>,
 ): void {
-	const payload: LogEnvelope = {
-		level,
+	initializeLogger();
+
+	const payload = {
 		event,
-		timestamp: new Date().toISOString(),
-		service: "webui",
-		environment: environmentContext(),
-		data,
+		...data,
 	};
 
 	if (level === "error") {
-		console.error(JSON.stringify(payload));
+		log.error(payload);
 		return;
 	}
 
-	console.info(JSON.stringify(payload));
+	log.info(payload);
 }
 
 export function logInfo(event: string, data: Record<string, unknown>): void {
@@ -66,16 +80,26 @@ export function logError(event: string, data: Record<string, unknown>): void {
 }
 
 export function serializeError(error: unknown): Record<string, unknown> {
+	const parsedError = parseError(error);
+
 	if (error instanceof Error) {
 		return {
 			type: error.name,
 			message: error.message,
 			stack: error.stack,
+			status: parsedError.status,
+			why: parsedError.why,
+			fix: parsedError.fix,
+			link: parsedError.link,
 		};
 	}
 
 	return {
-		type: "UnknownError",
-		message: String(error),
+		type: "UnknownError" as const,
+		message: parsedError.message,
+		status: parsedError.status,
+		why: parsedError.why,
+		fix: parsedError.fix,
+		link: parsedError.link,
 	};
 }
