@@ -27,6 +27,7 @@ dependencies = [
     "temporalio>=1.9.0",
     "modal>=0.73",
     "slowapi>=0.1.9",
+    "axiom-py>=0.10.0",
 ]
 
 [project.scripts]

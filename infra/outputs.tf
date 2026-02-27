@@ -30,3 +30,7 @@ output "neon_project_id" {
 output "neon_database_name" {
   value = neon_database.app.name
 }
+
+output "axiom_dataset_name" {
+  value = axiom_dataset.api_logs.name
+}

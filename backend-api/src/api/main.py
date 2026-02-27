@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-import logging
-from pathlib import Path
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import structlog
 import uvicorn
@@ -20,31 +19,9 @@ from api.routers import health, images, jobs, search
 from api.services.text_encoder import SearchTextEncoder
 from shared.config import settings
 from shared.db import get_db
+from shared.logging import setup_logging
 from shared.models import IndexBuild
 from shared.services.storage import get_storage_service
-
-
-def setup_logging() -> None:
-    structlog.configure(
-        processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.processors.add_log_level,
-            structlog.processors.StackInfoRenderer(),
-            structlog.dev.set_exc_info,
-            structlog.processors.TimeStamper(fmt="iso"),
-            (
-                structlog.dev.ConsoleRenderer()
-                if settings.debug
-                else structlog.processors.JSONRenderer()
-            ),
-        ],
-        wrapper_class=structlog.make_filtering_bound_logger(
-            logging.getLevelName(settings.log_level)
-        ),
-        context_class=dict,
-        logger_factory=structlog.PrintLoggerFactory(),
-        cache_logger_on_first_use=True,
-    )
 
 
 def _startup_env_snapshot() -> dict[str, object]:
@@ -88,7 +65,7 @@ def _index_files_snapshot(version: str | None) -> dict[str, object]:
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log = structlog.get_logger()
-    setup_logging()
+    setup_logging("api")
 
     log.info("starting_app", env=settings.app_env)
     log.info("startup_env", **_startup_env_snapshot())

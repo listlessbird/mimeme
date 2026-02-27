@@ -9,6 +9,10 @@ terraform {
       source  = "kislerdm/neon"
       version = "0.13.0"
     }
+    axiom = {
+      source  = "axiomhq/axiom"
+      version = "~> 1.4"
+    }
   }
 }
 
