@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 
@@ -13,7 +14,7 @@ from shared.config import settings
 from shared.models import IndexBuild, Job, JobStatus, JobType
 from workflows import RebuildIndexWorkflow, RebuildIndexWorkflowInput
 
-router = APIRouter()
+router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
 
 @router.get("/{job_id}", response_model=JobResponse)
@@ -104,9 +105,9 @@ async def cancel_job(
 async def list_jobs(
     _auth: AdminRequired,
     db: DbSession,
-    status: JobStatus | None = Query(default=None),
-    job_type: JobType | None = Query(default=None),
-    limit: int = Query(default=20, ge=1, le=100),
+    status: Annotated[JobStatus | None, Query()] = None,
+    job_type: Annotated[JobType | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> JobListResponse:
     query = db.query(Job)
 
@@ -141,7 +142,7 @@ async def list_jobs(
 async def list_index_versions(
     _auth: AdminRequired,
     db: DbSession,
-    limit: int = Query(default=10, ge=1, le=50),
+    limit: Annotated[int, Query(ge=1, le=50)] = 10,
 ) -> IndexVersionsResponse:
     builds = db.query(IndexBuild).order_by(IndexBuild.created_at.desc()).limit(limit).all()
 

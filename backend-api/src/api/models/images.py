@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field, HttpUrl
 
 class ImageIngestRequest(BaseModel):
     urls: list[HttpUrl] = Field(
-        ..., min_length=1, max_length=100, description="List of image URLs to ingest"
+        min_length=1, max_length=100, description="List of image URLs to ingest"
     )
     tags: list[str] = Field(default_factory=list, description="Tags to apply")
     dataset: str | None = Field(default=None, description="Dataset name for organization")
@@ -31,10 +31,10 @@ class ImageIngestRequest(BaseModel):
 
 
 class ImageIngestResponse(BaseModel):
-    job_id: str = Field(..., description="Job ID for tracking progress")
-    queued: int = Field(..., description="Number of images queued")
+    job_id: str = Field(description="Job ID for tracking progress")
+    queued: int = Field(description="Number of images queued")
     duplicates: int = Field(default=0, description="Number of duplicate URLs in request")
-    message: str = Field(..., description="Status message")
+    message: str = Field(description="Status message")
 
 
 class ImageStatus(str, Enum):

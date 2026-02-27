@@ -1,6 +1,6 @@
 import asyncio
 import time
-from typing import Literal
+from typing import Annotated, Literal
 
 import structlog
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -15,7 +15,7 @@ from api.services.text_encoder import SearchTextEncoder
 from shared.db import session_scope
 from shared.models import IndexBuild
 
-router = APIRouter()
+router = APIRouter(prefix="/search", tags=["Search"])
 log = structlog.get_logger()
 
 _last_index_check: float = 0.0
@@ -83,13 +83,13 @@ async def search(
     request: Request,
     _auth: ReadonlyRequired,
     index_manager: IndexManagerDep,
-    q: str = Query(..., min_length=1, max_length=200, description="Search query"),
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
-    mode: Literal["image", "text", "hybrid"] = Query(
-        default="hybrid",
-        description="Search mode: image (visual), text (caption/OCR), hybrid (both via RRF)",
-    ),
+    q: Annotated[str, Query(min_length=1, max_length=200, description="Search query")],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    mode: Annotated[
+        Literal["image", "text", "hybrid"],
+        Query(description="Search mode: image (visual), text (caption/OCR), hybrid (both via RRF)"),
+    ] = "hybrid",
 ) -> SearchResponse:
     start_time = time.perf_counter()
 
@@ -145,7 +145,7 @@ async def find_similar(
     _auth: ReadonlyRequired,
     image_id: int,
     index_manager: IndexManagerDep,
-    limit: int = Query(default=20, ge=1, le=100),
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> SearchResponse:
     start_time = time.perf_counter()
 
