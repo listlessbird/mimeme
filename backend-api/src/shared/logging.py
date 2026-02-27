@@ -1,32 +1,54 @@
 from __future__ import annotations
 
+import atexit
 import logging
 import time
 
 import structlog
+from axiom_py import Client
+from axiom_py.structlog import AxiomProcessor
 from temporalio import activity
 
 from shared.config import settings
 
+_axiom_client: Client | None = None
 
-def setup_logging(service: str) -> None:
+
+def _get_axiom_processor() -> AxiomProcessor | None:
+    if not settings.axiom_api_token or not settings.axiom_dataset:
+        return None
+
+    global _axiom_client
+
+    _axiom_client = Client(token=settings.axiom_api_token)
+    atexit.register(_axiom_client.shutdown_hook)
+    return AxiomProcessor(_axiom_client, settings.axiom_dataset)
+
+
+def setup_logging(service: str = "api") -> None:
     # Keep SQL statement logs off by default; they are too noisy for worker tracing.
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
 
+    axiom_proc = _get_axiom_processor()
+
+    processors: list[structlog.types.Processor] = [
+        structlog.contextvars.merge_contextvars,
+        structlog.processors.add_log_level,
+        structlog.processors.StackInfoRenderer(),
+        structlog.dev.set_exc_info,
+        structlog.processors.TimeStamper(fmt="iso", key="_time"),
+    ]
+
+    if axiom_proc:
+        processors.append(axiom_proc)
+
+    processors.append(
+        structlog.dev.ConsoleRenderer() if settings.debug else structlog.processors.JSONRenderer()
+    )
+
     structlog.configure(
-        processors=[
-            structlog.contextvars.merge_contextvars,
-            structlog.processors.add_log_level,
-            structlog.processors.StackInfoRenderer(),
-            structlog.dev.set_exc_info,
-            structlog.processors.TimeStamper(fmt="iso"),
-            (
-                structlog.dev.ConsoleRenderer()
-                if settings.debug
-                else structlog.processors.JSONRenderer()
-            ),
-        ],
+        processors=processors,
         wrapper_class=structlog.make_filtering_bound_logger(
             logging.getLevelName(settings.log_level)
         ),

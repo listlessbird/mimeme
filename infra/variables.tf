@@ -45,3 +45,8 @@ variable "neon_org_id" {
 variable "project_name" {
   type = string
 }
+
+variable "axiom_api_token" {
+  type      = string
+  sensitive = true
+}

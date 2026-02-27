@@ -11,6 +11,7 @@ repomix-output.xml
 infra/terraform.tfvars
 infra/terraform.tfstate
 infra/terraform.tfstate.backup
+infra/terraform.tfstate.*.backup
 infra/.terraform/
 infra/.terraform.lock.hcl.backup
 infra/*.tfplan
