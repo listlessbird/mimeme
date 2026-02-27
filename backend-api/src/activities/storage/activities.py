@@ -15,49 +15,12 @@ from activities.storage.models import (
     ProcessImageInput,
     ProcessImageOutput,
 )
+from shared.logging import emit_activity_event
 from shared.db import session_scope
 from shared.models import ORMImage, Processing
 from shared.services import StorageService, get_storage_service
 
 log = structlog.get_logger()
-
-
-def _activity_context() -> dict[str, object]:
-    try:
-        info = activity.info()
-    except RuntimeError:
-        return {}
-    return {
-        "workflow_id": info.workflow_id,
-        "run_id": info.workflow_run_id,
-        "workflow_type": info.workflow_type,
-        "activity_id": info.activity_id,
-        "activity_type": info.activity_type,
-        "attempt": info.attempt,
-        "task_queue": info.task_queue,
-        "is_local": info.is_local,
-    }
-
-
-def _emit_activity_event(
-    *,
-    activity_name: str,
-    started_at: float,
-    outcome: str,
-    error: str | None = None,
-    **fields: object,
-) -> None:
-    event: dict[str, object] = {
-        "event_type": "activity_wide_event",
-        "activity_name": activity_name,
-        "outcome": outcome,
-        "duration_ms": int((time.monotonic() - started_at) * 1000),
-        **_activity_context(),
-    }
-    event.update(fields)
-    if error:
-        event["error"] = error
-    log.info("activity_wide_event", **event)
 
 
 @activity.defn
@@ -155,7 +118,8 @@ async def download_image_activity(input: DownloadImageInput) -> DownloadImageOut
             error=str(e),
         )
     finally:
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="download_image_activity",
             started_at=started,
             outcome=outcome,
@@ -280,7 +244,8 @@ async def process_image_activity(input: ProcessImageInput) -> ProcessImageOutput
             local_path=str(local_path),
         )
         local_path.unlink(missing_ok=True)
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="process_image_activity",
             started_at=started,
             outcome=outcome,
@@ -306,7 +271,8 @@ async def cleanup_temp_file_activity(local_path: str) -> None:
         error_message = str(exc)
         raise
     finally:
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="cleanup_temp_file_activity",
             started_at=started,
             outcome=outcome,

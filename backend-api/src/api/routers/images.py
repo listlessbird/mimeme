@@ -15,7 +15,15 @@ from api.models.images import (
 )
 from api.rate_limit import ADMIN_LIMIT, limiter
 from shared.config import settings
-from shared.models import Annotation, Artifact, IngestURL, Job, JobType, Processing, ProcessingStatus
+from shared.models import (
+    Annotation,
+    Artifact,
+    IngestURL,
+    Job,
+    JobType,
+    Processing,
+    ProcessingStatus,
+)
 from shared.models import ORMImage as Image
 from workflows import IngestWorkflow, IngestWorkflowInput
 
@@ -240,13 +248,19 @@ def _compute_status(proc: Processing | None) -> ImageStatus:
     if proc.embed_status == ProcessingStatus.DONE:
         return ImageStatus.DONE
 
-    if any(s == ProcessingStatus.FAILED for s in [proc.ocr_status, proc.caption_status, proc.embed_status]):
+    if any(
+        s == ProcessingStatus.FAILED
+        for s in [proc.ocr_status, proc.caption_status, proc.embed_status]
+    ):
         return ImageStatus.FAILED
 
     if proc.embed_status == ProcessingStatus.RUNNING:
         return ImageStatus.EMBEDDING
 
-    if proc.caption_status == ProcessingStatus.RUNNING or proc.ocr_status == ProcessingStatus.RUNNING:
+    if (
+        proc.caption_status == ProcessingStatus.RUNNING
+        or proc.ocr_status == ProcessingStatus.RUNNING
+    ):
         return ImageStatus.ANNOTATING
 
     return ImageStatus.PENDING

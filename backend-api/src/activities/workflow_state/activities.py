@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 import structlog
 from temporalio import activity
 
+from shared.logging import emit_activity_event
 from shared.db import session_scope
 from shared.models import (
     Annotation,
@@ -35,44 +36,6 @@ from .models import (
 log = structlog.get_logger()
 
 
-def _activity_context() -> dict[str, object]:
-    try:
-        info = activity.info()
-    except RuntimeError:
-        return {}
-    return {
-        "workflow_id": info.workflow_id,
-        "run_id": info.workflow_run_id,
-        "workflow_type": info.workflow_type,
-        "activity_id": info.activity_id,
-        "activity_type": info.activity_type,
-        "attempt": info.attempt,
-        "task_queue": info.task_queue,
-        "is_local": info.is_local,
-    }
-
-
-def _emit_activity_event(
-    *,
-    activity_name: str,
-    started_at: float,
-    outcome: str,
-    error: str | None = None,
-    **fields: object,
-) -> None:
-    event: dict[str, object] = {
-        "event_type": "activity_wide_event",
-        "activity_name": activity_name,
-        "outcome": outcome,
-        "duration_ms": int((time.monotonic() - started_at) * 1000),
-        **_activity_context(),
-    }
-    event.update(fields)
-    if error:
-        event["error"] = error
-    log.info("activity_wide_event", **event)
-
-
 @activity.defn
 async def ingest_initialize_activity(job_id: str) -> IngestInitOutput:
     started = time.monotonic()
@@ -86,7 +49,8 @@ async def ingest_initialize_activity(job_id: str) -> IngestInitOutput:
             job.started_at = datetime.now(UTC)
             urls = session.query(IngestURL).filter_by(job_id=job_id).all()
             output = IngestInitOutput(urls=[IngestUrlItem(id=u.id, url=u.url) for u in urls])
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="ingest_initialize_activity",
             started_at=started,
             outcome="success",
@@ -95,7 +59,8 @@ async def ingest_initialize_activity(job_id: str) -> IngestInitOutput:
         )
         return output
     except Exception as exc:
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="ingest_initialize_activity",
             started_at=started,
             outcome="error",
@@ -116,7 +81,8 @@ async def mark_ingest_url_failed_activity(input: MarkIngestUrlFailedInput) -> No
             if url:
                 url.status = ProcessingStatus.FAILED
                 url.error_message = error_message
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="mark_ingest_url_failed_activity",
             started_at=started,
             outcome="failed",
@@ -125,7 +91,8 @@ async def mark_ingest_url_failed_activity(input: MarkIngestUrlFailedInput) -> No
             failure_reason=error_message,
         )
     except Exception as exc:
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="mark_ingest_url_failed_activity",
             started_at=started,
             outcome="error",
@@ -154,7 +121,8 @@ async def mark_ingest_url_done_activity(input: MarkIngestUrlDoneInput) -> None:
                     # Keep ingest row consistent even if upstream passed a stale/non-existent image id.
                     url.status = ProcessingStatus.FAILED
                     url.error_message = f"Image {input.image_id} not found while marking ingest URL done"
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="mark_ingest_url_done_activity",
             started_at=started,
             outcome="success" if (found and image_exists) else "failed",
@@ -164,7 +132,8 @@ async def mark_ingest_url_done_activity(input: MarkIngestUrlDoneInput) -> None:
             image_exists=image_exists,
         )
     except Exception as exc:
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="mark_ingest_url_done_activity",
             started_at=started,
             outcome="error",
@@ -195,7 +164,8 @@ async def save_annotations_activity(input: SaveAnnotationsInput) -> None:
                 proc.caption_model = input.caption_model
                 proc.ocr_status = ProcessingStatus.DONE
                 proc.ocr_model = input.ocr_model
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="save_annotations_activity",
             started_at=started,
             outcome="success",
@@ -203,7 +173,8 @@ async def save_annotations_activity(input: SaveAnnotationsInput) -> None:
             annotation_created=created,
         )
     except Exception as exc:
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="save_annotations_activity",
             started_at=started,
             outcome="error",
@@ -225,7 +196,8 @@ async def save_embedding_info_activity(input: SaveEmbeddingInfoInput) -> None:
                 proc.embed_model = input.model
                 proc.embed_dim = input.dimension
                 proc.embed_s3_key = input.image_embedding_key
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="save_embedding_info_activity",
             started_at=started,
             outcome="success",
@@ -234,7 +206,8 @@ async def save_embedding_info_activity(input: SaveEmbeddingInfoInput) -> None:
             dimension=input.dimension,
         )
     except Exception as exc:
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="save_embedding_info_activity",
             started_at=started,
             outcome="error",
@@ -255,7 +228,8 @@ async def update_job_progress_activity(input: UpdateJobProgressInput) -> None:
                 job.progress = input.progress
                 if input.message is not None:
                     job.message = input.message
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="update_job_progress_activity",
             started_at=started,
             outcome="success",
@@ -265,7 +239,8 @@ async def update_job_progress_activity(input: UpdateJobProgressInput) -> None:
             has_message=input.message is not None,
         )
     except Exception as exc:
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="update_job_progress_activity",
             started_at=started,
             outcome="error",
@@ -293,7 +268,8 @@ async def complete_ingest_job_activity(input: CompleteIngestJobInput) -> None:
                         "duplicates": input.duplicates,
                     }
                 )
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="complete_ingest_job_activity",
             started_at=started,
             outcome="failed" if input.failed > 0 else "success",
@@ -304,7 +280,8 @@ async def complete_ingest_job_activity(input: CompleteIngestJobInput) -> None:
             duplicates=input.duplicates,
         )
     except Exception as exc:
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="complete_ingest_job_activity",
             started_at=started,
             outcome="error",
@@ -324,14 +301,16 @@ async def start_rebuild_job_activity(input: StartRebuildJobInput) -> None:
                 raise ValueError(f"Job {input.job_id} not found")
             job.status = JobStatus.RUNNING
             job.started_at = datetime.now(UTC)
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="start_rebuild_job_activity",
             started_at=started,
             outcome="success",
             job_id=input.job_id,
         )
     except Exception as exc:
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="start_rebuild_job_activity",
             started_at=started,
             outcome="error",
@@ -353,7 +332,8 @@ async def fail_rebuild_job_activity(input: FailRebuildJobInput) -> None:
                 job.status = JobStatus.FAILED
                 job.message = error_message
                 job.completed_at = datetime.now(UTC)
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="fail_rebuild_job_activity",
             started_at=started,
             outcome="success",
@@ -361,7 +341,8 @@ async def fail_rebuild_job_activity(input: FailRebuildJobInput) -> None:
             found=found,
         )
     except Exception as exc:
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="fail_rebuild_job_activity",
             started_at=started,
             outcome="error",
@@ -391,7 +372,8 @@ async def complete_rebuild_job_activity(input: CompleteRebuildJobInput) -> None:
                     "text_num_vectors": input.text_num_vectors,
                 }
             )
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="complete_rebuild_job_activity",
             started_at=started,
             outcome="success",
@@ -403,7 +385,8 @@ async def complete_rebuild_job_activity(input: CompleteRebuildJobInput) -> None:
             text_num_vectors=input.text_num_vectors,
         )
     except Exception as exc:
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="complete_rebuild_job_activity",
             started_at=started,
             outcome="error",

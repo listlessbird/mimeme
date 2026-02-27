@@ -16,50 +16,13 @@ from activities.indexing.models import (
     GarbageCollectOutput,
     SwapIndexInput,
 )
+from shared.logging import emit_activity_event
 from shared.db import session_scope
 from shared.models import Processing, ProcessingStatus
 from shared.services.storage import get_storage_service
 
 log = structlog.get_logger()
 MAX_DOWNLOAD_WORKERS = max(4, min(32, (os.cpu_count() or 8) * 2))
-
-
-def _activity_context() -> dict[str, object]:
-    try:
-        info = activity.info()
-    except RuntimeError:
-        return {}
-    return {
-        "workflow_id": info.workflow_id,
-        "run_id": info.workflow_run_id,
-        "workflow_type": info.workflow_type,
-        "activity_id": info.activity_id,
-        "activity_type": info.activity_type,
-        "attempt": info.attempt,
-        "task_queue": info.task_queue,
-        "is_local": info.is_local,
-    }
-
-
-def _emit_activity_event(
-    *,
-    activity_name: str,
-    started_at: float,
-    outcome: str,
-    error: str | None = None,
-    **fields: object,
-) -> None:
-    event: dict[str, object] = {
-        "event_type": "activity_wide_event",
-        "activity_name": activity_name,
-        "outcome": outcome,
-        "duration_ms": int((time.monotonic() - started_at) * 1000),
-        **_activity_context(),
-    }
-    event.update(fields)
-    if error:
-        event["error"] = error
-    log.info("activity_wide_event", **event)
 
 
 @activity.defn
@@ -253,7 +216,8 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
         error_message = str(exc)
         raise
     finally:
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="build_index_activity",
             started_at=started,
             outcome=outcome,
@@ -284,7 +248,8 @@ def swap_index_activity(input: SwapIndexInput) -> None:
         error_message = str(exc)
         raise
     finally:
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="swap_index_activity",
             started_at=started,
             outcome=outcome,
@@ -311,7 +276,8 @@ def garbage_collect_indexes_activity() -> GarbageCollectOutput:
         error_message = str(exc)
         raise
     finally:
-        _emit_activity_event(
+        emit_activity_event(
+            log=log,
             activity_name="garbage_collect_indexes_activity",
             started_at=started,
             outcome=outcome,
