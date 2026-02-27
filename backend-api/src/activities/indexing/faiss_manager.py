@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import tempfile
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
+from time import perf_counter
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -18,6 +20,8 @@ from sqlalchemy.orm import Session
 from shared.config import settings
 from shared.models import IndexBuild
 from shared.services.storage import get_storage_service
+
+log = structlog.get_logger()
 
 
 class BuildResult(NamedTuple):
@@ -87,11 +91,94 @@ class FaissIndexManager:
                 raise FileNotFoundError("No active index found in db")
             self._load_index_version(active_build.version)
 
+    def load_index_version(self, version: str) -> None:
+        with self._index_lock:
+            self._load_index_version(version)
+
+    @staticmethod
+    def _version_sort_key(version: str) -> tuple[int, str]:
+        match = re.match(r"^v(\d{8})-(\d{6})(?:-(.*))?$", version)
+        if not match:
+            return (0, version)
+        stamp = int(f"{match.group(1)}{match.group(2)}")
+        suffix = match.group(3) or ""
+        return (stamp, suffix)
+
+    def list_available_versions(self) -> list[str]:
+        prefix = f"{self._storage.INDEXES_PREFIX}/"
+        versions: set[str] = set()
+        for key, _ in self._storage.list_objects(prefix):
+            parts = key.split("/", 2)
+            if len(parts) >= 2 and parts[1]:
+                versions.add(parts[1])
+        return sorted(versions, key=self._version_sort_key)
+
+    def _has_required_artifacts(self, version: str) -> bool:
+        index_key = self._storage.build_index_key(version, "index.faiss")
+        mapping_key = self._storage.build_index_key(version, "mapping.json")
+        return self._storage.exists(index_key) and self._storage.exists(mapping_key)
+
+    def autoload_latest_available(self, db: Session) -> str | None:
+        versions = [v for v in self.list_available_versions() if self._has_required_artifacts(v)]
+        if not versions:
+            return None
+
+        latest = versions[-1]
+        if self._active_version == latest and self._index is not None:
+            return None
+
+        with self._index_lock:
+            self._load_index_version(latest)
+
+            db.query(IndexBuild).filter(
+                IndexBuild.is_active,
+                IndexBuild.version != latest,
+            ).update({"is_active": False})
+
+            build = db.query(IndexBuild).filter(IndexBuild.version == latest).first()
+            if build is None:
+                build = IndexBuild(
+                    version=latest,
+                    s3_key=self._storage.build_index_key(latest, "index.faiss"),
+                    embed_model=self._metadata.get("model_name"),
+                    index_type=self._metadata.get("index_type"),
+                    num_vectors=self._metadata.get("num_vectors"),
+                    dimension=self._metadata.get("dimension"),
+                    is_active=True,
+                )
+                db.add(build)
+            else:
+                build.is_active = True
+                if not build.s3_key:
+                    build.s3_key = self._storage.build_index_key(latest, "index.faiss")
+                if build.embed_model is None:
+                    build.embed_model = self._metadata.get("model_name")
+                if build.index_type is None:
+                    build.index_type = self._metadata.get("index_type")
+                if build.num_vectors is None:
+                    build.num_vectors = self._metadata.get("num_vectors")
+                if build.dimension is None:
+                    build.dimension = self._metadata.get("dimension")
+
+            db.commit()
+
+        return latest
+
     def _load_index_version(self, version: str) -> None:
+        started_at = perf_counter()
         cache_path = self._cache_dir / version
         index_file = cache_path / "index.faiss"
         mapping_file = cache_path / "mapping.json"
         metadata_file = cache_path / "metadata.json"
+        log.info(
+            "index_load_step",
+            step="begin",
+            version=version,
+            cache_path=str(cache_path),
+            cache_index_exists=index_file.exists(),
+            cache_mapping_exists=mapping_file.exists(),
+            cache_metadata_exists=metadata_file.exists(),
+        )
 
         if not index_file.exists():
             cache_path.mkdir(parents=True, exist_ok=True)
@@ -105,7 +192,15 @@ class FaissIndexManager:
             if self._storage.exists(metadata_key):
                 download_jobs.append((metadata_key, metadata_file))
 
+            log.info(
+                "index_load_step",
+                step="download_image_artifacts_start",
+                version=version,
+                artifacts=[key for key, _ in download_jobs],
+                artifact_count=len(download_jobs),
+            )
             worker_count = min(8, len(download_jobs))
+            dl_started = perf_counter()
             with ThreadPoolExecutor(max_workers=worker_count) as executor:
                 futures = [
                     executor.submit(self._storage.download_file, key, path)
@@ -113,6 +208,24 @@ class FaissIndexManager:
                 ]
                 for future in futures:
                     future.result()
+            log.info(
+                "index_load_step",
+                step="download_image_artifacts_done",
+                version=version,
+                duration_ms=int((perf_counter() - dl_started) * 1000),
+                index_size_bytes=index_file.stat().st_size if index_file.exists() else None,
+                mapping_size_bytes=mapping_file.stat().st_size if mapping_file.exists() else None,
+                metadata_size_bytes=metadata_file.stat().st_size if metadata_file.exists() else None,
+            )
+        else:
+            log.info(
+                "index_load_step",
+                step="download_image_artifacts_skipped_cache_hit",
+                version=version,
+                index_size_bytes=index_file.stat().st_size if index_file.exists() else None,
+                mapping_size_bytes=mapping_file.stat().st_size if mapping_file.exists() else None,
+                metadata_size_bytes=metadata_file.stat().st_size if metadata_file.exists() else None,
+            )
 
         # Fetch text index artifacts independently of the image index cache.
         # A node may already have index.faiss cached from before text indexes
@@ -134,6 +247,14 @@ class FaissIndexManager:
                     if self._storage.exists(text_metadata_key):
                         text_jobs.append((text_metadata_key, cache_path / "text_metadata.json"))
 
+                    log.info(
+                        "index_load_step",
+                        step="download_text_artifacts_start",
+                        version=version,
+                        artifacts=[key for key, _ in text_jobs],
+                        artifact_count=len(text_jobs),
+                    )
+                    text_dl_started = perf_counter()
                     with ThreadPoolExecutor(max_workers=len(text_jobs)) as executor:
                         futures = [
                             executor.submit(self._storage.download_file, key, path)
@@ -141,25 +262,77 @@ class FaissIndexManager:
                         ]
                         for future in futures:
                             future.result()
+                    log.info(
+                        "index_load_step",
+                        step="download_text_artifacts_done",
+                        version=version,
+                        duration_ms=int((perf_counter() - text_dl_started) * 1000),
+                        text_index_size_bytes=(
+                            text_index_local.stat().st_size if text_index_local.exists() else None
+                        ),
+                        text_mapping_size_bytes=(
+                            text_mapping_local.stat().st_size if text_mapping_local.exists() else None
+                        ),
+                    )
+                else:
+                    log.info(
+                        "index_load_step",
+                        step="download_text_artifacts_skipped_not_in_storage",
+                        version=version,
+                    )
             except Exception:
-                structlog.get_logger().warning(
+                log.warning(
                     "text_index_fetch_failed",
                     version=version,
                     exc_info=True,
                 )
+        else:
+            log.info(
+                "index_load_step",
+                step="download_text_artifacts_skipped_cache_hit",
+                version=version,
+                text_index_size_bytes=text_index_local.stat().st_size,
+                text_mapping_size_bytes=text_mapping_local.stat().st_size,
+            )
 
+        read_started = perf_counter()
+        log.info("index_load_step", step="read_faiss_start", version=version, file=str(index_file))
         index = faiss.read_index(str(index_file))
+        log.info(
+            "index_load_step",
+            step="read_faiss_done",
+            version=version,
+            duration_ms=int((perf_counter() - read_started) * 1000),
+            ntotal=index.ntotal,
+            dimension=index.d,
+        )
 
         id_mapping: dict[int, int] = {}
         if mapping_file.exists():
+            map_started = perf_counter()
             with open(mapping_file) as f:
                 raw = json.load(f)
                 id_mapping = {int(k): v for k, v in raw.items()}
+            log.info(
+                "index_load_step",
+                step="read_mapping_done",
+                version=version,
+                duration_ms=int((perf_counter() - map_started) * 1000),
+                rows=len(id_mapping),
+            )
 
         metadata: dict[str, Any] = {}
         if metadata_file.exists():
+            metadata_started = perf_counter()
             with open(metadata_file) as f:
                 metadata = json.load(f)
+            log.info(
+                "index_load_step",
+                step="read_metadata_done",
+                version=version,
+                duration_ms=int((perf_counter() - metadata_started) * 1000),
+                metadata_keys=sorted(metadata.keys()),
+            )
 
         self._index = index
         self._id_mapping = id_mapping
@@ -170,6 +343,13 @@ class FaissIndexManager:
         self._text_index = None
         self._text_id_mapping = {}
         self._text_metadata = {}
+        log.info(
+            "index_load_step",
+            step="complete",
+            version=version,
+            duration_ms=int((perf_counter() - started_at) * 1000),
+            has_text_index=(cache_path / "text_index.faiss").exists(),
+        )
 
     def search(self, query_vector: np.ndarray, k: int = 20) -> list[tuple[int, float]]:
         with self._index_lock:
@@ -221,16 +401,47 @@ class FaissIndexManager:
                     f"Text index not found for version {self._active_version}"
                 )
 
+            text_read_started = perf_counter()
+            log.info(
+                "text_index_load_step",
+                step="read_text_faiss_start",
+                version=self._active_version,
+                file=str(text_index_file),
+            )
             self._text_index = faiss.read_index(str(text_index_file))
+            log.info(
+                "text_index_load_step",
+                step="read_text_faiss_done",
+                version=self._active_version,
+                duration_ms=int((perf_counter() - text_read_started) * 1000),
+                ntotal=self._text_index.ntotal,
+                dimension=self._text_index.d,
+            )
 
             if text_mapping_file.exists():
+                text_map_started = perf_counter()
                 with open(text_mapping_file) as f:
                     raw = json.load(f)
                     self._text_id_mapping = {int(k): v for k, v in raw.items()}
+                log.info(
+                    "text_index_load_step",
+                    step="read_text_mapping_done",
+                    version=self._active_version,
+                    duration_ms=int((perf_counter() - text_map_started) * 1000),
+                    rows=len(self._text_id_mapping),
+                )
 
             if text_metadata_file.exists():
+                text_meta_started = perf_counter()
                 with open(text_metadata_file) as f:
                     self._text_metadata = json.load(f)
+                log.info(
+                    "text_index_load_step",
+                    step="read_text_metadata_done",
+                    version=self._active_version,
+                    duration_ms=int((perf_counter() - text_meta_started) * 1000),
+                    metadata_keys=sorted(self._text_metadata.keys()),
+                )
 
     def search_text(self, query_vector: np.ndarray, k: int = 20) -> list[tuple[int, float]]:
         """Search the text FAISS index. Loads it lazily if not yet in memory."""

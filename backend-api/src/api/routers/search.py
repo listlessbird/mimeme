@@ -51,7 +51,7 @@ def _search_by_embedding_for_thread(
     index_manager: IndexManagerDep,
     embedding: list[float],
     limit: int,
-    mode: Literal["image", "text", "hybrid"] = "hybrid",
+    mode: Literal["image", "hybrid"] = "image",
 ) -> list:
     with session_scope() as db:
         search_service = SearchService(index_manager)
@@ -87,9 +87,9 @@ async def search(
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
     mode: Annotated[
-        Literal["image", "text", "hybrid"],
-        Query(description="Search mode: image (visual), text (caption/OCR), hybrid (both via RRF)"),
-    ] = "hybrid",
+        Literal["hybrid"] | None,
+        Query(description="Optional mode. Omit for image search; use 'hybrid' to fuse image and text indexes."),
+    ] = None,
 ) -> SearchResponse:
     start_time = time.perf_counter()
 
@@ -105,15 +105,39 @@ async def search(
         raise HTTPException(status_code=500, detail=f"Failed to encode query: {e}")
 
     try:
+        resolved_mode: Literal["image", "hybrid"] = "hybrid" if mode == "hybrid" else "image"
+        log.info(
+            "search_request_start",
+            query=q,
+            requested_mode=mode,
+            resolved_mode=resolved_mode,
+            limit=limit,
+            offset=offset,
+            index_version=index_manager.active_version,
+            has_text_index=index_manager.has_text_index(),
+            is_text_loaded=index_manager.is_text_loaded,
+        )
         results = await asyncio.to_thread(
             _search_by_embedding_for_thread,
             index_manager,
             embedding,
             limit + offset,
-            mode,
+            resolved_mode,
         )
         paginated = results[offset : offset + limit]
         elapsed_ms = (time.perf_counter() - start_time) * 1000
+        log.info(
+            "search_request_done",
+            query=q,
+            requested_mode=mode,
+            resolved_mode=resolved_mode,
+            total_results=len(results),
+            returned_results=len(paginated),
+            limit=limit,
+            offset=offset,
+            search_time_ms=round(elapsed_ms, 2),
+            index_version=index_manager.active_version,
+        )
 
         return SearchResponse(
             query=q,

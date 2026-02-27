@@ -104,18 +104,31 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     index_manager = get_index_manager()
     db_active_version: str | None = None
+    autoloaded_version: str | None = None
     try:
         db_gen = get_db()
         db = next(db_gen)
         try:
             active_build = db.query(IndexBuild).filter(IndexBuild.is_active).first()
             db_active_version = active_build.version if active_build else None
-            index_manager.load_active_index(db)
-            log.info(
-                "index_loaded",
-                version=index_manager.active_version,
-                num_vectors=index_manager.num_vectors,
-            )
+            if db_active_version:
+                index_manager.load_active_index(db)
+                log.info(
+                    "index_loaded",
+                    version=index_manager.active_version,
+                    num_vectors=index_manager.num_vectors,
+                )
+            else:
+                log.warning("no_active_index_in_db")
+
+            autoloaded_version = index_manager.autoload_latest_available(db)
+            if autoloaded_version:
+                log.info(
+                    "index_autoloaded_latest",
+                    version=autoloaded_version,
+                    num_vectors=index_manager.num_vectors,
+                )
+                db_active_version = autoloaded_version
         finally:
             try:
                 next(db_gen)
@@ -130,6 +143,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log.info(
         "startup_index_status",
         db_active_version=db_active_version,
+        autoloaded_version=autoloaded_version,
         manager_is_loaded=index_manager.is_loaded,
         manager_active_version=index_manager.active_version,
         manager_num_vectors=index_manager.num_vectors,

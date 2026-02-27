@@ -1,7 +1,13 @@
 from __future__ import annotations
 
+import pytest
+
 from api.services import search as search_module
 from api.services.search import SearchService
+
+
+class _NotLoadedIndexManager:
+    is_loaded = False
 
 
 class _NoTextIndexManager:
@@ -40,3 +46,25 @@ def test_hybrid_logs_warning_when_text_index_missing(monkeypatch) -> None:
     assert event == "search_hybrid_text_index_unavailable"
     assert fields["mode"] == "hybrid"
     assert fields["index_version"] == "v-test-index"
+
+
+def test_search_by_embedding_raises_when_index_not_loaded() -> None:
+    service = SearchService(_NotLoadedIndexManager())  # type: ignore[arg-type]
+
+    with pytest.raises(ValueError, match="Index not loaded"):
+        service.search_by_embedding(
+            embedding=[0.1, 0.2, 0.3],
+            db=None,  # type: ignore[arg-type]
+            mode="hybrid",
+        )
+
+
+def test_text_mode_raises_when_text_index_missing() -> None:
+    service = SearchService(_NoTextIndexManager())
+
+    with pytest.raises(ValueError, match="Text index not available"):
+        service.search_by_embedding(
+            embedding=[0.1, 0.2, 0.3],
+            db=None,  # type: ignore[arg-type]
+            mode="text",
+        )

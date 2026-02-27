@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from time import perf_counter
 from typing import Literal, cast
 
 import numpy as np
@@ -44,25 +45,57 @@ class SearchService:
         embedding: list[float],
         db: Session,
         limit: int = 20,
-        mode: Literal["image", "text", "hybrid"] = "hybrid",
+        mode: Literal["image", "hybrid"] = "hybrid",
     ) -> list[SearchResult]:
         if not self.index_manager.is_loaded:
             raise ValueError("Index not loaded")
 
         query_vector = np.array(embedding, dtype=np.float32)
+        has_text_index = self.index_manager.has_text_index()
+        log.info(
+            "search_execution_plan",
+            mode=mode,
+            requested_limit=limit,
+            index_version=self.index_manager.active_version,
+            has_text_index=has_text_index,
+            is_text_loaded=self.index_manager.is_text_loaded,
+        )
 
         if mode == "image":
+            started = perf_counter()
             raw_results = self.index_manager.search(query_vector, k=limit)
-        elif mode == "text":
-            if not self.index_manager.has_text_index():
-                raise ValueError("Text index not available")
-            raw_results = self.index_manager.search_text(query_vector, k=limit)
+            log.info(
+                "search_image_done",
+                mode=mode,
+                requested_limit=limit,
+                candidate_count=len(raw_results),
+                duration_ms=int((perf_counter() - started) * 1000),
+                index_version=self.index_manager.active_version,
+            )
         else:
             # hybrid: use RRF to merge image and text results
+            image_started = perf_counter()
             image_results = self.index_manager.search(query_vector, k=limit)
-            if self.index_manager.has_text_index():
+            image_search_ms = int((perf_counter() - image_started) * 1000)
+            if has_text_index:
+                text_started = perf_counter()
                 text_results = self.index_manager.search_text(query_vector, k=limit)
+                text_search_ms = int((perf_counter() - text_started) * 1000)
+                fusion_started = perf_counter()
                 raw_results = reciprocal_rank_fusion(image_results, text_results)[:limit]
+                fusion_ms = int((perf_counter() - fusion_started) * 1000)
+                log.info(
+                    "search_hybrid_rrf_done",
+                    mode=mode,
+                    requested_limit=limit,
+                    image_candidates=len(image_results),
+                    text_candidates=len(text_results),
+                    fused_candidates=len(raw_results),
+                    image_search_ms=image_search_ms,
+                    text_search_ms=text_search_ms,
+                    fusion_ms=fusion_ms,
+                    index_version=self.index_manager.active_version,
+                )
             else:
                 # Fall back to image-only if no text index exists
                 log.warning(
@@ -72,11 +105,35 @@ class SearchService:
                     index_version=self.index_manager.active_version,
                 )
                 raw_results = image_results
+                log.info(
+                    "search_hybrid_fallback_image_only_done",
+                    mode=mode,
+                    requested_limit=limit,
+                    image_candidates=len(image_results),
+                    image_search_ms=image_search_ms,
+                    index_version=self.index_manager.active_version,
+                )
 
         if not raw_results:
+            log.info(
+                "search_results_empty",
+                mode=mode,
+                requested_limit=limit,
+                index_version=self.index_manager.active_version,
+            )
             return []
 
-        return self._hydrate_results(raw_results, db)
+        hydrate_started = perf_counter()
+        results = self._hydrate_results(raw_results, db)
+        log.info(
+            "search_hydration_done",
+            mode=mode,
+            requested_limit=limit,
+            hydrated_count=len(results),
+            hydration_ms=int((perf_counter() - hydrate_started) * 1000),
+            index_version=self.index_manager.active_version,
+        )
+        return results
 
     def find_similar(
         self,
