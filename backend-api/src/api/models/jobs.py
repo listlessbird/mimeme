@@ -9,9 +9,9 @@ from shared.models import JobStatus, JobType
 
 
 class JobResponse(BaseModel):
-    id: str = Field(..., description="Unique job ID")
-    type: JobType = Field(..., description="Job type")
-    status: JobStatus = Field(..., description="Current status")
+    id: str = Field(description="Unique job ID")
+    type: JobType = Field(description="Job type")
+    status: JobStatus = Field(description="Current status")
     progress: float = Field(
         default=0.0, ge=0.0, le=100.0, description="Progress percentage (0-100)"
     )

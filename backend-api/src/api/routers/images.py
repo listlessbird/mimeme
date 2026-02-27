@@ -1,5 +1,5 @@
 import uuid
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from sqlalchemy import func, select
@@ -19,7 +19,7 @@ from shared.models import Annotation, Artifact, IngestURL, Job, JobType, Process
 from shared.models import ORMImage as Image
 from workflows import IngestWorkflow, IngestWorkflowInput
 
-router = APIRouter()
+router = APIRouter(prefix="/images", tags=["Images"])
 
 
 @router.post("", response_model=ImageIngestResponse, status_code=202)
@@ -74,11 +74,11 @@ async def list_images(
     _auth: AdminRequired,
     db: DbSession,
     storage: StorageDep,
-    limit: int = Query(default=20, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
-    status: ImageStatus | None = Query(default=None),
-    dataset: str | None = Query(default=None),
-    sort: Literal["newest", "oldest"] = Query(default="newest"),
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    status: Annotated[ImageStatus | None, Query()] = None,
+    dataset: Annotated[str | None, Query()] = None,
+    sort: Annotated[Literal["newest", "oldest"], Query()] = "newest",
 ) -> ImageListResponse:
     query = select(Image)
 

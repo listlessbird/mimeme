@@ -6,9 +6,9 @@ from pydantic import BaseModel, Field
 
 
 class SearchResult(BaseModel):
-    id: int = Field(..., description="Image ID")
-    sha256: str = Field(..., description="Image hash")
-    score: float = Field(..., description="Similarity score")
+    id: int = Field(description="Image ID")
+    sha256: str = Field(description="Image hash")
+    score: float = Field(description="Similarity score")
     url: str | None = Field(default=None, description="Image URL")
     caption: str | None = Field(default=None, description="Generated caption")
     ocr_text: str | None = Field(default=None, description="Extracted text from image")
@@ -17,7 +17,7 @@ class SearchResult(BaseModel):
 
 
 class SearchRequest(BaseModel):
-    q: str = Field(..., min_length=1, max_length=500, description="Search query text")
+    q: str = Field(min_length=1, max_length=500, description="Search query text")
     limit: int = Field(default=20, ge=1, le=100, description="Number of results")
     offset: int = Field(default=0, ge=0, description="Offset for pagination")
     mode: Literal["image", "text", "hybrid"] = Field(
@@ -27,10 +27,10 @@ class SearchRequest(BaseModel):
 
 
 class SearchResponse(BaseModel):
-    query: str = Field(..., description="Original query")
+    query: str = Field(description="Original query")
     results: list[SearchResult] = Field(default_factory=list, description="Search results")
-    total: int = Field(..., description="Total matching results")
+    total: int = Field(description="Total matching results")
     limit: int
     offset: int
-    search_time_ms: float = Field(..., description="Search time in milliseconds")
+    search_time_ms: float = Field(description="Search time in milliseconds")
     index_version: str | None = Field(default=None, description="Active index version")

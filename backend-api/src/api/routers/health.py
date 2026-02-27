@@ -11,7 +11,7 @@ from shared.config import settings
 from shared.db import get_engine
 from shared.services.storage import get_storage_service
 
-router = APIRouter()
+router = APIRouter(tags=["Health"])
 log = structlog.get_logger()
 
 

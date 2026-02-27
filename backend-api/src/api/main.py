@@ -179,10 +179,10 @@ def create_app() -> FastAPI:
             content={"detail": "Internal server error"},
         )
 
-    app.include_router(health.router, tags=["Health"])
-    app.include_router(search.router, prefix="/search", tags=["Search"])
-    app.include_router(images.router, prefix="/images", tags=["Images"])
-    app.include_router(jobs.router, prefix="/jobs", tags=["Jobs"])
+    app.include_router(health.router)
+    app.include_router(search.router)
+    app.include_router(images.router)
+    app.include_router(jobs.router)
 
     return app
 
