@@ -1,5 +1,6 @@
 {
   "lockfileVersion": 1,
+  "configVersion": 0,
   "workspaces": {
     "": {
       "name": "webui",
@@ -25,6 +26,7 @@
         "drizzle-kit": "^0.31.8",
         "drizzle-orm": "^0.45.0",
         "embla-carousel-react": "^8.6.0",
+        "evlog": "^2.0.0",
         "input-otp": "^1.4.2",
         "lucide-react": "^0.574.0",
         "motion": "^12.34.1",
@@ -921,6 +923,8 @@
     "eventsource": ["eventsource@3.0.7", "", { "dependencies": { "eventsource-parser": "^3.0.1" } }, "sha512-CRT1WTyuQoD771GW56XEZFQ/ZoSfWid1alKGDYMmkt2yl8UXrVR4pspqWNEcqKvVIzg6PAltWjxcSSPrboA4iA=="],
 
     "eventsource-parser": ["eventsource-parser@3.0.6", "", {}, "sha512-Vo1ab+QXPzZ4tCa8SwIHJFaSzy4R6SHf7BY79rFBDf0idraZWAkYrDjDj8uWaSm3S2TK+hJ7/t1CEmZ7jXw+pg=="],
+
+    "evlog": ["evlog@2.0.0", "", { "peerDependencies": { "@nuxt/kit": "^4.3.1", "h3": "^1.15.5", "next": ">=16.1.6", "nitro": "^3.0.1-alpha.2", "nitropack": "^2.13.1", "ofetch": "^1.5.1", "react": ">=19.2.4" }, "optionalPeers": ["@nuxt/kit", "h3", "next", "nitro", "nitropack", "ofetch", "react"] }, "sha512-mI24vtYijRWJMGuwQMYr6LfZ7Xbi2cHfkVvQXWDYcWey1swityCgoag/b1/uKRQZM4dIxPJccvtcLD3cv2ZXtg=="],
 
     "execa": ["execa@8.0.1", "", { "dependencies": { "cross-spawn": "^7.0.3", "get-stream": "^8.0.1", "human-signals": "^5.0.0", "is-stream": "^3.0.0", "merge-stream": "^2.0.0", "npm-run-path": "^5.1.0", "onetime": "^6.0.0", "signal-exit": "^4.1.0", "strip-final-newline": "^3.0.0" } }, "sha512-VyhnebXciFV2DESc+p6B+y0LjSm0krU4OgJN44qFAhBY0TJ+1V61tYD2+wHusZ6F9n5K+vl8k0sTy7PEfV4qpg=="],
 
