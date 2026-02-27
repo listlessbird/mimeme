@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
+from typing import Any
 
 import numpy as np
 import structlog
@@ -91,16 +92,22 @@ class SearchTextEncoder:
 
         with torch.no_grad():
             if hasattr(self._model, "get_text_features"):
-                feats = self._model.get_text_features(**inputs)
+                feats = self._extract_tensor_features(self._model.get_text_features(**inputs))
             else:
                 out = self._model(**inputs)
-                if hasattr(out, "text_embeds"):
-                    feats = out.text_embeds
-                elif hasattr(out, "pooler_output"):
-                    feats = out.pooler_output
-                elif hasattr(out, "last_hidden_state"):
-                    feats = out.last_hidden_state[:, 0, :]
-                else:
-                    raise ValueError("Unknown model output format")
+                feats = self._extract_tensor_features(out)
 
-        return feats.cpu().numpy().astype(np.float32)[0]
+        return feats.detach().cpu().numpy().astype(np.float32)[0]
+
+    def _extract_tensor_features(self, out: Any) -> torch.Tensor:
+        if isinstance(out, torch.Tensor):
+            return out
+
+        if hasattr(out, "text_embeds"):
+            return out.text_embeds
+        if hasattr(out, "pooler_output"):
+            return out.pooler_output
+        if hasattr(out, "last_hidden_state"):
+            return out.last_hidden_state[:, 0, :]
+
+        raise ValueError("Unknown model output format")

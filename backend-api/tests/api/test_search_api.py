@@ -95,4 +95,3 @@ def test_search_requires_readonly_or_admin_key(client, monkeypatch) -> None:
 def test_search_validates_query_params(client, readonly_headers) -> None:
     response = client.get("/search", params={"q": ""}, headers=readonly_headers)
     assert response.status_code == 422
-

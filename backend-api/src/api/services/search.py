@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Literal, cast
 
 import numpy as np
+import structlog
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -12,6 +13,8 @@ from shared.config import settings
 from shared.models.orm import Annotation
 from shared.models.orm import Image as ORMImage
 from shared.services.storage import StorageService, get_storage_service
+
+log = structlog.get_logger()
 
 
 def reciprocal_rank_fusion(
@@ -62,6 +65,12 @@ class SearchService:
                 raw_results = reciprocal_rank_fusion(image_results, text_results)[:limit]
             else:
                 # Fall back to image-only if no text index exists
+                log.warning(
+                    "search_hybrid_text_index_unavailable",
+                    mode=mode,
+                    requested_limit=limit,
+                    index_version=self.index_manager.active_version,
+                )
                 raw_results = image_results
 
         if not raw_results:
