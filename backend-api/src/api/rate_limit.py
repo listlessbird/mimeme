@@ -19,12 +19,17 @@ def _get_connecting_ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-limiter = Limiter(key_func=_get_connecting_ip, default_limits=[], storage_uri="memory://")
-
 SEARCH_LIMIT = "15/minute;100/hour"
 ADMIN_LIMIT = "30/minute"
 # limit across all clients, prevent dos
 GLOBAL_LIMIT = "200/minute"
+
+limiter = Limiter(
+    key_func=_get_connecting_ip,
+    default_limits=[],
+    application_limits=[GLOBAL_LIMIT],
+    storage_uri="memory://",
+)
 
 
 def rate_limit_exceeded_handler(_request: Request, exc: RateLimitExceeded) -> JSONResponse:
