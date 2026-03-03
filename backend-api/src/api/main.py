@@ -10,6 +10,7 @@ import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 
@@ -140,6 +141,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 def create_app() -> FastAPI:
     middleware = [
+        Middleware(SlowAPIMiddleware),
         Middleware(
             CORSMiddleware,  # ty:ignore[invalid-argument-type]
             allow_origins=["*"] if settings.debug else [],
