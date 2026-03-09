@@ -26,3 +26,5 @@ htmlcov/
 .ruff_cache
 .uv-cache
 .venvs
+
+docs/
