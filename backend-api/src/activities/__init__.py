@@ -1,4 +1,4 @@
-from activities.embedding import embed_batch_activity, encode_query_activity
+from activities.embedding import embed_batch_activity
 from activities.indexing import (
     build_index_activity,
     garbage_collect_indexes_activity,
@@ -23,10 +23,13 @@ from activities.workflow_state import (
     update_job_progress_activity,
 )
 
-CPU_ACTIVITIES = [
+ACTIVITIES = [
     download_image_activity,
     process_image_activity,
     cleanup_temp_file_activity,
+    caption_activity,
+    ocr_activity,
+    embed_batch_activity,
     build_index_activity,
     swap_index_activity,
     garbage_collect_indexes_activity,
@@ -42,26 +45,15 @@ CPU_ACTIVITIES = [
     complete_rebuild_job_activity,
 ]
 
-GPU_ACTIVITIES = [
-    caption_activity,
-    ocr_activity,
-    embed_batch_activity,
-    encode_query_activity,
-]
-
-ALL_ACTIVITIES = CPU_ACTIVITIES + GPU_ACTIVITIES
-
 
 __all__ = [
-    "CPU_ACTIVITIES",
-    "GPU_ACTIVITIES",
+    "ACTIVITIES",
     "download_image_activity",
     "process_image_activity",
     "cleanup_temp_file_activity",
     "caption_activity",
     "ocr_activity",
     "embed_batch_activity",
-    "encode_query_activity",
     "build_index_activity",
     "swap_index_activity",
     "garbage_collect_indexes_activity",

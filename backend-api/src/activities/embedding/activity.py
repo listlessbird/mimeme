@@ -8,8 +8,6 @@ from temporalio import activity
 from activities.embedding.models import (
     EmbedBatchInput,
     EmbedBatchOutput,
-    EncodeQueryInput,
-    EncodeQueryOutput,
 )
 from activities.gpu_backends import get_gpu_backend
 from shared.logging import emit_activity_event
@@ -58,31 +56,4 @@ async def embed_batch_activity(input: EmbedBatchInput) -> EmbedBatchOutput:
             error=error_message,
             item_count=len(input.items),
             dataset=input.dataset,
-        )
-
-
-@activity.defn
-async def encode_query_activity(input: EncodeQueryInput) -> EncodeQueryOutput:
-    started = time.monotonic()
-    log = structlog.get_logger().bind(activity_name="encode_query_activity")
-    outcome = "success"
-    error_message: str | None = None
-    try:
-        backend = get_gpu_backend()
-        log.info("activity_step", step="start", backend=type(backend).__name__)
-        result = await backend.encode_query(input)
-        return result
-    except Exception as exc:
-        outcome = "error"
-        error_message = str(exc)
-        log.error("activity_step", step="failed", error=error_message, exc_info=True)
-        raise
-    finally:
-        emit_activity_event(
-            log=log,
-            activity_name="encode_query_activity",
-            started_at=started,
-            outcome=outcome,
-            error=error_message,
-            query_chars=len(input.query),
         )

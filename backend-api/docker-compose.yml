@@ -115,12 +115,12 @@ services:
       retries: 3
     restart: unless-stopped
 
-  cpu-worker:
+  worker:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    container_name: mimeme-cpu-worker
-    command: python -m workers.cpu_worker
+    container_name: mimeme-worker
+    command: python -m workers.worker
     environment:
       - APP_ENV=development
       - LOG_LEVEL=INFO
@@ -141,43 +141,6 @@ services:
         condition: service_started
       minio:
         condition: service_healthy
-    restart: unless-stopped
-
-  gpu-worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.worker
-    container_name: mimeme-gpu-worker
-    profiles:
-      - gpu
-    command: python -m workers.gpu_worker
-    environment:
-      - APP_ENV=development
-      - LOG_LEVEL=INFO
-      - DB_URL=postgresql://postgres:postgres@postgres:5432/mimeme
-      - TEMPORAL_HOST=temporal:7233
-      - S3_ENDPOINT_URL=http://minio:9000
-      - S3_BUCKET=mimeme
-      - S3_ACCESS_KEY_ID=minioadmin
-      - S3_SECRET_ACCESS_KEY=minioadmin
-      - EMBED_DEVICE=cuda
-    volumes:
-      - ./data:/app/data
-      - model_cache:/root/.cache/huggingface
-    depends_on:
-      postgres:
-        condition: service_healthy
-      temporal:
-        condition: service_started
-      minio:
-        condition: service_healthy
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [ gpu ]
     restart: unless-stopped
 
 volumes:

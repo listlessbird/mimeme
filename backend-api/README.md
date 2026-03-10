@@ -26,15 +26,11 @@ temporal server start-dev
 the above command starts both server and web ui
 
 ## start workers
-docker compose up -d cpu-worker
+docker compose up -d worker
 
 or
 
-uv run python -m workers.cpu_worker
-
-docker compose --profile gpu up -d gpu-worker
-
-uv run python -m workers.gpu_worker
+uv run python -m workers.worker
 
 ## api
 uv run uvicorn api.main:app --reload

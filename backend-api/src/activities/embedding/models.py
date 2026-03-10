@@ -36,13 +36,3 @@ class EmbedBatchInput(BaseModel):
 class EmbedBatchOutput(BaseModel):
     results: list[EmbedImageOutput]
     failed_ids: list[int]
-
-
-class EncodeQueryInput(BaseModel):
-    query: str
-
-
-class EncodeQueryOutput(BaseModel):
-    embedding: list[float]
-    model: str
-    dimension: int
