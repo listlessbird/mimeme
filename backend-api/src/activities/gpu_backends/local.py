@@ -10,8 +10,6 @@ from activities.embedding.models import (
     EmbedBatchInput,
     EmbedBatchOutput,
     EmbedImageOutput,
-    EncodeQueryInput,
-    EncodeQueryOutput,
 )
 from activities.embedding.siglip import SiglipEmbedder
 from activities.vision.models import CaptionInput, CaptionOutput, OCRInput, OCROutput
@@ -89,12 +87,3 @@ class LocalGpuBackend:
                 failed_ids.append(item.image_id)
 
         return EmbedBatchOutput(results=results, failed_ids=failed_ids)
-
-    async def encode_query(self, input: EncodeQueryInput) -> EncodeQueryOutput:
-        embedder = SiglipEmbedder.get_instance()
-        feats = embedder.encode_texts([input.query])
-        return EncodeQueryOutput(
-            embedding=feats[0].tolist(),
-            model=embedder.image_model_name,
-            dimension=int(feats.shape[-1]),
-        )

@@ -44,7 +44,6 @@ class RebuildIndexWorkflow:
             await workflow.execute_activity(
                 "start_rebuild_job_activity",
                 StartRebuildJobInput(job_id=input.job_id),
-                task_queue=settings.temporal_task_queue_cpu,
                 start_to_close_timeout=timedelta(minutes=1),
             )
 
@@ -64,7 +63,6 @@ class RebuildIndexWorkflow:
                     progress=10,
                     message="Building index...",
                 ),
-                task_queue=settings.temporal_task_queue_cpu,
                 start_to_close_timeout=timedelta(minutes=1),
             )
 
@@ -85,7 +83,6 @@ class RebuildIndexWorkflow:
                         index_type=settings.index_type,
                         force=input.force,
                     ),
-                    task_queue=settings.temporal_task_queue_cpu,
                     start_to_close_timeout=timedelta(hours=2),
                     heartbeat_timeout=timedelta(minutes=5),
                 )
@@ -107,7 +104,6 @@ class RebuildIndexWorkflow:
                     progress=70,
                     message="Swapping to new index...",
                 ),
-                task_queue=settings.temporal_task_queue_cpu,
                 start_to_close_timeout=timedelta(minutes=1),
             )
 
@@ -124,7 +120,6 @@ class RebuildIndexWorkflow:
             await workflow.execute_activity(
                 "swap_index_activity",
                 SwapIndexInput(version=build_result.version),
-                task_queue=settings.temporal_task_queue_cpu,
                 start_to_close_timeout=timedelta(minutes=5),
             )
 
@@ -144,7 +139,6 @@ class RebuildIndexWorkflow:
                     progress=90,
                     message="Cleaning up old indexes...",
                 ),
-                task_queue=settings.temporal_task_queue_cpu,
                 start_to_close_timeout=timedelta(minutes=1),
             )
 
@@ -160,7 +154,6 @@ class RebuildIndexWorkflow:
             gc_result = GarbageCollectOutput.model_validate(
                 await workflow.execute_activity(
                     "garbage_collect_indexes_activity",
-                    task_queue=settings.temporal_task_queue_cpu,
                     start_to_close_timeout=timedelta(minutes=10),
                 )
             )
@@ -184,7 +177,6 @@ class RebuildIndexWorkflow:
                     removed_versions=gc_result.removed_versions,
                     text_num_vectors=build_result.text_num_vectors,
                 ),
-                task_queue=settings.temporal_task_queue_cpu,
                 start_to_close_timeout=timedelta(minutes=1),
             )
 
@@ -205,7 +197,6 @@ class RebuildIndexWorkflow:
                         job_id=input.job_id,
                         error=f"Failed at step '{last_step}': {error_message}",
                     ),
-                    task_queue=settings.temporal_task_queue_cpu,
                     start_to_close_timeout=timedelta(minutes=1),
                 )
             except Exception:

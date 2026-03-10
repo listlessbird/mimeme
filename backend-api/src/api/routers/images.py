@@ -64,7 +64,7 @@ async def ingest_images(
             callback_url=str(ingest_request.callback_url) if ingest_request.callback_url else None,
         ),
         id=f"ingest-workflow-{job_id}",
-        task_queue=settings.temporal_task_queue_cpu,
+        task_queue=settings.temporal_task_queue,
     )
 
     return ImageIngestResponse(

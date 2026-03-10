@@ -23,7 +23,6 @@ with workflow.unsafe.imports_passed_through():
         SaveEmbeddingInfoInput,
         UpdateJobProgressInput,
     )
-    from shared.config import settings
     from workflows.models import IngestWorkflowInput, IngestWorkflowOutput
 
 
@@ -58,7 +57,6 @@ class IngestWorkflow:
                 await workflow.execute_activity(
                     "ingest_initialize_activity",
                     input.job_id,
-                    task_queue=settings.temporal_task_queue_cpu,
                     start_to_close_timeout=timedelta(minutes=1),
                 )
             )
@@ -86,7 +84,6 @@ class IngestWorkflow:
                                 job_id=input.job_id,
                                 ingest_url_id=ingest_url_id,
                             ),
-                            task_queue=settings.temporal_task_queue_cpu,
                             start_to_close_timeout=timedelta(minutes=5),
                             retry_policy=RetryPolicy(
                                 maximum_attempts=3,
@@ -105,7 +102,6 @@ class IngestWorkflow:
                                 ingest_url_id=ingest_url_id,
                                 error=download_result.error or "Download failed",
                             ),
-                            task_queue=settings.temporal_task_queue_cpu,
                             start_to_close_timeout=timedelta(minutes=1),
                         )
                         continue
@@ -129,7 +125,6 @@ class IngestWorkflow:
                                 ingest_url_id=ingest_url_id,
                                 dataset=input.dataset,
                             ),
-                            task_queue=settings.temporal_task_queue_cpu,
                             start_to_close_timeout=timedelta(minutes=5),
                         )
                     )
@@ -143,7 +138,6 @@ class IngestWorkflow:
                                 ingest_url_id=ingest_url_id,
                                 image_id=process_result.image_id,
                             ),
-                            task_queue=settings.temporal_task_queue_cpu,
                             start_to_close_timeout=timedelta(minutes=1),
                         )
                         continue
@@ -165,7 +159,6 @@ class IngestWorkflow:
                                 image_id=process_result.image_id,
                                 s3_key=process_result.s3_key,
                             ),
-                            task_queue=settings.temporal_task_queue_gpu,
                             start_to_close_timeout=timedelta(minutes=10),
                         )
                     )
@@ -187,7 +180,6 @@ class IngestWorkflow:
                                 image_id=process_result.image_id,
                                 s3_key=process_result.s3_key,
                             ),
-                            task_queue=settings.temporal_task_queue_gpu,
                             start_to_close_timeout=timedelta(minutes=10),
                         )
                     )
@@ -211,7 +203,6 @@ class IngestWorkflow:
                             ocr_text=ocr_result.text,
                             ocr_model=ocr_result.model,
                         ),
-                        task_queue=settings.temporal_task_queue_cpu,
                         start_to_close_timeout=timedelta(minutes=1),
                     )
 
@@ -242,7 +233,6 @@ class IngestWorkflow:
                                 ],
                                 dataset=input.dataset,
                             ),
-                            task_queue=settings.temporal_task_queue_gpu,
                             start_to_close_timeout=timedelta(minutes=10),
                         )
                     )
@@ -267,7 +257,6 @@ class IngestWorkflow:
                                 dimension=result.dimension,
                                 image_embedding_key=result.image_embedding_key,
                             ),
-                            task_queue=settings.temporal_task_queue_cpu,
                             start_to_close_timeout=timedelta(minutes=1),
                         )
 
@@ -288,7 +277,6 @@ class IngestWorkflow:
                             ingest_url_id=ingest_url_id,
                             image_id=process_result.image_id,
                         ),
-                        task_queue=settings.temporal_task_queue_cpu,
                         start_to_close_timeout=timedelta(minutes=1),
                     )
                     processed += 1
@@ -303,7 +291,6 @@ class IngestWorkflow:
                             ingest_url_id=ingest_url_id,
                             error=compact_error,
                         ),
-                        task_queue=settings.temporal_task_queue_cpu,
                         start_to_close_timeout=timedelta(minutes=1),
                     )
 
@@ -320,7 +307,6 @@ class IngestWorkflow:
                 await workflow.execute_activity(
                     "update_job_progress_activity",
                     UpdateJobProgressInput(job_id=input.job_id, progress=progress),
-                    task_queue=settings.temporal_task_queue_cpu,
                     start_to_close_timeout=timedelta(minutes=1),
                 )
 
@@ -341,7 +327,6 @@ class IngestWorkflow:
                     failed=failed,
                     duplicates=duplicates,
                 ),
-                task_queue=settings.temporal_task_queue_cpu,
                 start_to_close_timeout=timedelta(minutes=1),
             )
 

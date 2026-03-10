@@ -66,7 +66,7 @@ async def trigger_rebuild_index(
             model_name=request.model_name,
         ),
         id=workflow_id,
-        task_queue=settings.temporal_task_queue_cpu,
+        task_queue=settings.temporal_task_queue,
     )
 
     job.workflow_id = workflow_id

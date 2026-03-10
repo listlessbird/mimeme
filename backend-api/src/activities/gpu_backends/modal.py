@@ -9,8 +9,6 @@ from activities.embedding.models import (
     EmbedBatchInput,
     EmbedBatchOutput,
     EmbedImageOutput,
-    EncodeQueryInput,
-    EncodeQueryOutput,
 )
 from activities.vision.models import CaptionInput, CaptionOutput, OCRInput, OCROutput
 
@@ -73,13 +71,4 @@ class ModalGpuBackend:
                 for r in result["results"]
             ],
             failed_ids=result["failed_ids"],
-        )
-
-    async def encode_query(self, input: EncodeQueryInput) -> EncodeQueryOutput:
-        embedding = self._embedding_cls()
-        result = await asyncio.to_thread(embedding.encode_text.remote, query=input.query)
-        return EncodeQueryOutput(
-            embedding=result["embedding"],
-            model=result["model"],
-            dimension=result["dimension"],
         )

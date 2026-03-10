@@ -23,8 +23,7 @@ class Settings(BaseSettings):
 
     temporal_host: str = Field(default="localhost:7233")
     temporal_namespace: str = Field(default="default")
-    temporal_task_queue_cpu: str = Field(default="cpu-queue")
-    temporal_task_queue_gpu: str = Field("gpu-queue")
+    temporal_task_queue: str = Field(default="findmeme-tasks")
 
     s3_endpoint_url: str = Field(default="http://localhost:9000")
     s3_region: str = Field(default="us-east-1")

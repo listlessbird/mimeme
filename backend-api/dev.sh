@@ -45,9 +45,9 @@ if [ "$STAGING_MODE" = true ]; then
   tmux select-pane -t 1
   tmux send-keys "sleep 3 && uv run uvicorn api.main:app --reload" C-m
 
-  # Pane 2 (top-right): CPU Worker
+  # Pane 2 (top-right): Worker
   tmux select-pane -t 2
-  tmux send-keys "sleep 5 && uv run python -m workers.cpu_worker" C-m
+  tmux send-keys "sleep 5 && uv run python -m workers.worker" C-m
 
   # Pane 3 (bottom-right): Modal app
   tmux select-pane -t 3
@@ -63,13 +63,12 @@ else
   tmux select-pane -t 1
   tmux send-keys "sleep 3 && uv run alembic upgrade head && uv run uvicorn api.main:app --reload" C-m
 
-  # Pane 2 (top-right): CPU Worker
+  # Pane 2 (top-right): Worker
   tmux select-pane -t 2
-  tmux send-keys "sleep 5 && uv run python -m workers.cpu_worker" C-m
+  tmux send-keys "sleep 5 && uv run python -m workers.worker" C-m
 
-  # Pane 3 (bottom-right): GPU Worker
+  # Pane 3 (bottom-right): free
   tmux select-pane -t 3
-  tmux send-keys "sleep 5 && uv run python -m workers.gpu_worker" C-m
 fi
 
 # Focus on API pane
