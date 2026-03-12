@@ -1,4 +1,16 @@
 services:
+  temporal:
+    image: temporalio/temporal:latest
+    command: server start-dev --ip 0.0.0.0
+    ports:
+      - "7233:7233"
+      - "8233:8233"
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    restart: unless-stopped
+
   api:
     build:
       context: .
@@ -6,12 +18,13 @@ services:
       target: api
     env_file: .env
     environment:
-      - TEMPORAL_HOST=host.docker.internal:7233
+      - TEMPORAL_HOST=temporal:7233
       - APP_ENV=production
     ports:
       - "0.0.0.0:8000:8000"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    depends_on:
+      temporal:
+        condition: service_started
     deploy:
       resources:
         limits:
@@ -31,11 +44,12 @@ services:
       target: worker
     env_file: .env
     environment:
-      - TEMPORAL_HOST=host.docker.internal:7233
+      - TEMPORAL_HOST=temporal:7233
       - GPU_BACKEND=modal
       - APP_ENV=production
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+    depends_on:
+      temporal:
+        condition: service_started
     volumes:
       - faiss_data:/app/data
     deploy:
