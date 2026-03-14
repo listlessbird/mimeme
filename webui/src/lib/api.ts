@@ -47,6 +47,7 @@ export const searchMemes = createServerFn({ method: "GET" })
 		const endpointPath = "/search";
 		const requestUrl = new URL(endpointPath, env.API_BASE_URL);
 		requestUrl.searchParams.set("q", data.q);
+		requestUrl.searchParams.set("mode", "hybrid");
 		if (data.limit) requestUrl.searchParams.set("limit", String(data.limit));
 		if (data.offset) requestUrl.searchParams.set("offset", String(data.offset));
 
@@ -58,6 +59,7 @@ export const searchMemes = createServerFn({ method: "GET" })
 			endpoint_url: requestUrl.toString(),
 			query: data.q,
 			query_length: data.q.length,
+			mode: "hybrid",
 			limit: data.limit,
 			offset: data.offset,
 		};
