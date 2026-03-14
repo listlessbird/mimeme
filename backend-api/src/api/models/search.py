@@ -20,9 +20,9 @@ class SearchRequest(BaseModel):
     q: str = Field(min_length=1, max_length=500, description="Search query text")
     limit: int = Field(default=20, ge=1, le=100, description="Number of results")
     offset: int = Field(default=0, ge=0, description="Offset for pagination")
-    mode: Literal["image", "text", "hybrid"] = Field(
-        default="hybrid",
-        description="Search mode: image (visual), text (caption/OCR), hybrid (both)",
+    mode: Literal["hybrid"] | None = Field(
+        default=None,
+        description="Optional mode. Omit for image search; use 'hybrid' to fuse image and text indexes.",
     )
 
 
