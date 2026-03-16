@@ -1,6 +1,9 @@
+import { infiniteQueryOptions } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 import { env } from "@/env";
 import { logInfo, serializeError } from "@/lib/observability";
+
+export const SEARCH_RESULT_LIMIT = 40;
 
 export interface SearchResult {
 	id: number;
@@ -21,6 +24,24 @@ export interface SearchResponse {
 	offset: number;
 	search_time_ms: number;
 }
+
+export const searchMemesInfiniteQueryOptions = (q: string) =>
+	infiniteQueryOptions({
+		queryKey: ["search-memes", q, "hybrid", SEARCH_RESULT_LIMIT],
+		queryFn: ({ pageParam }) =>
+			searchMemes({
+				data: {
+					q,
+					limit: SEARCH_RESULT_LIMIT,
+					offset: pageParam,
+				},
+			}),
+		initialPageParam: 0,
+		getNextPageParam: (lastPage) => {
+			const nextOffset = lastPage.offset + lastPage.results.length;
+			return nextOffset < lastPage.total ? nextOffset : undefined;
+		},
+	});
 
 class SearchApiError extends Error {
 	public readonly statusCode?: number;
