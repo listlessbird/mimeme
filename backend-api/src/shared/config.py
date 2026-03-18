@@ -46,6 +46,7 @@ class Settings(BaseSettings):
 
     # local text encoder for search (bypasses Temporal+Modal)
     search_text_encoder_device: str = Field(default="cpu")
+    preload_text_encoder_on_startup: bool = Field(default=True)
 
     axiom_api_token: str = ""
     axiom_dataset: str = ""

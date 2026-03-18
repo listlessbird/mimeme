@@ -98,7 +98,7 @@ services:
       - S3_SECRET_ACCESS_KEY=minioadmin
     volumes:
       - ./data:/app/data
-      - model_cache:/root/.cache/huggingface
+      - huggingface_cache:/app/.cache/huggingface
     depends_on:
       postgres:
         condition: service_healthy
@@ -133,7 +133,7 @@ services:
       - EMBED_DEVICE=cpu
     volumes:
       - ./data:/app/data
-      - model_cache:/root/.cache/huggingface
+      - huggingface_cache:/app/.cache/huggingface
     depends_on:
       postgres:
         condition: service_healthy
@@ -147,7 +147,7 @@ volumes:
   postgres_data:
   redis_data:
   minio_data:
-  model_cache:
+  huggingface_cache:
 
 
 networks:

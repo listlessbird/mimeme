@@ -25,6 +25,9 @@ services:
     depends_on:
       temporal:
         condition: service_started
+    volumes:
+      - faiss_data:/app/data
+      - huggingface_cache:/app/.cache/huggingface
     deploy:
       resources:
         limits:
@@ -52,6 +55,7 @@ services:
         condition: service_started
     volumes:
       - faiss_data:/app/data
+      - huggingface_cache:/app/.cache/huggingface
     deploy:
       resources:
         limits:
@@ -75,3 +79,4 @@ services:
 volumes:
   portainer_data:
   faiss_data:
+  huggingface_cache:

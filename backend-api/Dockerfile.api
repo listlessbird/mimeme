@@ -35,10 +35,13 @@ COPY src ./src
 COPY pyproject.toml ./
 
 ENV PATH="/app/.venv/bin:$PATH" \
-    PYTHONPATH="/app/src"
+    PYTHONPATH="/app/src" \
+    HF_HOME="/app/.cache/huggingface" \
+    HUGGINGFACE_HUB_CACHE="/app/.cache/huggingface/hub" \
+    TRANSFORMERS_CACHE="/app/.cache/huggingface/transformers"
 
 RUN useradd --create-home --shell /bin/bash appuser && \
-    mkdir -p /app/data && \
+    mkdir -p /app/data /app/.cache/huggingface && \
     chown -R appuser:appuser /app
 
 USER appuser

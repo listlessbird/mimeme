@@ -26,6 +26,7 @@ def _startup_env_snapshot() -> dict[str, object]:
         "embed_model": settings.embed_model,
         "embed_device": settings.embed_device,
         "search_text_encoder_device": settings.search_text_encoder_device,
+        "preload_text_encoder_on_startup": settings.preload_text_encoder_on_startup,
         "index_type": settings.index_type,
         "index_cache_dir": str(settings.index_cache_dir),
         "temporal_host": settings.temporal_host,
@@ -121,9 +122,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         **_index_files_snapshot(active_version),
     )
 
-    log.info("preloading_text_encoder")
-    await asyncio.to_thread(SearchTextEncoder.get_instance)
-    log.info("text_encoder_ready")
+    if settings.preload_text_encoder_on_startup:
+        log.info("preloading_text_encoder")
+        await asyncio.to_thread(SearchTextEncoder.get_instance)
+        log.info("text_encoder_ready")
+    else:
+        log.info("skipping_text_encoder_preload")
 
     yield
 
