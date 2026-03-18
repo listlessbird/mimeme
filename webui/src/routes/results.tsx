@@ -32,9 +32,34 @@ export const Route = createFileRoute("/results")({
 			searchMemesInfiniteQueryOptions(deps.q),
 		);
 	},
+	pendingMs: 200,
+	pendingComponent: ResultsPendingComponent,
 	errorComponent: ResultsErrorComponent,
 	component: ResultsPage,
 });
+
+function ResultsPendingComponent() {
+	return (
+		<div className="min-h-screen bg-background">
+			<div className="sticky top-0 z-40 border-b border-border/50 bg-background/80 backdrop-blur-sm">
+				<div className="mx-auto max-w-6xl px-4 pb-3 pt-4 md:px-6 md:pt-6">
+					<SearchBar live isSearching />
+				</div>
+			</div>
+
+			<div className="mx-auto max-w-6xl px-4 pb-6 pt-4 md:px-6">
+				<div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+					{Array.from({ length: 12 }).map((_, i) => (
+						<div
+							key={i}
+							className="aspect-square animate-pulse rounded-md bg-muted"
+						/>
+					))}
+				</div>
+			</div>
+		</div>
+	);
+}
 
 function ResultsPage() {
 	const { q } = Route.useSearch();
