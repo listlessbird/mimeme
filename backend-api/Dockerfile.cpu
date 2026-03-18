@@ -49,9 +49,12 @@ COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
 COPY --chown=appuser:appuser alembic ./alembic
 COPY --chown=appuser:appuser alembic.ini ./
 
-RUN mkdir -p /app/data && chown appuser:appuser /app/data
+RUN mkdir -p /app/data /app/.cache/huggingface && chown -R appuser:appuser /app
 
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="/app/.venv/bin:$PATH" \
+    HF_HOME="/app/.cache/huggingface" \
+    HUGGINGFACE_HUB_CACHE="/app/.cache/huggingface/hub" \
+    TRANSFORMERS_CACHE="/app/.cache/huggingface/transformers"
 
 USER appuser
 
@@ -71,9 +74,12 @@ WORKDIR /app
 
 COPY --from=builder --chown=appuser:appuser /app/.venv /app/.venv
 
-RUN mkdir -p /app/data && chown appuser:appuser /app/data
+RUN mkdir -p /app/data /app/.cache/huggingface && chown -R appuser:appuser /app
 
-ENV PATH="/app/.venv/bin:$PATH"
+ENV PATH="/app/.venv/bin:$PATH" \
+    HF_HOME="/app/.cache/huggingface" \
+    HUGGINGFACE_HUB_CACHE="/app/.cache/huggingface/hub" \
+    TRANSFORMERS_CACHE="/app/.cache/huggingface/transformers"
 
 USER appuser
 
