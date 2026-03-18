@@ -1,7 +1,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react"
 import { Search, Loader2 } from "lucide-react"
-import { useNavigate } from "@tanstack/react-router"
+import { useNavigate, useRouterState } from "@tanstack/react-router"
 import { useQueryState, parseAsString, debounce } from "nuqs"
 import { Kbd } from "@/components/ui/kbd"
 
@@ -86,6 +86,8 @@ function LiveSearchBar({ isSearching }: { isSearching: boolean }) {
 function NavigateSearchBar({ isSearching }: { isSearching: boolean }) {
     const [query, setQuery] = useState("")
     const navigate = useNavigate()
+    const isRouterPending = useRouterState({ select: (s) => s.isLoading })
+    const loading = isSearching || isRouterPending
 
     const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault()
@@ -97,7 +99,7 @@ function NavigateSearchBar({ isSearching }: { isSearching: boolean }) {
     return (
         <form onSubmit={handleSubmit} className="mb-6">
             <div className="flex items-center gap-3 bg-card border border-border rounded-md px-4 py-3 focus-within:border-foreground/50 transition-colors">
-                {isSearching ? (
+                {loading ? (
                     <Loader2 className="w-4 h-4 text-muted-foreground animate-spin shrink-0" />
                 ) : (
                     <Search className="w-4 h-4 text-muted-foreground shrink-0" />
@@ -112,10 +114,10 @@ function NavigateSearchBar({ isSearching }: { isSearching: boolean }) {
                 />
                 <button
                     type="submit"
-                    disabled={!query.trim() || isSearching}
+                    disabled={!query.trim() || loading}
                     className="text-xs text-muted-foreground hover:text-foreground disabled:opacity-40 transition-colors"
                 >
-                    [enter]
+                    {loading ? "searching..." : "[enter]"}
                 </button>
             </div>
         </form>
