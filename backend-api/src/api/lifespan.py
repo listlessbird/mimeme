@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Any
 
 import structlog
 from fastapi import FastAPI
@@ -81,33 +82,44 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         try:
             active_build = db.query(IndexBuild).filter(IndexBuild.is_active).first()
             db_active_version = active_build.version if active_build else None
-            if db_active_version:
-                index_manager.load_active_index(db)
-                log.info(
-                    "index_loaded",
-                    version=index_manager.active_version,
-                    num_vectors=index_manager.num_vectors,
-                )
-            else:
+            if not db_active_version:
                 log.warning("no_active_index_in_db")
 
             autoloaded_version = index_manager.autoload_latest_available(db)
             if autoloaded_version:
-                log.info(
-                    "index_autoloaded_latest",
-                    version=autoloaded_version,
-                    num_vectors=index_manager.num_vectors,
-                )
                 db_active_version = autoloaded_version
         finally:
             try:
                 next(db_gen)
             except StopIteration:
                 pass
-    except FileNotFoundError:
-        log.warning("no_index_found", message="Index will be built on first rebuild")
     except Exception as e:
         log.warning("index_load_failed", error=str(e))
+
+    startup_tasks: list[Any] = []
+    if db_active_version:
+        startup_tasks.append(asyncio.to_thread(index_manager.load_index_version, db_active_version))
+    if settings.preload_text_encoder_on_startup:
+        log.info("preloading_text_encoder")
+        startup_tasks.append(asyncio.to_thread(SearchTextEncoder.get_instance))
+
+    if startup_tasks:
+        results = await asyncio.gather(*startup_tasks, return_exceptions=True)
+        for result in results:
+            if isinstance(result, Exception):
+                log.warning("startup_task_failed", error=str(result))
+
+    if index_manager.is_loaded:
+        log.info(
+            "index_loaded",
+            version=index_manager.active_version,
+            num_vectors=index_manager.num_vectors,
+        )
+
+    if index_manager.is_loaded and index_manager.has_text_index():
+        log.info("preloading_text_index")
+        await asyncio.to_thread(index_manager.ensure_text_index_loaded)
+        log.info("text_index_ready")
 
     active_version = index_manager.active_version or db_active_version
     log.info(
@@ -121,13 +133,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         manager_has_text_index=index_manager.has_text_index(),
         **_index_files_snapshot(active_version),
     )
-
-    if settings.preload_text_encoder_on_startup:
-        log.info("preloading_text_encoder")
-        await asyncio.to_thread(SearchTextEncoder.get_instance)
-        log.info("text_encoder_ready")
-    else:
-        log.info("skipping_text_encoder_preload")
 
     yield
 
