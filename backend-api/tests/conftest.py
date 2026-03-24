@@ -115,8 +115,17 @@ def _patch_session_scope(db_session: Session, monkeypatch: pytest.MonkeyPatch) -
     @contextmanager
     def _test_session_scope() -> Iterator[Session]:
         yield db_session
+        db_session.flush()
 
     monkeypatch.setattr("shared.db.session_scope", _test_session_scope)
+
+    # Also patch at every import site so local references pick up the override
+    for module_path in [
+        "activities.workflow_state.activities.session_scope",
+        "activities.storage.activities.session_scope",
+        "activities.indexing.activities.session_scope",
+    ]:
+        monkeypatch.setattr(module_path, _test_session_scope)
 
     def _test_get_db() -> Iterator[Session]:
         yield db_session

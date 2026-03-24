@@ -379,3 +379,34 @@ class TestIngestWorkflowActivityException:
 
         assert result.failed == 2
         assert "mark_ingest_url_failed_activity" in _activity_calls
+
+
+class TestIngestWorkflowIdempotency:
+    async def test_same_workflow_id_rejects_second_start(self) -> None:
+        """Starting a workflow with the same ID twice should raise."""
+        task_queue = str(uuid.uuid4())
+        workflow_id = f"ingest-test-{uuid.uuid4().hex[:8]}"
+
+        async with await WorkflowEnvironment.start_time_skipping() as env:
+            async with Worker(
+                env.client,
+                task_queue=task_queue,
+                workflows=[IngestWorkflow],
+                activities=ALL_MOCK_ACTIVITIES,
+            ):
+                # First start succeeds
+                await env.client.execute_workflow(
+                    IngestWorkflow.run,
+                    IngestWorkflowInput(job_id="test-1"),
+                    id=workflow_id,
+                    task_queue=task_queue,
+                )
+
+                # Second start with SAME workflow ID should fail
+                with pytest.raises(Exception):
+                    await env.client.start_workflow(
+                        IngestWorkflow.run,
+                        IngestWorkflowInput(job_id="test-1"),
+                        id=workflow_id,
+                        task_queue=task_queue,
+                    )
