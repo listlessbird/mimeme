@@ -8,13 +8,13 @@ from unittest.mock import MagicMock
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from shared.models.orm import Job, JobStatus, JobType
-from tests.factories import IndexBuildFactory, JobFactory
+from shared.models.orm import JobStatus, JobType
+from tests.factories import create_index_build, create_job
 
 
 class TestGetJob:
     def test_get_existing_job(self, client: TestClient, db_session: Session) -> None:
-        job = JobFactory(session=db_session)
+        job = create_job(session=db_session)
         db_session.flush()
 
         resp = client.get(f"/jobs/{job.id}")
@@ -24,7 +24,7 @@ class TestGetJob:
         assert data["status"] == JobStatus.PENDING.value
 
     def test_get_job_with_json_result(self, client: TestClient, db_session: Session) -> None:
-        job = JobFactory(session=db_session, status=JobStatus.COMPLETED)
+        job = create_job(session=db_session, status=JobStatus.COMPLETED)
         job.result = json.dumps({"processed": 5, "failed": 0})
         db_session.flush()
 
@@ -32,8 +32,10 @@ class TestGetJob:
         data = resp.json()
         assert data["result"]["processed"] == 5
 
-    def test_get_job_with_invalid_json_result(self, client: TestClient, db_session: Session) -> None:
-        job = JobFactory(session=db_session, status=JobStatus.COMPLETED)
+    def test_get_job_with_invalid_json_result(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        job = create_job(session=db_session, status=JobStatus.COMPLETED)
         job.result = "not-valid-json"
         db_session.flush()
 
@@ -55,8 +57,8 @@ class TestListJobs:
         assert data["total"] == 0
 
     def test_list_jobs_with_data(self, client: TestClient, db_session: Session) -> None:
-        JobFactory(session=db_session, type=JobType.INGEST)
-        JobFactory(session=db_session, type=JobType.REBUILD_INDEX)
+        create_job(session=db_session, type=JobType.INGEST)
+        create_job(session=db_session, type=JobType.REBUILD_INDEX)
         db_session.flush()
 
         resp = client.get("/jobs")
@@ -64,8 +66,8 @@ class TestListJobs:
         assert data["total"] == 2
 
     def test_list_jobs_filter_by_status(self, client: TestClient, db_session: Session) -> None:
-        JobFactory(session=db_session, status=JobStatus.PENDING)
-        JobFactory(session=db_session, status=JobStatus.COMPLETED)
+        create_job(session=db_session, status=JobStatus.PENDING)
+        create_job(session=db_session, status=JobStatus.COMPLETED)
         db_session.flush()
 
         resp = client.get(f"/jobs?status={JobStatus.PENDING.value}")
@@ -74,8 +76,8 @@ class TestListJobs:
         assert data["jobs"][0]["status"] == JobStatus.PENDING.value
 
     def test_list_jobs_filter_by_type(self, client: TestClient, db_session: Session) -> None:
-        JobFactory(session=db_session, type=JobType.INGEST)
-        JobFactory(session=db_session, type=JobType.REBUILD_INDEX)
+        create_job(session=db_session, type=JobType.INGEST)
+        create_job(session=db_session, type=JobType.REBUILD_INDEX)
         db_session.flush()
 
         resp = client.get(f"/jobs?job_type={JobType.INGEST.value}")
@@ -87,7 +89,7 @@ class TestCancelJob:
     def test_cancel_pending_job(
         self, client: TestClient, db_session: Session, mock_temporal: MagicMock
     ) -> None:
-        job = JobFactory(session=db_session, status=JobStatus.PENDING)
+        job = create_job(session=db_session, status=JobStatus.PENDING)
         db_session.flush()
 
         resp = client.delete(f"/jobs/{job.id}")
@@ -99,9 +101,7 @@ class TestCancelJob:
     def test_cancel_running_job_with_workflow(
         self, client: TestClient, db_session: Session, mock_temporal: MagicMock
     ) -> None:
-        job = JobFactory(
-            session=db_session, status=JobStatus.RUNNING, workflow_id="wf-123"
-        )
+        job = create_job(session=db_session, status=JobStatus.RUNNING, workflow_id="wf-123")
         db_session.flush()
         # Ensure the mock temporal's workflow_id attribute is set
         job.workflow_id = "wf-123"
@@ -111,15 +111,17 @@ class TestCancelJob:
         assert resp.status_code == 204
         mock_temporal.get_workflow_handle.assert_called_with("wf-123")
 
-    def test_cancel_completed_job_returns_400(self, client: TestClient, db_session: Session) -> None:
-        job = JobFactory(session=db_session, status=JobStatus.COMPLETED)
+    def test_cancel_completed_job_returns_400(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        job = create_job(session=db_session, status=JobStatus.COMPLETED)
         db_session.flush()
 
         resp = client.delete(f"/jobs/{job.id}")
         assert resp.status_code == 400
 
     def test_cancel_failed_job_returns_400(self, client: TestClient, db_session: Session) -> None:
-        job = JobFactory(session=db_session, status=JobStatus.FAILED)
+        job = create_job(session=db_session, status=JobStatus.FAILED)
         db_session.flush()
 
         resp = client.delete(f"/jobs/{job.id}")
@@ -133,7 +135,7 @@ class TestCancelJob:
         self, client: TestClient, db_session: Session, mock_temporal: MagicMock
     ) -> None:
         """Job with no workflow_id should still be cancellable."""
-        job = JobFactory(session=db_session, status=JobStatus.PENDING)
+        job = create_job(session=db_session, status=JobStatus.PENDING)
         db_session.flush()
 
         resp = client.delete(f"/jobs/{job.id}")
@@ -152,9 +154,7 @@ class TestRebuildIndex:
         assert data["status"] == JobStatus.PENDING.value
         mock_temporal.start_workflow.assert_called_once()
 
-    def test_trigger_rebuild_with_force(
-        self, client: TestClient, mock_temporal: MagicMock
-    ) -> None:
+    def test_trigger_rebuild_with_force(self, client: TestClient, mock_temporal: MagicMock) -> None:
         resp = client.post("/jobs/rebuild-index", json={"force": True})
         assert resp.status_code == 202
 
@@ -167,8 +167,8 @@ class TestIndexVersions:
         assert data["versions"] == []
 
     def test_list_index_versions_with_data(self, client: TestClient, db_session: Session) -> None:
-        IndexBuildFactory(session=db_session, is_active=True, version="v1")
-        IndexBuildFactory(session=db_session, is_active=False, version="v2")
+        create_index_build(session=db_session, is_active=True, version="v1")
+        create_index_build(session=db_session, is_active=False, version="v2")
         db_session.flush()
 
         resp = client.get("/jobs/indexes/versions")

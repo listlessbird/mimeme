@@ -20,7 +20,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import Engine, create_engine, event, text
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 # Force development mode + disable text encoder preloading before importing app code
@@ -208,7 +208,7 @@ def client(
     from api.main import create_app
 
     @asynccontextmanager
-    async def _noop_lifespan(app: object):  # type: ignore[override]
+    async def _noop_lifespan(app: object):
         yield
 
     app = create_app()

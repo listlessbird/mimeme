@@ -41,6 +41,7 @@ from activities.workflow_state.models import (
 )
 from shared.models.orm import (
     Annotation,
+    Image,
     IngestURL,
     Job,
     JobStatus,
@@ -49,10 +50,10 @@ from shared.models.orm import (
     ProcessingStatus,
 )
 from tests.factories import (
-    ImageFactory,
-    IngestURLFactory,
-    JobFactory,
-    ProcessingFactory,
+    create_image,
+    create_ingest_url,
+    create_job,
+    create_processing,
 )
 
 
@@ -71,9 +72,9 @@ class TestIngestInitializeActivity:
     async def test_marks_job_running_and_returns_urls(
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
-        job = JobFactory(session=db_session, type=JobType.INGEST)
-        url1 = IngestURLFactory(session=db_session, job=job)
-        url2 = IngestURLFactory(session=db_session, job=job)
+        job: Job = create_job(session=db_session, type=JobType.INGEST)
+        url1: IngestURL = create_ingest_url(session=db_session, job=job)
+        url2: IngestURL = create_ingest_url(session=db_session, job=job)
         db_session.flush()
 
         result = await activity_env.run(ingest_initialize_activity, job.id)
@@ -95,7 +96,7 @@ class TestIngestInitializeActivity:
     async def test_job_with_no_urls_returns_empty(
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
-        job = JobFactory(session=db_session, type=JobType.INGEST)
+        job: Job = create_job(session=db_session, type=JobType.INGEST)
         db_session.flush()
 
         result = await activity_env.run(ingest_initialize_activity, job.id)
@@ -114,9 +115,9 @@ class TestMarkIngestUrlDoneActivity:
     async def test_marks_url_done_with_image_id(
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
-        job = JobFactory(session=db_session)
-        image = ImageFactory(session=db_session)
-        url = IngestURLFactory(session=db_session, job=job)
+        job: Job = create_job(session=db_session)
+        image: Image = create_image(session=db_session)
+        url: IngestURL = create_ingest_url(session=db_session, job=job)
         db_session.flush()
 
         inp = MarkIngestUrlDoneInput(ingest_url_id=url.id, image_id=image.id)
@@ -129,8 +130,8 @@ class TestMarkIngestUrlDoneActivity:
     async def test_nonexistent_image_marks_failed(
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
-        job = JobFactory(session=db_session)
-        url = IngestURLFactory(session=db_session, job=job)
+        job: Job = create_job(session=db_session)
+        url: IngestURL = create_ingest_url(session=db_session, job=job)
         db_session.flush()
 
         inp = MarkIngestUrlDoneInput(ingest_url_id=url.id, image_id=999999)
@@ -138,6 +139,7 @@ class TestMarkIngestUrlDoneActivity:
 
         db_session.refresh(url)
         assert url.status == ProcessingStatus.FAILED
+        assert url.error_message is not None
         assert "not found" in url.error_message
 
     async def test_nonexistent_url_is_noop(
@@ -151,9 +153,9 @@ class TestMarkIngestUrlDoneActivity:
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
         """mark_ingest_url_done should be safe to call twice for the same URL."""
-        job = JobFactory(session=db_session)
-        image = ImageFactory(session=db_session)
-        url = IngestURLFactory(session=db_session, job=job)
+        job: Job = create_job(session=db_session)
+        image: Image = create_image(session=db_session)
+        url: IngestURL = create_ingest_url(session=db_session, job=job)
         db_session.flush()
 
         inp = MarkIngestUrlDoneInput(ingest_url_id=url.id, image_id=image.id)
@@ -179,8 +181,8 @@ class TestMarkIngestUrlFailedActivity:
     async def test_marks_url_failed_with_error(
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
-        job = JobFactory(session=db_session)
-        url = IngestURLFactory(session=db_session, job=job)
+        job: Job = create_job(session=db_session)
+        url: IngestURL = create_ingest_url(session=db_session, job=job)
         db_session.flush()
 
         inp = MarkIngestUrlFailedInput(ingest_url_id=url.id, error="HTTP 404")
@@ -193,8 +195,8 @@ class TestMarkIngestUrlFailedActivity:
     async def test_truncates_long_error(
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
-        job = JobFactory(session=db_session)
-        url = IngestURLFactory(session=db_session, job=job)
+        job: Job = create_job(session=db_session)
+        url: IngestURL = create_ingest_url(session=db_session, job=job)
         db_session.flush()
 
         long_error = "x" * 2000
@@ -202,13 +204,14 @@ class TestMarkIngestUrlFailedActivity:
         await activity_env.run(mark_ingest_url_failed_activity, inp)
 
         db_session.refresh(url)
+        assert url.error_message is not None
         assert len(url.error_message) == 1000
 
     async def test_idempotent_calling_twice_is_safe(
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
-        job = JobFactory(session=db_session)
-        url = IngestURLFactory(session=db_session, job=job)
+        job: Job = create_job(session=db_session)
+        url: IngestURL = create_ingest_url(session=db_session, job=job)
         db_session.flush()
 
         inp = MarkIngestUrlFailedInput(ingest_url_id=url.id, error="First error")
@@ -224,9 +227,9 @@ class TestMarkIngestUrlFailedActivity:
     ) -> None:
         """If a URL was already DONE and then marked failed on retry,
         it should update to FAILED without error."""
-        job = JobFactory(session=db_session)
-        image = ImageFactory(session=db_session)
-        url = IngestURLFactory(session=db_session, job=job)
+        job: Job = create_job(session=db_session)
+        image: Image = create_image(session=db_session)
+        url: IngestURL = create_ingest_url(session=db_session, job=job)
         db_session.flush()
 
         done_inp = MarkIngestUrlDoneInput(ingest_url_id=url.id, image_id=image.id)
@@ -250,8 +253,8 @@ class TestSaveAnnotationsActivity:
     async def test_creates_annotation_and_updates_processing(
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
-        image = ImageFactory(session=db_session)
-        proc = ProcessingFactory(session=db_session, image=image)
+        image: Image = create_image(session=db_session)
+        proc: Processing = create_processing(session=db_session, image=image)
         db_session.flush()
 
         inp = SaveAnnotationsInput(
@@ -277,8 +280,8 @@ class TestSaveAnnotationsActivity:
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
         """Calling save_annotations twice should upsert, not create duplicates."""
-        image = ImageFactory(session=db_session)
-        ProcessingFactory(session=db_session, image=image)
+        image: Image = create_image(session=db_session)
+        create_processing(session=db_session, image=image)
         db_session.flush()
 
         inp = SaveAnnotationsInput(
@@ -303,6 +306,7 @@ class TestSaveAnnotationsActivity:
         assert count == 1
 
         ann = db_session.query(Annotation).filter_by(image_id=image.id).first()
+        assert ann is not None
         assert ann.caption_text == "updated caption"
         assert ann.ocr_text == "updated ocr"
 
@@ -317,8 +321,8 @@ class TestSaveEmbeddingInfoActivity:
     async def test_updates_processing_embed_fields(
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
-        image = ImageFactory(session=db_session)
-        proc = ProcessingFactory(session=db_session, image=image)
+        image: Image = create_image(session=db_session)
+        proc: Processing = create_processing(session=db_session, image=image)
         db_session.flush()
 
         inp = SaveEmbeddingInfoInput(
@@ -339,8 +343,8 @@ class TestSaveEmbeddingInfoActivity:
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
         """Calling twice should just overwrite, not crash."""
-        image = ImageFactory(session=db_session)
-        proc = ProcessingFactory(session=db_session, image=image)
+        image: Image = create_image(session=db_session)
+        proc: Processing = create_processing(session=db_session, image=image)
         db_session.flush()
 
         inp = SaveEmbeddingInfoInput(
@@ -359,7 +363,7 @@ class TestSaveEmbeddingInfoActivity:
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
         """If no Processing row exists, activity completes without error."""
-        image = ImageFactory(session=db_session)
+        image: Image = create_image(session=db_session)
         db_session.flush()
 
         inp = SaveEmbeddingInfoInput(
@@ -381,7 +385,7 @@ class TestUpdateJobProgressActivity:
     async def test_updates_progress_and_message(
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
-        job = JobFactory(session=db_session)
+        job: Job = create_job(session=db_session)
         db_session.flush()
 
         inp = UpdateJobProgressInput(job_id=job.id, progress=50.0, message="Halfway")
@@ -394,7 +398,7 @@ class TestUpdateJobProgressActivity:
     async def test_progress_without_message_preserves_old(
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
-        job = JobFactory(session=db_session, message="Old message")
+        job: Job = create_job(session=db_session, message="Old message")
         db_session.flush()
 
         inp = UpdateJobProgressInput(job_id=job.id, progress=75.0)
@@ -421,18 +425,17 @@ class TestCompleteIngestJobActivity:
     async def test_no_failures_marks_completed(
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
-        job = JobFactory(session=db_session, status=JobStatus.RUNNING)
+        job: Job = create_job(session=db_session, status=JobStatus.RUNNING)
         db_session.flush()
 
-        inp = CompleteIngestJobInput(
-            job_id=job.id, processed=5, failed=0, duplicates=1
-        )
+        inp = CompleteIngestJobInput(job_id=job.id, processed=5, failed=0, duplicates=1)
         await activity_env.run(complete_ingest_job_activity, inp)
 
         db_session.refresh(job)
         assert job.status == JobStatus.COMPLETED
         assert job.progress == 100.0
         assert job.completed_at is not None
+        assert job.result is not None
         result = json.loads(job.result)
         assert result["processed"] == 5
         assert result["duplicates"] == 1
@@ -440,12 +443,10 @@ class TestCompleteIngestJobActivity:
     async def test_with_failures_marks_failed(
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
-        job = JobFactory(session=db_session, status=JobStatus.RUNNING)
+        job: Job = create_job(session=db_session, status=JobStatus.RUNNING)
         db_session.flush()
 
-        inp = CompleteIngestJobInput(
-            job_id=job.id, processed=3, failed=2, duplicates=0
-        )
+        inp = CompleteIngestJobInput(job_id=job.id, processed=3, failed=2, duplicates=0)
         await activity_env.run(complete_ingest_job_activity, inp)
 
         db_session.refresh(job)
@@ -455,12 +456,10 @@ class TestCompleteIngestJobActivity:
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
         """Completing a job twice should overwrite result, not crash."""
-        job = JobFactory(session=db_session, status=JobStatus.RUNNING)
+        job: Job = create_job(session=db_session, status=JobStatus.RUNNING)
         db_session.flush()
 
-        inp = CompleteIngestJobInput(
-            job_id=job.id, processed=5, failed=0, duplicates=1
-        )
+        inp = CompleteIngestJobInput(job_id=job.id, processed=5, failed=0, duplicates=1)
         await activity_env.run(complete_ingest_job_activity, inp)
         db_session.refresh(job)
         assert job.status == JobStatus.COMPLETED
@@ -480,7 +479,7 @@ class TestStartRebuildJobActivity:
     async def test_marks_job_running(
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
-        job = JobFactory(session=db_session, type=JobType.REBUILD_INDEX)
+        job: Job = create_job(session=db_session, type=JobType.REBUILD_INDEX)
         db_session.flush()
 
         inp = StartRebuildJobInput(job_id=job.id)
@@ -508,7 +507,9 @@ class TestFailRebuildJobActivity:
     async def test_marks_job_failed(
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
-        job = JobFactory(session=db_session, type=JobType.REBUILD_INDEX, status=JobStatus.RUNNING)
+        job: Job = create_job(
+            session=db_session, type=JobType.REBUILD_INDEX, status=JobStatus.RUNNING
+        )
         db_session.flush()
 
         inp = FailRebuildJobInput(job_id=job.id, error="No embeddings found")
@@ -522,13 +523,16 @@ class TestFailRebuildJobActivity:
     async def test_truncates_long_error(
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
-        job = JobFactory(session=db_session, type=JobType.REBUILD_INDEX, status=JobStatus.RUNNING)
+        job: Job = create_job(
+            session=db_session, type=JobType.REBUILD_INDEX, status=JobStatus.RUNNING
+        )
         db_session.flush()
 
         inp = FailRebuildJobInput(job_id=job.id, error="x" * 5000)
         await activity_env.run(fail_rebuild_job_activity, inp)
 
         db_session.refresh(job)
+        assert job.message is not None
         assert len(job.message) == 2000
 
 
@@ -542,7 +546,9 @@ class TestCompleteRebuildJobActivity:
     async def test_marks_job_completed_with_result(
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
-        job = JobFactory(session=db_session, type=JobType.REBUILD_INDEX, status=JobStatus.RUNNING)
+        job: Job = create_job(
+            session=db_session, type=JobType.REBUILD_INDEX, status=JobStatus.RUNNING
+        )
         db_session.flush()
 
         inp = CompleteRebuildJobInput(
@@ -559,6 +565,7 @@ class TestCompleteRebuildJobActivity:
         assert job.status == JobStatus.COMPLETED
         assert job.progress == 100.0
         assert job.completed_at is not None
+        assert job.result is not None
         result = json.loads(job.result)
         assert result["version"] == "v-abc123"
         assert result["num_vectors"] == 500
@@ -586,7 +593,7 @@ class TestCompleteRebuildJobActivity:
 
 class TestJobModelConstraints:
     def test_default_status_is_pending(self, db_session: Session) -> None:
-        job = JobFactory(session=db_session)
+        job: Job = create_job(session=db_session)
         db_session.flush()
         assert job.status == JobStatus.PENDING
         assert job.progress == 0.0
@@ -594,7 +601,7 @@ class TestJobModelConstraints:
         assert job.completed_at is None
 
     def test_duplicate_job_id_raises(self, db_session: Session) -> None:
-        JobFactory(session=db_session, id="dupe-id")
+        create_job(session=db_session, id="dupe-id")
         db_session.flush()
 
         job2 = Job(id="dupe-id", type=JobType.INGEST)
@@ -604,17 +611,18 @@ class TestJobModelConstraints:
         db_session.rollback()
 
     def test_result_stores_valid_json(self, db_session: Session) -> None:
-        job = JobFactory(session=db_session)
+        job: Job = create_job(session=db_session)
         job.result = json.dumps({"key": "value", "nested": {"a": 1}})
         db_session.flush()
 
         db_session.refresh(job)
+        assert job.result is not None
         parsed = json.loads(job.result)
         assert parsed["nested"]["a"] == 1
 
     def test_both_job_types(self, db_session: Session) -> None:
-        j1 = JobFactory(session=db_session, type=JobType.INGEST)
-        j2 = JobFactory(session=db_session, type=JobType.REBUILD_INDEX)
+        j1: Job = create_job(session=db_session, type=JobType.INGEST)
+        j2: Job = create_job(session=db_session, type=JobType.REBUILD_INDEX)
         db_session.flush()
         assert j1.type == JobType.INGEST
         assert j2.type == JobType.REBUILD_INDEX
@@ -628,19 +636,19 @@ class TestJobModelConstraints:
 
 class TestIngestURLModelRelationships:
     def test_multiple_urls_per_job(self, db_session: Session) -> None:
-        job = JobFactory(session=db_session)
-        IngestURLFactory(session=db_session, job=job)
-        IngestURLFactory(session=db_session, job=job)
-        IngestURLFactory(session=db_session, job=job)
+        job: Job = create_job(session=db_session)
+        create_ingest_url(session=db_session, job=job)
+        create_ingest_url(session=db_session, job=job)
+        create_ingest_url(session=db_session, job=job)
         db_session.flush()
 
         db_session.refresh(job)
         assert len(job.ingest_urls) == 3
 
     def test_cascade_delete_job_removes_urls(self, db_session: Session) -> None:
-        job = JobFactory(session=db_session)
-        IngestURLFactory(session=db_session, job=job)
-        IngestURLFactory(session=db_session, job=job)
+        job: Job = create_job(session=db_session)
+        create_ingest_url(session=db_session, job=job)
+        create_ingest_url(session=db_session, job=job)
         db_session.flush()
 
         job_id = job.id
@@ -652,9 +660,9 @@ class TestIngestURLModelRelationships:
 
     def test_image_fk_set_null_on_delete(self, db_session: Session) -> None:
         """When an Image is deleted, IngestURL.image_id should be set to NULL."""
-        job = JobFactory(session=db_session)
-        image = ImageFactory(session=db_session)
-        url = IngestURLFactory(session=db_session, job=job)
+        job: Job = create_job(session=db_session)
+        image: Image = create_image(session=db_session)
+        url: IngestURL = create_ingest_url(session=db_session, job=job)
         url.image_id = image.id
         url.status = ProcessingStatus.DONE
         db_session.flush()
@@ -666,7 +674,7 @@ class TestIngestURLModelRelationships:
         assert url.image_id is None
 
     def test_default_status_is_pending(self, db_session: Session) -> None:
-        job = JobFactory(session=db_session)
-        url = IngestURLFactory(session=db_session, job=job)
+        job: Job = create_job(session=db_session)
+        url: IngestURL = create_ingest_url(session=db_session, job=job)
         db_session.flush()
         assert url.status == ProcessingStatus.PENDING

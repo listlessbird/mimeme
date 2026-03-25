@@ -9,19 +9,27 @@ from fastapi.testclient import TestClient
 from api.models.search import SearchResult
 
 
-def _make_search_result(**overrides: object) -> SearchResult:
-    defaults = {
-        "id": 1,
-        "sha256": "abc123",
-        "score": 0.95,
-        "url": "https://mock-s3/presigned",
-        "caption": "A meme",
-        "ocr_text": None,
-        "width": 800,
-        "height": 600,
-    }
-    defaults.update(overrides)
-    return SearchResult(**defaults)
+def _make_search_result(
+    *,
+    id: int = 1,
+    sha256: str = "abc123",
+    score: float = 0.95,
+    url: str | None = "https://mock-s3/presigned",
+    caption: str | None = "A meme",
+    ocr_text: str | None = None,
+    width: int | None = 800,
+    height: int | None = 600,
+) -> SearchResult:
+    return SearchResult(
+        id=id,
+        sha256=sha256,
+        score=score,
+        url=url,
+        caption=caption,
+        ocr_text=ocr_text,
+        width=width,
+        height=height,
+    )
 
 
 class TestSearchEndpoint:
@@ -46,9 +54,7 @@ class TestSearchEndpoint:
         assert len(data["results"]) == 2
         assert "search_time_ms" in data
 
-    def test_search_respects_limit(
-        self, client: TestClient, mock_index_manager: MagicMock
-    ) -> None:
+    def test_search_respects_limit(self, client: TestClient, mock_index_manager: MagicMock) -> None:
         results = [_make_search_result(id=i) for i in range(10)]
         with (
             patch("api.routers.search._ensure_index_loaded_for_thread"),

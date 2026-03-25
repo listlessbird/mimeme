@@ -99,9 +99,7 @@ class TestOCRActivity:
     async def test_empty_ocr_text(self, activity_env: ActivityEnvironment) -> None:
         """Images with no text should return empty string."""
         mock_backend = AsyncMock()
-        mock_backend.ocr.return_value = OCROutput(
-            image_id=8, text="", model="moondream2"
-        )
+        mock_backend.ocr.return_value = OCROutput(image_id=8, text="", model="moondream2")
 
         inp = OCRInput(image_id=8, s3_key="images/test/photo.jpg")
 

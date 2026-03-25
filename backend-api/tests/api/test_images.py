@@ -9,11 +9,9 @@ from sqlalchemy.orm import Session
 
 from shared.models.orm import IngestURL, Job, JobType, ProcessingStatus
 from tests.factories import (
-    AnnotationFactory,
-    ImageFactory,
-    IngestURLFactory,
-    JobFactory,
-    ProcessingFactory,
+    create_annotation,
+    create_image,
+    create_processing,
 )
 
 
@@ -83,8 +81,8 @@ class TestListImages:
         assert data["total"] == 0
 
     def test_list_images_with_data(self, client: TestClient, db_session: Session) -> None:
-        img1 = ImageFactory(session=db_session)
-        img2 = ImageFactory(session=db_session)
+        create_image(session=db_session)
+        create_image(session=db_session)
         db_session.flush()
 
         resp = client.get("/images")
@@ -95,7 +93,7 @@ class TestListImages:
 
     def test_list_images_pagination(self, client: TestClient, db_session: Session) -> None:
         for _ in range(5):
-            ImageFactory(session=db_session)
+            create_image(session=db_session)
         db_session.flush()
 
         resp = client.get("/images?limit=2&offset=0")
@@ -106,7 +104,7 @@ class TestListImages:
         assert data["has_more"] is True
 
     def test_list_images_offset_beyond_total(self, client: TestClient, db_session: Session) -> None:
-        ImageFactory(session=db_session)
+        create_image(session=db_session)
         db_session.flush()
 
         resp = client.get("/images?offset=999")
@@ -117,8 +115,8 @@ class TestListImages:
         assert data["has_more"] is False
 
     def test_list_images_filter_by_dataset(self, client: TestClient, db_session: Session) -> None:
-        ImageFactory(session=db_session, dataset="cats")
-        ImageFactory(session=db_session, dataset="dogs")
+        create_image(session=db_session, dataset="cats")
+        create_image(session=db_session, dataset="dogs")
         db_session.flush()
 
         resp = client.get("/images?dataset=cats")
@@ -126,11 +124,13 @@ class TestListImages:
         assert data["total"] == 1
         assert data["images"][0]["dataset"] == "cats"
 
-    def test_list_images_filter_by_status_done(self, client: TestClient, db_session: Session) -> None:
-        img1 = ImageFactory(session=db_session)
-        ProcessingFactory(session=db_session, image=img1, embed_status=ProcessingStatus.DONE)
-        img2 = ImageFactory(session=db_session)
-        ProcessingFactory(session=db_session, image=img2, embed_status=ProcessingStatus.PENDING)
+    def test_list_images_filter_by_status_done(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        img1 = create_image(session=db_session)
+        create_processing(session=db_session, image=img1, embed_status=ProcessingStatus.DONE)
+        img2 = create_image(session=db_session)
+        create_processing(session=db_session, image=img2, embed_status=ProcessingStatus.PENDING)
         db_session.flush()
 
         resp = client.get("/images?status=done")
@@ -138,8 +138,8 @@ class TestListImages:
         assert data["total"] == 1
 
     def test_list_images_sort_oldest(self, client: TestClient, db_session: Session) -> None:
-        img1 = ImageFactory(session=db_session)
-        img2 = ImageFactory(session=db_session)
+        create_image(session=db_session)
+        create_image(session=db_session)
         db_session.flush()
 
         resp = client.get("/images?sort=oldest")
@@ -149,7 +149,7 @@ class TestListImages:
 
 class TestGetImage:
     def test_get_existing_image(self, client: TestClient, db_session: Session) -> None:
-        image = ImageFactory(session=db_session)
+        image = create_image(session=db_session)
         db_session.flush()
 
         resp = client.get(f"/images/{image.id}")
@@ -159,8 +159,8 @@ class TestGetImage:
         assert data["sha256"] == image.sha256
 
     def test_get_image_with_annotations(self, client: TestClient, db_session: Session) -> None:
-        image = ImageFactory(session=db_session)
-        AnnotationFactory(session=db_session, image=image, caption_text="A cat", ocr_text="LOL")
+        image = create_image(session=db_session)
+        create_annotation(session=db_session, image=image, caption_text="A cat", ocr_text="LOL")
         db_session.flush()
 
         resp = client.get(f"/images/{image.id}")
@@ -175,9 +175,9 @@ class TestGetImage:
 
 class TestDeleteImage:
     def test_delete_existing_image(self, client: TestClient, db_session: Session) -> None:
-        image = ImageFactory(session=db_session)
-        ProcessingFactory(session=db_session, image=image)
-        AnnotationFactory(session=db_session, image=image)
+        image = create_image(session=db_session)
+        create_processing(session=db_session, image=image)
+        create_annotation(session=db_session, image=image)
         db_session.flush()
 
         resp = client.delete(f"/images/{image.id}")
@@ -190,7 +190,7 @@ class TestDeleteImage:
     def test_delete_calls_storage_delete(
         self, client: TestClient, db_session: Session, mock_storage: MagicMock
     ) -> None:
-        image = ImageFactory(session=db_session, s3_key="images/test/abc.jpg")
+        image = create_image(session=db_session, s3_key="images/test/abc.jpg")
         db_session.flush()
 
         client.delete(f"/images/{image.id}")

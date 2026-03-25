@@ -31,10 +31,10 @@ from shared.models.orm import (
     Processing,
 )
 from tests.factories import (
-    AnnotationFactory,
-    ArtifactFactory,
-    ImageFactory,
-    ProcessingFactory,
+    create_annotation,
+    create_artifact,
+    create_image,
+    create_processing,
 )
 
 
@@ -102,6 +102,7 @@ class TestDownloadImageActivity:
             result = await activity_env.run(download_image_activity, inp)
 
         assert result.success is False
+        assert result.error is not None
         assert "content type" in result.error.lower() or "content_type" in result.error.lower()
 
     async def test_http_error_returns_failure(self, activity_env: ActivityEnvironment) -> None:
@@ -185,7 +186,9 @@ class TestProcessImageActivity:
 
         with (
             patch("activities.storage.activities.get_storage_service", return_value=mock_storage),
-            patch("activities.storage.activities.compute_sha256", return_value="unique-sha256-hash"),
+            patch(
+                "activities.storage.activities.compute_sha256", return_value="unique-sha256-hash"
+            ),
             patch("activities.storage.activities.compute_phash", return_value="abcd1234"),
             patch("activities.storage.activities.get_image_info", return_value=(800, 600, "jpeg")),
         ):
@@ -208,7 +211,7 @@ class TestProcessImageActivity:
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
         """If an image with the same SHA256 exists, return it as duplicate."""
-        existing = ImageFactory(
+        existing = create_image(
             session=db_session,
             sha256="existing-hash",
             s3_key="images/test/existing.jpg",
@@ -267,8 +270,8 @@ class TestCleanupTempFileActivity:
 
 class TestImageCascadeDelete:
     def test_delete_image_cascades_to_processing(self, db_session: Session) -> None:
-        image = ImageFactory(session=db_session)
-        ProcessingFactory(session=db_session, image=image)
+        image = create_image(session=db_session)
+        create_processing(session=db_session, image=image)
         db_session.flush()
 
         image_id = image.id
@@ -278,8 +281,8 @@ class TestImageCascadeDelete:
         assert db_session.query(Processing).filter_by(image_id=image_id).first() is None
 
     def test_delete_image_cascades_to_annotation(self, db_session: Session) -> None:
-        image = ImageFactory(session=db_session)
-        AnnotationFactory(session=db_session, image=image)
+        image = create_image(session=db_session)
+        create_annotation(session=db_session, image=image)
         db_session.flush()
 
         image_id = image.id
@@ -289,8 +292,8 @@ class TestImageCascadeDelete:
         assert db_session.query(Annotation).filter_by(image_id=image_id).first() is None
 
     def test_delete_image_cascades_to_artifacts(self, db_session: Session) -> None:
-        image = ImageFactory(session=db_session)
-        ArtifactFactory(session=db_session, image=image)
+        image = create_image(session=db_session)
+        create_artifact(session=db_session, image=image)
         db_session.flush()
 
         image_id = image.id
@@ -300,7 +303,7 @@ class TestImageCascadeDelete:
         assert db_session.query(Artifact).filter_by(image_id=image_id).first() is None
 
     def test_delete_image_without_related_records(self, db_session: Session) -> None:
-        image = ImageFactory(session=db_session)
+        image = create_image(session=db_session)
         db_session.flush()
 
         db_session.delete(image)
@@ -310,7 +313,7 @@ class TestImageCascadeDelete:
 
 class TestImageUniqueConstraints:
     def test_sha256_unique_constraint(self, db_session: Session) -> None:
-        ImageFactory(session=db_session, sha256="abc123")
+        create_image(session=db_session, sha256="abc123")
         db_session.flush()
 
         img2 = Image(sha256="abc123", dataset="other")
@@ -320,7 +323,7 @@ class TestImageUniqueConstraints:
         db_session.rollback()
 
     def test_different_sha256_allowed(self, db_session: Session) -> None:
-        img1 = ImageFactory(session=db_session, sha256="hash1")
-        img2 = ImageFactory(session=db_session, sha256="hash2")
+        img1 = create_image(session=db_session, sha256="hash1")
+        img2 = create_image(session=db_session, sha256="hash2")
         db_session.flush()
         assert img1.id != img2.id

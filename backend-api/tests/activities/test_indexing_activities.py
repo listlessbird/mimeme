@@ -23,7 +23,7 @@ from activities.indexing.activities import (
 )
 from activities.indexing.models import BuildIndexInput, SwapIndexInput
 from shared.models.orm import ProcessingStatus
-from tests.factories import ImageFactory, ProcessingFactory
+from tests.factories import create_image, create_processing
 
 
 @pytest.fixture()
@@ -43,8 +43,8 @@ class TestBuildIndexActivity:
     ) -> None:
         """Happy path: done embeddings exist, index is built and returned."""
         for i in range(3):
-            image = ImageFactory(session=db_session)
-            proc = ProcessingFactory(session=db_session, image=image)
+            image = create_image(session=db_session)
+            proc = create_processing(session=db_session, image=image)
             proc.embed_status = ProcessingStatus.DONE
             proc.embed_s3_key = f"embeddings/{image.id}.npy"
         db_session.flush()
@@ -65,7 +65,10 @@ class TestBuildIndexActivity:
 
         with (
             patch("activities.indexing.activities.get_storage_service", return_value=mock_storage),
-            patch("activities.indexing.activities.FaissIndexManager.get_instance", return_value=mock_manager),
+            patch(
+                "activities.indexing.activities.FaissIndexManager.get_instance",
+                return_value=mock_manager,
+            ),
         ):
             result = activity_env.run(build_index_activity, inp)
 
@@ -85,7 +88,10 @@ class TestBuildIndexActivity:
 
         with (
             patch("activities.indexing.activities.get_storage_service", return_value=mock_storage),
-            patch("activities.indexing.activities.FaissIndexManager.get_instance", return_value=mock_manager),
+            patch(
+                "activities.indexing.activities.FaissIndexManager.get_instance",
+                return_value=mock_manager,
+            ),
         ):
             with pytest.raises(ValueError, match="No embeddings"):
                 activity_env.run(build_index_activity, inp)
@@ -97,8 +103,8 @@ class TestBuildIndexActivity:
         from botocore.exceptions import ClientError
 
         for i in range(3):
-            image = ImageFactory(session=db_session)
-            proc = ProcessingFactory(session=db_session, image=image)
+            image = create_image(session=db_session)
+            proc = create_processing(session=db_session, image=image)
             proc.embed_status = ProcessingStatus.DONE
             proc.embed_s3_key = f"embeddings/{image.id}.npy"
         db_session.flush()
@@ -128,7 +134,10 @@ class TestBuildIndexActivity:
 
         with (
             patch("activities.indexing.activities.get_storage_service", return_value=mock_storage),
-            patch("activities.indexing.activities.FaissIndexManager.get_instance", return_value=mock_manager),
+            patch(
+                "activities.indexing.activities.FaissIndexManager.get_instance",
+                return_value=mock_manager,
+            ),
         ):
             result = activity_env.run(build_index_activity, inp)
 

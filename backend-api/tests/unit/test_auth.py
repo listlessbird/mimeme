@@ -9,7 +9,6 @@ from fastapi import HTTPException
 
 from api.auth import ApiKeyRole, _resolve_role, require_admin, require_readonly
 
-
 # ---------------------------------------------------------------------------
 # _resolve_role
 # ---------------------------------------------------------------------------

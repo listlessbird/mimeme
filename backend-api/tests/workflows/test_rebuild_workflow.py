@@ -11,13 +11,7 @@ from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
-from activities.indexing.models import BuildIndexOutput, GarbageCollectOutput, SwapIndexInput
-from activities.workflow_state.models import (
-    CompleteRebuildJobInput,
-    FailRebuildJobInput,
-    StartRebuildJobInput,
-    UpdateJobProgressInput,
-)
+from activities.indexing.models import BuildIndexOutput, GarbageCollectOutput
 from workflows.models import RebuildIndexWorkflowInput
 from workflows.rebuild_index import RebuildIndexWorkflow
 

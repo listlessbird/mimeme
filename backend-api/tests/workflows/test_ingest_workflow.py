@@ -10,7 +10,6 @@ import uuid
 
 import pytest
 from temporalio import activity
-from temporalio.client import WorkflowFailureError
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
@@ -19,14 +18,8 @@ from activities.embedding.models import EmbedBatchOutput, EmbedImageOutput
 from activities.storage.models import DownloadImageOutput, ProcessImageOutput
 from activities.vision.models import CaptionOutput, OCROutput
 from activities.workflow_state.models import (
-    CompleteIngestJobInput,
     IngestInitOutput,
     IngestUrlItem,
-    MarkIngestUrlDoneInput,
-    MarkIngestUrlFailedInput,
-    SaveAnnotationsInput,
-    SaveEmbeddingInfoInput,
-    UpdateJobProgressInput,
 )
 from workflows.ingest import IngestWorkflow
 from workflows.models import IngestWorkflowInput
@@ -420,7 +413,7 @@ class TestIngestWorkflowIdempotency:
                 activity_executor=concurrent.futures.ThreadPoolExecutor(max_workers=4),
             ):
                 # First start — non-blocking handle, workflow stays running
-                handle = await env.client.start_workflow(
+                await env.client.start_workflow(
                     IngestWorkflow.run,
                     IngestWorkflowInput(job_id="test-1"),
                     id=workflow_id,

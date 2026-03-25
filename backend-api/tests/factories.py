@@ -12,6 +12,7 @@ from __future__ import annotations
 import hashlib
 import os
 import uuid
+from typing import Any, cast
 
 import factory
 from sqlalchemy.orm import Session
@@ -35,7 +36,7 @@ class _BaseMeta:
     sqlalchemy_session_persistence = "flush"
 
 
-class JobFactory(factory.alchemy.SQLAlchemyModelFactory):
+class JobFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[possibly-missing-attribute]
     class Meta(_BaseMeta):
         model = Job
 
@@ -45,13 +46,15 @@ class JobFactory(factory.alchemy.SQLAlchemyModelFactory):
     progress = 0.0
 
     @classmethod
-    def _create(cls, model_class: type, *args: object, session: Session | None = None, **kwargs: object) -> Job:
+    def _create(
+        cls, model_class: Any, *args: object, session: Session | None = None, **kwargs: object
+    ) -> Job:
         if session is not None:
-            cls._meta.sqlalchemy_session = session
+            cls._meta.sqlalchemy_session = session  # ty: ignore[invalid-assignment]
         return super()._create(model_class, *args, **kwargs)
 
 
-class IngestURLFactory(factory.alchemy.SQLAlchemyModelFactory):
+class IngestURLFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[possibly-missing-attribute]
     class Meta(_BaseMeta):
         model = IngestURL
 
@@ -61,13 +64,15 @@ class IngestURLFactory(factory.alchemy.SQLAlchemyModelFactory):
     job_id = factory.LazyAttribute(lambda o: o.job.id)
 
     @classmethod
-    def _create(cls, model_class: type, *args: object, session: Session | None = None, **kwargs: object) -> IngestURL:
+    def _create(
+        cls, model_class: Any, *args: object, session: Session | None = None, **kwargs: object
+    ) -> IngestURL:
         if session is not None:
-            cls._meta.sqlalchemy_session = session
+            cls._meta.sqlalchemy_session = session  # ty: ignore[invalid-assignment]
         return super()._create(model_class, *args, **kwargs)
 
 
-class ImageFactory(factory.alchemy.SQLAlchemyModelFactory):
+class ImageFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[possibly-missing-attribute]
     class Meta(_BaseMeta):
         model = Image
 
@@ -82,13 +87,15 @@ class ImageFactory(factory.alchemy.SQLAlchemyModelFactory):
     phash = factory.LazyFunction(lambda: hashlib.md5(os.urandom(16)).hexdigest()[:16])
 
     @classmethod
-    def _create(cls, model_class: type, *args: object, session: Session | None = None, **kwargs: object) -> Image:
+    def _create(
+        cls, model_class: Any, *args: object, session: Session | None = None, **kwargs: object
+    ) -> Image:
         if session is not None:
-            cls._meta.sqlalchemy_session = session
+            cls._meta.sqlalchemy_session = session  # ty: ignore[invalid-assignment]
         return super()._create(model_class, *args, **kwargs)
 
 
-class ProcessingFactory(factory.alchemy.SQLAlchemyModelFactory):
+class ProcessingFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[possibly-missing-attribute]
     class Meta(_BaseMeta):
         model = Processing
 
@@ -99,13 +106,15 @@ class ProcessingFactory(factory.alchemy.SQLAlchemyModelFactory):
     embed_status = ProcessingStatus.PENDING
 
     @classmethod
-    def _create(cls, model_class: type, *args: object, session: Session | None = None, **kwargs: object) -> Processing:
+    def _create(
+        cls, model_class: Any, *args: object, session: Session | None = None, **kwargs: object
+    ) -> Processing:
         if session is not None:
-            cls._meta.sqlalchemy_session = session
+            cls._meta.sqlalchemy_session = session  # ty: ignore[invalid-assignment]
         return super()._create(model_class, *args, **kwargs)
 
 
-class AnnotationFactory(factory.alchemy.SQLAlchemyModelFactory):
+class AnnotationFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[possibly-missing-attribute]
     class Meta(_BaseMeta):
         model = Annotation
 
@@ -115,13 +124,15 @@ class AnnotationFactory(factory.alchemy.SQLAlchemyModelFactory):
     ocr_text = factory.Sequence(lambda n: f"Sample OCR text #{n}")
 
     @classmethod
-    def _create(cls, model_class: type, *args: object, session: Session | None = None, **kwargs: object) -> Annotation:
+    def _create(
+        cls, model_class: Any, *args: object, session: Session | None = None, **kwargs: object
+    ) -> Annotation:
         if session is not None:
-            cls._meta.sqlalchemy_session = session
+            cls._meta.sqlalchemy_session = session  # ty: ignore[invalid-assignment]
         return super()._create(model_class, *args, **kwargs)
 
 
-class ArtifactFactory(factory.alchemy.SQLAlchemyModelFactory):
+class ArtifactFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[possibly-missing-attribute]
     class Meta(_BaseMeta):
         model = Artifact
 
@@ -132,13 +143,15 @@ class ArtifactFactory(factory.alchemy.SQLAlchemyModelFactory):
     s3_key = factory.Sequence(lambda n: f"artifacts/test/artifact_{n}.bin")
 
     @classmethod
-    def _create(cls, model_class: type, *args: object, session: Session | None = None, **kwargs: object) -> Artifact:
+    def _create(
+        cls, model_class: Any, *args: object, session: Session | None = None, **kwargs: object
+    ) -> Artifact:
         if session is not None:
-            cls._meta.sqlalchemy_session = session
+            cls._meta.sqlalchemy_session = session  # ty: ignore[invalid-assignment]
         return super()._create(model_class, *args, **kwargs)
 
 
-class IndexBuildFactory(factory.alchemy.SQLAlchemyModelFactory):
+class IndexBuildFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[possibly-missing-attribute]
     class Meta(_BaseMeta):
         model = IndexBuild
 
@@ -151,7 +164,37 @@ class IndexBuildFactory(factory.alchemy.SQLAlchemyModelFactory):
     is_active = False
 
     @classmethod
-    def _create(cls, model_class: type, *args: object, session: Session | None = None, **kwargs: object) -> IndexBuild:
+    def _create(
+        cls, model_class: Any, *args: object, session: Session | None = None, **kwargs: object
+    ) -> IndexBuild:
         if session is not None:
-            cls._meta.sqlalchemy_session = session
+            cls._meta.sqlalchemy_session = session  # ty: ignore[invalid-assignment]
         return super()._create(model_class, *args, **kwargs)
+
+
+def create_job(*, session: Session, **kwargs: object) -> Job:
+    return cast(Job, JobFactory(session=session, **kwargs))
+
+
+def create_ingest_url(*, session: Session, **kwargs: object) -> IngestURL:
+    return cast(IngestURL, IngestURLFactory(session=session, **kwargs))
+
+
+def create_image(*, session: Session, **kwargs: object) -> Image:
+    return cast(Image, ImageFactory(session=session, **kwargs))
+
+
+def create_processing(*, session: Session, **kwargs: object) -> Processing:
+    return cast(Processing, ProcessingFactory(session=session, **kwargs))
+
+
+def create_annotation(*, session: Session, **kwargs: object) -> Annotation:
+    return cast(Annotation, AnnotationFactory(session=session, **kwargs))
+
+
+def create_artifact(*, session: Session, **kwargs: object) -> Artifact:
+    return cast(Artifact, ArtifactFactory(session=session, **kwargs))
+
+
+def create_index_build(*, session: Session, **kwargs: object) -> IndexBuild:
+    return cast(IndexBuild, IndexBuildFactory(session=session, **kwargs))

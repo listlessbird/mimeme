@@ -29,12 +29,8 @@ def activity_env() -> ActivityEnvironment:
 class TestEmbedBatchActivity:
     async def test_successful_batch(self, activity_env: ActivityEnvironment) -> None:
         items = [
-            EmbedImageInput(
-                image_id=1, s3_key="images/test/1.jpg", sha256="hash1", dataset="test"
-            ),
-            EmbedImageInput(
-                image_id=2, s3_key="images/test/2.jpg", sha256="hash2", dataset="test"
-            ),
+            EmbedImageInput(image_id=1, s3_key="images/test/1.jpg", sha256="hash1", dataset="test"),
+            EmbedImageInput(image_id=2, s3_key="images/test/2.jpg", sha256="hash2", dataset="test"),
         ]
         expected_output = EmbedBatchOutput(
             results=[
@@ -115,9 +111,7 @@ class TestEmbedBatchActivity:
     async def test_empty_batch(self, activity_env: ActivityEnvironment) -> None:
         """Empty batch should still go through the backend cleanly."""
         mock_backend = AsyncMock()
-        mock_backend.embed_batch.return_value = EmbedBatchOutput(
-            results=[], failed_ids=[]
-        )
+        mock_backend.embed_batch.return_value = EmbedBatchOutput(results=[], failed_ids=[])
 
         inp = EmbedBatchInput(items=[])
 
