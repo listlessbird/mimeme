@@ -14,7 +14,11 @@ import modal
 import structlog
 from botocore.config import Config as BotoConfig
 
-app = modal.App("findmeme-gpu")
+MODAL_APP_NAME = os.environ.get("MODAL_APP_NAME", "findmeme-gpu")
+MODAL_HF_CACHE_VOLUME_NAME = os.environ.get("MODAL_HF_CACHE_VOLUME_NAME", "findmeme-hf-cache")
+MODAL_S3_SECRET_NAME = os.environ.get("MODAL_S3_SECRET_NAME", "findmeme-s3")
+
+app = modal.App(MODAL_APP_NAME)
 
 gpu_image = (
     modal.Image.debian_slim(python_version="3.12")
@@ -33,11 +37,11 @@ gpu_image = (
     )
 )
 
-hf_cache = modal.Volume.from_name("findmeme-hf-cache", create_if_missing=True)
+hf_cache = modal.Volume.from_name(MODAL_HF_CACHE_VOLUME_NAME, create_if_missing=True)
 
 HF_CACHE_DIR = "/root/.cache/huggingface"
 
-s3_secret = modal.Secret.from_name("findmeme-s3")
+s3_secret = modal.Secret.from_name(MODAL_S3_SECRET_NAME)
 
 
 def _setup_logging() -> structlog.BoundLogger:
@@ -59,7 +63,7 @@ def _setup_logging() -> structlog.BoundLogger:
     )
     return structlog.get_logger().bind(
         service="modal-gpu",
-        modal_app_name="findmeme-gpu",
+        modal_app_name=MODAL_APP_NAME,
         app_env=os.environ.get("APP_ENV", "production"),
     )
 

@@ -1,4 +1,20 @@
 cloudflare_api_token  = "your-cloudflare-api-token"
 cloudflare_account_id = "your-cloudflare-account-id"
+cloudflare_workers_subdomain = "your-workers-subdomain"
 neon_api_key          = "your-neon-api-key"
+neon_org_id           = "your-neon-org-id"
 environment           = "dev"
+project_name          = "findmeme"
+r2_access_id          = "your-r2-access-key-id"
+r2_secret_key         = "your-r2-secret-access-key"
+axiom_api_token       = "your-axiom-api-token"
+
+# Modal deploy
+modal_token_id        = "your-modal-token-id"
+modal_token_secret    = "your-modal-token-secret"
+modal_app_name        = "findmeme-gpu"
+
+# Webui worker deploy
+api_base_url          = "https://api.example.com"
+api_key_readonly      = "your-readonly-api-key"
+webui_vite_app_title  = "Find Meme"
