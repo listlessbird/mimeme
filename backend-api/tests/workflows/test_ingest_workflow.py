@@ -11,6 +11,7 @@ import uuid
 import pytest
 from temporalio import activity
 from temporalio.client import WorkflowFailureError
+from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
@@ -107,7 +108,7 @@ async def mock_embed_batch(input: dict) -> dict:
         EmbedImageOutput(
             image_id=item["image_id"],
             image_embedding_key=f"embeddings/{item['image_id']}.npy",
-            text_embedding_key=None,
+            text_embedding_key=f"embeddings/{item['image_id']}_text.npy",
             model="siglip2-base",
             dimension=768,
         ).model_dump()
@@ -357,7 +358,7 @@ class TestIngestWorkflowActivityException:
 
         @activity.defn(name="embed_batch_activity")
         async def mock_embed_fail(input: dict) -> dict:
-            raise RuntimeError("GPU out of memory")
+            raise ApplicationError("GPU out of memory", non_retryable=True)
 
         activities = [a for a in ALL_MOCK_ACTIVITIES if a.__name__ != "mock_embed_batch"]
         activities.append(mock_embed_fail)
@@ -383,7 +384,30 @@ class TestIngestWorkflowActivityException:
 
 class TestIngestWorkflowIdempotency:
     async def test_same_workflow_id_rejects_second_start(self) -> None:
-        """Starting a workflow with the same ID twice should raise."""
+        """Starting a workflow with the same ID while one is running should
+        raise WorkflowAlreadyStartedError.
+
+        We use a slow activity (sleeps via heartbeat loop) so the first
+        workflow is still running when we attempt the second start.
+        """
+        import asyncio
+        import concurrent.futures
+        import threading
+
+        from temporalio.exceptions import WorkflowAlreadyStartedError
+
+        barrier = threading.Event()
+
+        @activity.defn(name="ingest_initialize_activity")
+        def mock_init_blocking(job_id: str) -> dict:
+            """Sync activity that blocks until the test signals it."""
+            _activity_calls.append("ingest_initialize_activity")
+            barrier.wait(timeout=30)
+            return IngestInitOutput(urls=[]).model_dump()
+
+        activities = [a for a in ALL_MOCK_ACTIVITIES if a.__name__ != "mock_ingest_initialize"]
+        activities.append(mock_init_blocking)
+
         task_queue = str(uuid.uuid4())
         workflow_id = f"ingest-test-{uuid.uuid4().hex[:8]}"
 
@@ -392,21 +416,28 @@ class TestIngestWorkflowIdempotency:
                 env.client,
                 task_queue=task_queue,
                 workflows=[IngestWorkflow],
-                activities=ALL_MOCK_ACTIVITIES,
+                activities=activities,
+                activity_executor=concurrent.futures.ThreadPoolExecutor(max_workers=4),
             ):
-                # First start succeeds
-                await env.client.execute_workflow(
+                # First start — non-blocking handle, workflow stays running
+                handle = await env.client.start_workflow(
                     IngestWorkflow.run,
                     IngestWorkflowInput(job_id="test-1"),
                     id=workflow_id,
                     task_queue=task_queue,
                 )
 
-                # Second start with SAME workflow ID should fail
-                with pytest.raises(Exception):
+                # Give the worker a moment to pick up the task
+                await asyncio.sleep(0.5)
+
+                # Second start with SAME workflow ID while first is running
+                with pytest.raises(WorkflowAlreadyStartedError):
                     await env.client.start_workflow(
                         IngestWorkflow.run,
                         IngestWorkflowInput(job_id="test-1"),
                         id=workflow_id,
                         task_queue=task_queue,
                     )
+
+                # Unblock so the worker shuts down cleanly
+                barrier.set()

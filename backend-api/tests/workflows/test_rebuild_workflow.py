@@ -7,6 +7,7 @@ import uuid
 import pytest
 from temporalio import activity
 from temporalio.client import WorkflowFailureError
+from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
@@ -168,7 +169,7 @@ class TestRebuildWorkflowFailure:
     async def test_build_index_failure_marks_job_failed(self) -> None:
         @activity.defn(name="build_index_activity")
         async def mock_build_fail(input: dict) -> dict:
-            raise RuntimeError("No embeddings found")
+            raise ApplicationError("No embeddings found", non_retryable=True)
 
         activities = [a for a in ALL_MOCK_ACTIVITIES if a.__name__ != "mock_build_index"]
         activities.append(mock_build_fail)
@@ -195,7 +196,7 @@ class TestRebuildWorkflowFailure:
     async def test_swap_failure_marks_job_failed(self) -> None:
         @activity.defn(name="swap_index_activity")
         async def mock_swap_fail(input: dict) -> None:
-            raise RuntimeError("Failed to swap index")
+            raise ApplicationError("Failed to swap index", non_retryable=True)
 
         activities = [a for a in ALL_MOCK_ACTIVITIES if a.__name__ != "mock_swap_index"]
         activities.append(mock_swap_fail)

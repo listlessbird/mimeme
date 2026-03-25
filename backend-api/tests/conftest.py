@@ -202,10 +202,19 @@ def client(
     * DB session uses the savepoint-wrapped test session.
     * Storage, Temporal, and FAISS are all mocks.
     """
+    from contextlib import asynccontextmanager
+
     from api.deps import get_db, get_index_manager, get_storage, get_temporal_client
     from api.main import create_app
 
+    @asynccontextmanager
+    async def _noop_lifespan(app: object):  # type: ignore[override]
+        yield
+
     app = create_app()
+    # Replace the real lifespan (which connects to Postgres/S3/Temporal)
+    # with a no-op so the test client doesn't hit external services.
+    app.router.lifespan_context = _noop_lifespan
 
     def _override_db() -> Iterator[Session]:
         yield db_session
