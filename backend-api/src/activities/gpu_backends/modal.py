@@ -11,11 +11,10 @@ from activities.embedding.models import (
     EmbedImageOutput,
 )
 from activities.vision.models import CaptionInput, CaptionOutput, OCRInput, OCROutput
+from shared.config import settings
 
 if TYPE_CHECKING:
     from modal_app import EmbeddingService, VisionService
-
-MODAL_APP_NAME = "findmeme-gpu"
 
 
 class ModalGpuBackend:
@@ -23,8 +22,8 @@ class ModalGpuBackend:
     _embedding_cls: type[EmbeddingService]
 
     def __init__(self) -> None:
-        self._vision_cls = modal.Cls.from_name(MODAL_APP_NAME, "VisionService")  # type: ignore[assignment]
-        self._embedding_cls = modal.Cls.from_name(MODAL_APP_NAME, "EmbeddingService")  # type: ignore[assignment]
+        self._vision_cls = modal.Cls.from_name(settings.modal_app_name, "VisionService")  # type: ignore[assignment]
+        self._embedding_cls = modal.Cls.from_name(settings.modal_app_name, "EmbeddingService")  # type: ignore[assignment]
 
     async def caption(self, input: CaptionInput) -> CaptionOutput:
         vision = self._vision_cls()

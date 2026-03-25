@@ -9,6 +9,7 @@ repomix-output.xml
 
 # Terraform
 infra/terraform.tfvars
+infra/backend.tfvars
 infra/terraform.tfstate
 infra/terraform.tfstate.backup
 infra/terraform.tfstate.*.backup

@@ -5,9 +5,21 @@ terraform {
       source  = "cloudflare/cloudflare"
       version = "~> 5"
     }
+    external = {
+      source  = "hashicorp/external"
+      version = "~> 2.3"
+    }
+    local = {
+      source  = "hashicorp/local"
+      version = "~> 2.5"
+    }
     neon = {
       source  = "kislerdm/neon"
       version = "0.13.0"
+    }
+    null = {
+      source  = "hashicorp/null"
+      version = "~> 3.2"
     }
     axiom = {
       source  = "axiomhq/axiom"

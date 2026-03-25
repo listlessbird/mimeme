@@ -43,6 +43,7 @@ class Settings(BaseSettings):
 
     # modal integration in prod
     gpu_backend: Literal["local", "modal"] = Field(default="local")
+    modal_app_name: str = Field(default="findmeme-gpu")
 
     # local text encoder for search (bypasses Temporal+Modal)
     search_text_encoder_device: str = Field(default="cpu")
