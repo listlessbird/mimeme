@@ -69,7 +69,7 @@ class TestDownloadImageActivity:
         )
 
         with patch("activities.storage.activities.httpx.Client", return_value=fake_client):
-            result = await activity_env.run(download_image_activity, inp)
+            result = activity_env.run(download_image_activity, inp)
 
         assert result.success is True
         assert result.local_path != ""
@@ -99,7 +99,7 @@ class TestDownloadImageActivity:
         )
 
         with patch("activities.storage.activities.httpx.Client", return_value=fake_client):
-            result = await activity_env.run(download_image_activity, inp)
+            result = activity_env.run(download_image_activity, inp)
 
         assert result.success is False
         assert result.error is not None
@@ -128,7 +128,7 @@ class TestDownloadImageActivity:
         )
 
         with patch("activities.storage.activities.httpx.Client", return_value=fake_client):
-            result = await activity_env.run(download_image_activity, inp)
+            result = activity_env.run(download_image_activity, inp)
 
         assert result.success is False
         assert result.error is not None
@@ -151,7 +151,7 @@ class TestDownloadImageActivity:
         )
 
         with patch("activities.storage.activities.httpx.Client", return_value=fake_client):
-            result = await activity_env.run(download_image_activity, inp)
+            result = activity_env.run(download_image_activity, inp)
 
         assert result.success is False
 
@@ -192,7 +192,7 @@ class TestProcessImageActivity:
             patch("activities.storage.activities.compute_phash", return_value="abcd1234"),
             patch("activities.storage.activities.get_image_info", return_value=(800, 600, "jpeg")),
         ):
-            result = await activity_env.run(process_image_activity, inp)
+            result = activity_env.run(process_image_activity, inp)
 
         assert result.is_duplicate is False
         assert result.sha256 == "unique-sha256-hash"
@@ -235,7 +235,7 @@ class TestProcessImageActivity:
             patch("activities.storage.activities.get_storage_service", return_value=mock_storage),
             patch("activities.storage.activities.compute_sha256", return_value="existing-hash"),
         ):
-            result = await activity_env.run(process_image_activity, inp)
+            result = activity_env.run(process_image_activity, inp)
 
         assert result.is_duplicate is True
         assert result.image_id == existing.id
@@ -254,12 +254,12 @@ class TestCleanupTempFileActivity:
             temp_path = f.name
 
         assert Path(temp_path).exists()
-        await activity_env.run(cleanup_temp_file_activity, temp_path)
+        activity_env.run(cleanup_temp_file_activity, temp_path)
         assert not Path(temp_path).exists()
 
     async def test_missing_file_does_not_raise(self, activity_env: ActivityEnvironment) -> None:
         """Cleaning up a nonexistent file should not raise."""
-        await activity_env.run(cleanup_temp_file_activity, "/tmp/nonexistent-file-12345.jpg")
+        activity_env.run(cleanup_temp_file_activity, "/tmp/nonexistent-file-12345.jpg")
 
 
 # ==========================================================================

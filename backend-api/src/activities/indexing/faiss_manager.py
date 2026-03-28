@@ -8,8 +8,8 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
-from time import perf_counter
 from pathlib import Path
+from time import perf_counter
 from typing import Any, NamedTuple
 
 import faiss  # type: ignore[import-untyped]

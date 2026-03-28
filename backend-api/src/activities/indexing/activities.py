@@ -16,8 +16,8 @@ from activities.indexing.models import (
     GarbageCollectOutput,
     SwapIndexInput,
 )
-from shared.logging import emit_activity_event
 from shared.db import session_scope
+from shared.logging import emit_activity_event
 from shared.models import Processing, ProcessingStatus
 from shared.services.storage import get_storage_service
 

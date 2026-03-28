@@ -63,7 +63,8 @@ async def trigger_rebuild_index(
         RebuildIndexWorkflowInput(
             job_id=job_id,
             force=request.force,
-            model_name=request.model_name,
+            model_name=request.model_name or settings.embed_model,
+            index_type=settings.index_type,
         ),
         id=workflow_id,
         task_queue=settings.temporal_task_queue,

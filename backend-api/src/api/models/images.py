@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 
 from pydantic import BaseModel, Field, HttpUrl
 
@@ -37,7 +37,7 @@ class ImageIngestResponse(BaseModel):
     message: str = Field(description="Status message")
 
 
-class ImageStatus(str, Enum):
+class ImageStatus(StrEnum):
     PENDING = "pending"
     DOWNLOADING = "downloading"
     SCANNING = "scanning"
