@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import secrets
-from enum import Enum
+from enum import StrEnum
 from typing import Annotated
 
 import structlog
@@ -15,7 +15,7 @@ log = structlog.getLogger()
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
-class ApiKeyRole(str, Enum):
+class ApiKeyRole(StrEnum):
     ADMIN = "admin"
     READONLY = "readonly"
 

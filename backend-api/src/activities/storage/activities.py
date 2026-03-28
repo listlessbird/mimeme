@@ -15,8 +15,8 @@ from activities.storage.models import (
     ProcessImageInput,
     ProcessImageOutput,
 )
-from shared.logging import emit_activity_event
 from shared.db import session_scope
+from shared.logging import emit_activity_event
 from shared.models import ORMImage, Processing
 from shared.services import StorageService, get_storage_service
 
@@ -24,7 +24,7 @@ log = structlog.get_logger()
 
 
 @activity.defn
-async def download_image_activity(input: DownloadImageInput) -> DownloadImageOutput:
+def download_image_activity(input: DownloadImageInput) -> DownloadImageOutput:
     started = time.monotonic()
     outcome = "success"
     error_message: str | None = None
@@ -134,7 +134,7 @@ async def download_image_activity(input: DownloadImageInput) -> DownloadImageOut
 
 
 @activity.defn
-async def process_image_activity(input: ProcessImageInput) -> ProcessImageOutput:
+def process_image_activity(input: ProcessImageInput) -> ProcessImageOutput:
     started = time.monotonic()
     outcome = "success"
     error_message: str | None = None
@@ -260,7 +260,7 @@ async def process_image_activity(input: ProcessImageInput) -> ProcessImageOutput
 
 
 @activity.defn
-async def cleanup_temp_file_activity(local_path: str) -> None:
+def cleanup_temp_file_activity(local_path: str) -> None:
     started = time.monotonic()
     outcome = "success"
     error_message: str | None = None

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import datetime
-from enum import Enum
+from enum import StrEnum
 
 from sqlalchemy import DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy import Enum as SAEnum
@@ -12,7 +12,7 @@ class Base(DeclarativeBase):
     pass
 
 
-class JobStatus(str, Enum):
+class JobStatus(StrEnum):
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
@@ -20,12 +20,12 @@ class JobStatus(str, Enum):
     CANCELLED = "CANCELED"
 
 
-class JobType(str, Enum):
+class JobType(StrEnum):
     INGEST = "ingest"
     REBUILD_INDEX = "rebuild_index"
 
 
-class ProcessingStatus(str, Enum):
+class ProcessingStatus(StrEnum):
     PENDING = "PENDING"
     RUNNING = "RUNNING"
     DONE = "DONE"

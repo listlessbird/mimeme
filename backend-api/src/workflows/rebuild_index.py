@@ -3,29 +3,46 @@ from __future__ import annotations
 from datetime import timedelta
 
 from temporalio import workflow
+from temporalio.common import RetryPolicy
 
 with workflow.unsafe.imports_passed_through():
-    from activities.indexing import (
+    from activities.indexing.activities import (
+        build_index_activity,
+        garbage_collect_indexes_activity,
+        swap_index_activity,
+    )
+    from activities.indexing.models import (
         BuildIndexInput,
         BuildIndexOutput,
         GarbageCollectOutput,
         SwapIndexInput,
     )
-    from activities.workflow_state import (
+    from activities.workflow_state.activities import (
+        complete_rebuild_job_activity,
+        fail_rebuild_job_activity,
+        start_rebuild_job_activity,
+        update_job_progress_activity,
+    )
+    from activities.workflow_state.models import (
         CompleteRebuildJobInput,
         FailRebuildJobInput,
         StartRebuildJobInput,
         UpdateJobProgressInput,
     )
-    from shared.config import settings
     from workflows.models import RebuildIndexWorkflowInput, RebuildIndexWorkflowOutput
+
+RETRY_DB = RetryPolicy(
+    maximum_attempts=5,
+    initial_interval=timedelta(seconds=1),
+    maximum_interval=timedelta(seconds=10),
+)
 
 
 @workflow.defn
 class RebuildIndexWorkflow:
     @workflow.run
     async def run(self, input: RebuildIndexWorkflowInput) -> RebuildIndexWorkflowOutput:
-        model_name = input.model_name or settings.embed_model
+        model_name = input.model_name
         last_step = "start"
         build_result: BuildIndexOutput | None = None
         gc_result: GarbageCollectOutput | None = None
@@ -42,9 +59,10 @@ class RebuildIndexWorkflow:
                 },
             )
             await workflow.execute_activity(
-                "start_rebuild_job_activity",
+                start_rebuild_job_activity,
                 StartRebuildJobInput(job_id=input.job_id),
                 start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=RETRY_DB,
             )
 
             last_step = "progress_10"
@@ -57,13 +75,14 @@ class RebuildIndexWorkflow:
                 },
             )
             await workflow.execute_activity(
-                "update_job_progress_activity",
+                update_job_progress_activity,
                 UpdateJobProgressInput(
                     job_id=input.job_id,
                     progress=10,
                     message="Building index...",
                 ),
                 start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=RETRY_DB,
             )
 
             last_step = "build_index"
@@ -75,17 +94,15 @@ class RebuildIndexWorkflow:
                     "step": "build_index",
                 },
             )
-            build_result = BuildIndexOutput.model_validate(
-                await workflow.execute_activity(
-                    "build_index_activity",
-                    BuildIndexInput(
-                        model_name=model_name,
-                        index_type=settings.index_type,
-                        force=input.force,
-                    ),
-                    start_to_close_timeout=timedelta(hours=2),
-                    heartbeat_timeout=timedelta(minutes=5),
-                )
+            build_result = await workflow.execute_activity(
+                build_index_activity,
+                BuildIndexInput(
+                    model_name=model_name,
+                    index_type=input.index_type,
+                    force=input.force,
+                ),
+                start_to_close_timeout=timedelta(hours=2),
+                heartbeat_timeout=timedelta(minutes=5),
             )
 
             last_step = "progress_70"
@@ -98,13 +115,14 @@ class RebuildIndexWorkflow:
                 },
             )
             await workflow.execute_activity(
-                "update_job_progress_activity",
+                update_job_progress_activity,
                 UpdateJobProgressInput(
                     job_id=input.job_id,
                     progress=70,
                     message="Swapping to new index...",
                 ),
                 start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=RETRY_DB,
             )
 
             last_step = "swap_index"
@@ -118,9 +136,10 @@ class RebuildIndexWorkflow:
                 },
             )
             await workflow.execute_activity(
-                "swap_index_activity",
+                swap_index_activity,
                 SwapIndexInput(version=build_result.version),
                 start_to_close_timeout=timedelta(minutes=5),
+                retry_policy=RETRY_DB,
             )
 
             last_step = "progress_90"
@@ -133,13 +152,14 @@ class RebuildIndexWorkflow:
                 },
             )
             await workflow.execute_activity(
-                "update_job_progress_activity",
+                update_job_progress_activity,
                 UpdateJobProgressInput(
                     job_id=input.job_id,
                     progress=90,
                     message="Cleaning up old indexes...",
                 ),
                 start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=RETRY_DB,
             )
 
             last_step = "gc_indexes"
@@ -151,11 +171,10 @@ class RebuildIndexWorkflow:
                     "step": "garbage_collect_indexes",
                 },
             )
-            gc_result = GarbageCollectOutput.model_validate(
-                await workflow.execute_activity(
-                    "garbage_collect_indexes_activity",
-                    start_to_close_timeout=timedelta(minutes=10),
-                )
+            gc_result = await workflow.execute_activity(
+                garbage_collect_indexes_activity,
+                start_to_close_timeout=timedelta(minutes=10),
+                retry_policy=RETRY_DB,
             )
 
             last_step = "complete_job"
@@ -168,7 +187,7 @@ class RebuildIndexWorkflow:
                 },
             )
             await workflow.execute_activity(
-                "complete_rebuild_job_activity",
+                complete_rebuild_job_activity,
                 CompleteRebuildJobInput(
                     job_id=input.job_id,
                     version=build_result.version,
@@ -178,6 +197,7 @@ class RebuildIndexWorkflow:
                     text_num_vectors=build_result.text_num_vectors,
                 ),
                 start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=RETRY_DB,
             )
 
             return RebuildIndexWorkflowOutput(
@@ -192,12 +212,13 @@ class RebuildIndexWorkflow:
             error_message = str(exc)
             try:
                 await workflow.execute_activity(
-                    "fail_rebuild_job_activity",
+                    fail_rebuild_job_activity,
                     FailRebuildJobInput(
                         job_id=input.job_id,
                         error=f"Failed at step '{last_step}': {error_message}",
                     ),
                     start_to_close_timeout=timedelta(minutes=1),
+                    retry_policy=RETRY_DB,
                 )
             except Exception:
                 workflow.logger.error(

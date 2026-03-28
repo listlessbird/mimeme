@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 import structlog
 from temporalio import activity
 
-from shared.logging import emit_activity_event
 from shared.db import session_scope
+from shared.logging import emit_activity_event
 from shared.models import (
     Annotation,
     IngestURL,
@@ -37,7 +37,7 @@ log = structlog.get_logger()
 
 
 @activity.defn
-async def ingest_initialize_activity(job_id: str) -> IngestInitOutput:
+def ingest_initialize_activity(job_id: str) -> IngestInitOutput:
     started = time.monotonic()
     try:
         with session_scope() as session:
@@ -71,7 +71,7 @@ async def ingest_initialize_activity(job_id: str) -> IngestInitOutput:
 
 
 @activity.defn
-async def mark_ingest_url_failed_activity(input: MarkIngestUrlFailedInput) -> None:
+def mark_ingest_url_failed_activity(input: MarkIngestUrlFailedInput) -> None:
     started = time.monotonic()
     try:
         error_message = input.error[:1000] if input.error else input.error
@@ -103,7 +103,7 @@ async def mark_ingest_url_failed_activity(input: MarkIngestUrlFailedInput) -> No
 
 
 @activity.defn
-async def mark_ingest_url_done_activity(input: MarkIngestUrlDoneInput) -> None:
+def mark_ingest_url_done_activity(input: MarkIngestUrlDoneInput) -> None:
     started = time.monotonic()
     try:
         image_exists: bool | None = None
@@ -145,7 +145,7 @@ async def mark_ingest_url_done_activity(input: MarkIngestUrlDoneInput) -> None:
 
 
 @activity.defn
-async def save_annotations_activity(input: SaveAnnotationsInput) -> None:
+def save_annotations_activity(input: SaveAnnotationsInput) -> None:
     started = time.monotonic()
     try:
         with session_scope() as session:
@@ -185,7 +185,7 @@ async def save_annotations_activity(input: SaveAnnotationsInput) -> None:
 
 
 @activity.defn
-async def save_embedding_info_activity(input: SaveEmbeddingInfoInput) -> None:
+def save_embedding_info_activity(input: SaveEmbeddingInfoInput) -> None:
     started = time.monotonic()
     try:
         with session_scope() as session:
@@ -218,7 +218,7 @@ async def save_embedding_info_activity(input: SaveEmbeddingInfoInput) -> None:
 
 
 @activity.defn
-async def update_job_progress_activity(input: UpdateJobProgressInput) -> None:
+def update_job_progress_activity(input: UpdateJobProgressInput) -> None:
     started = time.monotonic()
     try:
         with session_scope() as session:
@@ -251,7 +251,7 @@ async def update_job_progress_activity(input: UpdateJobProgressInput) -> None:
 
 
 @activity.defn
-async def complete_ingest_job_activity(input: CompleteIngestJobInput) -> None:
+def complete_ingest_job_activity(input: CompleteIngestJobInput) -> None:
     started = time.monotonic()
     try:
         with session_scope() as session:
@@ -292,7 +292,7 @@ async def complete_ingest_job_activity(input: CompleteIngestJobInput) -> None:
 
 
 @activity.defn
-async def start_rebuild_job_activity(input: StartRebuildJobInput) -> None:
+def start_rebuild_job_activity(input: StartRebuildJobInput) -> None:
     started = time.monotonic()
     try:
         with session_scope() as session:
@@ -321,7 +321,7 @@ async def start_rebuild_job_activity(input: StartRebuildJobInput) -> None:
 
 
 @activity.defn
-async def fail_rebuild_job_activity(input: FailRebuildJobInput) -> None:
+def fail_rebuild_job_activity(input: FailRebuildJobInput) -> None:
     started = time.monotonic()
     try:
         error_message = input.error[:2000] if input.error else input.error
@@ -353,7 +353,7 @@ async def fail_rebuild_job_activity(input: FailRebuildJobInput) -> None:
 
 
 @activity.defn
-async def complete_rebuild_job_activity(input: CompleteRebuildJobInput) -> None:
+def complete_rebuild_job_activity(input: CompleteRebuildJobInput) -> None:
     started = time.monotonic()
     try:
         with session_scope() as session:

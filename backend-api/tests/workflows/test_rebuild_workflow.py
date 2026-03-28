@@ -102,7 +102,7 @@ class TestRebuildWorkflowHappyPath:
             ):
                 result = await env.client.execute_workflow(
                     RebuildIndexWorkflow.run,
-                    RebuildIndexWorkflowInput(job_id="rebuild-1"),
+                    RebuildIndexWorkflowInput(job_id="rebuild-1", model_name="test-model", index_type="flat"),
                     id=str(uuid.uuid4()),
                     task_queue=task_queue,
                 )
@@ -124,7 +124,7 @@ class TestRebuildWorkflowHappyPath:
             ):
                 await env.client.execute_workflow(
                     RebuildIndexWorkflow.run,
-                    RebuildIndexWorkflowInput(job_id="rebuild-order"),
+                    RebuildIndexWorkflowInput(job_id="rebuild-order", model_name="test-model", index_type="flat"),
                     id=str(uuid.uuid4()),
                     task_queue=task_queue,
                 )
@@ -151,7 +151,7 @@ class TestRebuildWorkflowHappyPath:
             ):
                 await env.client.execute_workflow(
                     RebuildIndexWorkflow.run,
-                    RebuildIndexWorkflowInput(job_id="rebuild-progress"),
+                    RebuildIndexWorkflowInput(job_id="rebuild-progress", model_name="test-model", index_type="flat"),
                     id=str(uuid.uuid4()),
                     task_queue=task_queue,
                 )
@@ -179,7 +179,7 @@ class TestRebuildWorkflowFailure:
                 with pytest.raises(WorkflowFailureError):
                     await env.client.execute_workflow(
                         RebuildIndexWorkflow.run,
-                        RebuildIndexWorkflowInput(job_id="rebuild-fail"),
+                        RebuildIndexWorkflowInput(job_id="rebuild-fail", model_name="test-model", index_type="flat"),
                         id=str(uuid.uuid4()),
                         task_queue=task_queue,
                     )
@@ -206,7 +206,7 @@ class TestRebuildWorkflowFailure:
                 with pytest.raises(WorkflowFailureError):
                     await env.client.execute_workflow(
                         RebuildIndexWorkflow.run,
-                        RebuildIndexWorkflowInput(job_id="rebuild-swap-fail"),
+                        RebuildIndexWorkflowInput(job_id="rebuild-swap-fail", model_name="test-model", index_type="flat"),
                         id=str(uuid.uuid4()),
                         task_queue=task_queue,
                     )
@@ -233,7 +233,7 @@ class TestRebuildWorkflowGarbageCollect:
             ):
                 result = await env.client.execute_workflow(
                     RebuildIndexWorkflow.run,
-                    RebuildIndexWorkflowInput(job_id="rebuild-no-gc"),
+                    RebuildIndexWorkflowInput(job_id="rebuild-no-gc", model_name="test-model", index_type="flat"),
                     id=str(uuid.uuid4()),
                     task_queue=task_queue,
                 )

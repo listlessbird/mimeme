@@ -77,7 +77,7 @@ class TestIngestInitializeActivity:
         url2: IngestURL = create_ingest_url(session=db_session, job=job)
         db_session.flush()
 
-        result = await activity_env.run(ingest_initialize_activity, job.id)
+        result = activity_env.run(ingest_initialize_activity, job.id)
 
         db_session.refresh(job)
         assert job.status == JobStatus.RUNNING
@@ -91,7 +91,7 @@ class TestIngestInitializeActivity:
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
         with pytest.raises(ValueError, match="not found"):
-            await activity_env.run(ingest_initialize_activity, "nonexistent-job")
+            activity_env.run(ingest_initialize_activity, "nonexistent-job")
 
     async def test_job_with_no_urls_returns_empty(
         self, db_session: Session, activity_env: ActivityEnvironment
@@ -99,7 +99,7 @@ class TestIngestInitializeActivity:
         job: Job = create_job(session=db_session, type=JobType.INGEST)
         db_session.flush()
 
-        result = await activity_env.run(ingest_initialize_activity, job.id)
+        result = activity_env.run(ingest_initialize_activity, job.id)
         assert len(result.urls) == 0
         db_session.refresh(job)
         assert job.status == JobStatus.RUNNING
@@ -121,7 +121,7 @@ class TestMarkIngestUrlDoneActivity:
         db_session.flush()
 
         inp = MarkIngestUrlDoneInput(ingest_url_id=url.id, image_id=image.id)
-        await activity_env.run(mark_ingest_url_done_activity, inp)
+        activity_env.run(mark_ingest_url_done_activity, inp)
 
         db_session.refresh(url)
         assert url.status == ProcessingStatus.DONE
@@ -135,7 +135,7 @@ class TestMarkIngestUrlDoneActivity:
         db_session.flush()
 
         inp = MarkIngestUrlDoneInput(ingest_url_id=url.id, image_id=999999)
-        await activity_env.run(mark_ingest_url_done_activity, inp)
+        activity_env.run(mark_ingest_url_done_activity, inp)
 
         db_session.refresh(url)
         assert url.status == ProcessingStatus.FAILED
@@ -147,7 +147,7 @@ class TestMarkIngestUrlDoneActivity:
     ) -> None:
         """Calling with a nonexistent URL ID should not raise."""
         inp = MarkIngestUrlDoneInput(ingest_url_id=999999, image_id=1)
-        await activity_env.run(mark_ingest_url_done_activity, inp)
+        activity_env.run(mark_ingest_url_done_activity, inp)
 
     async def test_idempotent_calling_twice_is_safe(
         self, db_session: Session, activity_env: ActivityEnvironment
@@ -160,12 +160,12 @@ class TestMarkIngestUrlDoneActivity:
 
         inp = MarkIngestUrlDoneInput(ingest_url_id=url.id, image_id=image.id)
 
-        await activity_env.run(mark_ingest_url_done_activity, inp)
+        activity_env.run(mark_ingest_url_done_activity, inp)
         db_session.refresh(url)
         assert url.status == ProcessingStatus.DONE
 
         # Call again — should not crash
-        await activity_env.run(mark_ingest_url_done_activity, inp)
+        activity_env.run(mark_ingest_url_done_activity, inp)
         db_session.refresh(url)
         assert url.status == ProcessingStatus.DONE
         assert url.image_id == image.id
@@ -186,7 +186,7 @@ class TestMarkIngestUrlFailedActivity:
         db_session.flush()
 
         inp = MarkIngestUrlFailedInput(ingest_url_id=url.id, error="HTTP 404")
-        await activity_env.run(mark_ingest_url_failed_activity, inp)
+        activity_env.run(mark_ingest_url_failed_activity, inp)
 
         db_session.refresh(url)
         assert url.status == ProcessingStatus.FAILED
@@ -201,7 +201,7 @@ class TestMarkIngestUrlFailedActivity:
 
         long_error = "x" * 2000
         inp = MarkIngestUrlFailedInput(ingest_url_id=url.id, error=long_error)
-        await activity_env.run(mark_ingest_url_failed_activity, inp)
+        activity_env.run(mark_ingest_url_failed_activity, inp)
 
         db_session.refresh(url)
         assert url.error_message is not None
@@ -216,8 +216,8 @@ class TestMarkIngestUrlFailedActivity:
 
         inp = MarkIngestUrlFailedInput(ingest_url_id=url.id, error="First error")
 
-        await activity_env.run(mark_ingest_url_failed_activity, inp)
-        await activity_env.run(mark_ingest_url_failed_activity, inp)
+        activity_env.run(mark_ingest_url_failed_activity, inp)
+        activity_env.run(mark_ingest_url_failed_activity, inp)
 
         db_session.refresh(url)
         assert url.status == ProcessingStatus.FAILED
@@ -233,12 +233,12 @@ class TestMarkIngestUrlFailedActivity:
         db_session.flush()
 
         done_inp = MarkIngestUrlDoneInput(ingest_url_id=url.id, image_id=image.id)
-        await activity_env.run(mark_ingest_url_done_activity, done_inp)
+        activity_env.run(mark_ingest_url_done_activity, done_inp)
         db_session.refresh(url)
         assert url.status == ProcessingStatus.DONE
 
         fail_inp = MarkIngestUrlFailedInput(ingest_url_id=url.id, error="Late failure")
-        await activity_env.run(mark_ingest_url_failed_activity, fail_inp)
+        activity_env.run(mark_ingest_url_failed_activity, fail_inp)
         db_session.refresh(url)
         assert url.status == ProcessingStatus.FAILED
 
@@ -264,7 +264,7 @@ class TestSaveAnnotationsActivity:
             ocr_text="IMPACT FONT TEXT",
             ocr_model="moondream2",
         )
-        await activity_env.run(save_annotations_activity, inp)
+        activity_env.run(save_annotations_activity, inp)
 
         ann = db_session.query(Annotation).filter_by(image_id=image.id).first()
         assert ann is not None
@@ -291,7 +291,7 @@ class TestSaveAnnotationsActivity:
             ocr_text="first ocr",
             ocr_model="model-v1",
         )
-        await activity_env.run(save_annotations_activity, inp)
+        activity_env.run(save_annotations_activity, inp)
 
         inp2 = SaveAnnotationsInput(
             image_id=image.id,
@@ -300,7 +300,7 @@ class TestSaveAnnotationsActivity:
             ocr_text="updated ocr",
             ocr_model="model-v2",
         )
-        await activity_env.run(save_annotations_activity, inp2)
+        activity_env.run(save_annotations_activity, inp2)
 
         count = db_session.query(Annotation).filter_by(image_id=image.id).count()
         assert count == 1
@@ -331,7 +331,7 @@ class TestSaveEmbeddingInfoActivity:
             dimension=768,
             image_embedding_key="embeddings/test/abc.npy",
         )
-        await activity_env.run(save_embedding_info_activity, inp)
+        activity_env.run(save_embedding_info_activity, inp)
 
         db_session.refresh(proc)
         assert proc.embed_status == ProcessingStatus.DONE
@@ -353,8 +353,8 @@ class TestSaveEmbeddingInfoActivity:
             dimension=768,
             image_embedding_key="embeddings/test/abc.npy",
         )
-        await activity_env.run(save_embedding_info_activity, inp)
-        await activity_env.run(save_embedding_info_activity, inp)
+        activity_env.run(save_embedding_info_activity, inp)
+        activity_env.run(save_embedding_info_activity, inp)
 
         db_session.refresh(proc)
         assert proc.embed_status == ProcessingStatus.DONE
@@ -372,7 +372,7 @@ class TestSaveEmbeddingInfoActivity:
             dimension=768,
             image_embedding_key="embeddings/test/abc.npy",
         )
-        await activity_env.run(save_embedding_info_activity, inp)
+        activity_env.run(save_embedding_info_activity, inp)
 
 
 # ==========================================================================
@@ -389,7 +389,7 @@ class TestUpdateJobProgressActivity:
         db_session.flush()
 
         inp = UpdateJobProgressInput(job_id=job.id, progress=50.0, message="Halfway")
-        await activity_env.run(update_job_progress_activity, inp)
+        activity_env.run(update_job_progress_activity, inp)
 
         db_session.refresh(job)
         assert job.progress == 50.0
@@ -402,7 +402,7 @@ class TestUpdateJobProgressActivity:
         db_session.flush()
 
         inp = UpdateJobProgressInput(job_id=job.id, progress=75.0)
-        await activity_env.run(update_job_progress_activity, inp)
+        activity_env.run(update_job_progress_activity, inp)
 
         db_session.refresh(job)
         assert job.progress == 75.0
@@ -412,7 +412,7 @@ class TestUpdateJobProgressActivity:
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
         inp = UpdateJobProgressInput(job_id="nonexistent", progress=50.0)
-        await activity_env.run(update_job_progress_activity, inp)
+        activity_env.run(update_job_progress_activity, inp)
 
 
 # ==========================================================================
@@ -429,7 +429,7 @@ class TestCompleteIngestJobActivity:
         db_session.flush()
 
         inp = CompleteIngestJobInput(job_id=job.id, processed=5, failed=0, duplicates=1)
-        await activity_env.run(complete_ingest_job_activity, inp)
+        activity_env.run(complete_ingest_job_activity, inp)
 
         db_session.refresh(job)
         assert job.status == JobStatus.COMPLETED
@@ -447,7 +447,7 @@ class TestCompleteIngestJobActivity:
         db_session.flush()
 
         inp = CompleteIngestJobInput(job_id=job.id, processed=3, failed=2, duplicates=0)
-        await activity_env.run(complete_ingest_job_activity, inp)
+        activity_env.run(complete_ingest_job_activity, inp)
 
         db_session.refresh(job)
         assert job.status == JobStatus.FAILED
@@ -460,11 +460,11 @@ class TestCompleteIngestJobActivity:
         db_session.flush()
 
         inp = CompleteIngestJobInput(job_id=job.id, processed=5, failed=0, duplicates=1)
-        await activity_env.run(complete_ingest_job_activity, inp)
+        activity_env.run(complete_ingest_job_activity, inp)
         db_session.refresh(job)
         assert job.status == JobStatus.COMPLETED
 
-        await activity_env.run(complete_ingest_job_activity, inp)
+        activity_env.run(complete_ingest_job_activity, inp)
         db_session.refresh(job)
         assert job.status == JobStatus.COMPLETED
 
@@ -483,7 +483,7 @@ class TestStartRebuildJobActivity:
         db_session.flush()
 
         inp = StartRebuildJobInput(job_id=job.id)
-        await activity_env.run(start_rebuild_job_activity, inp)
+        activity_env.run(start_rebuild_job_activity, inp)
 
         db_session.refresh(job)
         assert job.status == JobStatus.RUNNING
@@ -494,7 +494,7 @@ class TestStartRebuildJobActivity:
     ) -> None:
         inp = StartRebuildJobInput(job_id="nonexistent")
         with pytest.raises(ValueError, match="not found"):
-            await activity_env.run(start_rebuild_job_activity, inp)
+            activity_env.run(start_rebuild_job_activity, inp)
 
 
 # ==========================================================================
@@ -513,7 +513,7 @@ class TestFailRebuildJobActivity:
         db_session.flush()
 
         inp = FailRebuildJobInput(job_id=job.id, error="No embeddings found")
-        await activity_env.run(fail_rebuild_job_activity, inp)
+        activity_env.run(fail_rebuild_job_activity, inp)
 
         db_session.refresh(job)
         assert job.status == JobStatus.FAILED
@@ -529,7 +529,7 @@ class TestFailRebuildJobActivity:
         db_session.flush()
 
         inp = FailRebuildJobInput(job_id=job.id, error="x" * 5000)
-        await activity_env.run(fail_rebuild_job_activity, inp)
+        activity_env.run(fail_rebuild_job_activity, inp)
 
         db_session.refresh(job)
         assert job.message is not None
@@ -559,7 +559,7 @@ class TestCompleteRebuildJobActivity:
             removed_versions=["v-old-001"],
             text_num_vectors=500,
         )
-        await activity_env.run(complete_rebuild_job_activity, inp)
+        activity_env.run(complete_rebuild_job_activity, inp)
 
         db_session.refresh(job)
         assert job.status == JobStatus.COMPLETED
@@ -582,7 +582,7 @@ class TestCompleteRebuildJobActivity:
             removed_versions=[],
         )
         with pytest.raises(ValueError, match="not found"):
-            await activity_env.run(complete_rebuild_job_activity, inp)
+            activity_env.run(complete_rebuild_job_activity, inp)
 
 
 # ==========================================================================

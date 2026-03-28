@@ -21,7 +21,8 @@ class IngestWorkflowOutput(BaseModel):
 class RebuildIndexWorkflowInput(BaseModel):
     job_id: str
     force: bool = False
-    model_name: str | None = None
+    model_name: str
+    index_type: str
 
 
 class RebuildIndexWorkflowOutput(BaseModel):
