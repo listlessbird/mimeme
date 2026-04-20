@@ -4,6 +4,7 @@ from activities.indexing import (
     garbage_collect_indexes_activity,
     swap_index_activity,
 )
+from activities.sources import create_source_run_activity, fetch_source_items_activity
 from activities.storage import (
     cleanup_temp_file_activity,
     download_image_activity,
@@ -24,6 +25,8 @@ from activities.workflow_state import (
 )
 
 ACTIVITIES = [
+    create_source_run_activity,
+    fetch_source_items_activity,
     download_image_activity,
     process_image_activity,
     cleanup_temp_file_activity,
@@ -48,6 +51,8 @@ ACTIVITIES = [
 
 __all__ = [
     "ACTIVITIES",
+    "create_source_run_activity",
+    "fetch_source_items_activity",
     "download_image_activity",
     "process_image_activity",
     "cleanup_temp_file_activity",

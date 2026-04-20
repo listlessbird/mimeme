@@ -1,0 +1,8 @@
+{
+  "python.languageServer": "Pylance",
+  "python.analysis.typeCheckingMode": "strict",
+  "python.defaultInterpreterPath": "${workspaceFolder}/backend-api/.venv/bin/python",
+  "python.analysis.extraPaths": [
+    "${workspaceFolder}/backend-api/src"
+  ]
+}

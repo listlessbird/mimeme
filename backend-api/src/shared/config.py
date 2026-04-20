@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     index_type: str = Field(default="flat")
     index_cache_dir: Path = Field(default=Path("data/cache/indexes"))
 
+    dedupe_phash_enabled: bool = Field(default=True)
+    dedupe_phash_threshold: int = Field(default=8)
+
     # modal integration in prod
     gpu_backend: Literal["local", "modal"] = Field(default="local")
     modal_app_name: str = Field(default="findmeme-gpu")
@@ -51,6 +54,7 @@ class Settings(BaseSettings):
 
     axiom_api_token: str = ""
     axiom_dataset: str = ""
+    api_league_api_key: str = ""
 
     @field_validator("index_cache_dir", mode="before")
     @classmethod

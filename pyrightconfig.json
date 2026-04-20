@@ -1,16 +1,18 @@
 {
   "include": [
-    "services/src"
+    "backend-api/src"
   ],
   "extraPaths": [
-    "services/src"
+    "backend-api/src"
   ],
   "executionEnvironments": [
     {
-      "root": "services/src",
-      "pythonVersion": "3.13"
+      "root": "backend-api/src",
+      "pythonVersion": "3.13",
+      "venv": ".venv"
     }
   ],
+  "venvPath": "backend-api",
   "typeCheckingMode": "basic",
   "useLibraryCodeForTypes": true,
   "reportMissingTypeStubs": false

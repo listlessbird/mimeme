@@ -10,7 +10,7 @@ from fastapi.security import APIKeyHeader
 
 from shared.config import settings
 
-log = structlog.getLogger()
+log = structlog.get_logger()
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 

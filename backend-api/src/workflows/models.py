@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
+from sympy.functions.special.tests.test_error_functions import w
+
+from shared.models.orm import SourceRunTrigger
 
 
 class IngestWorkflowInput(BaseModel):
@@ -31,3 +34,20 @@ class RebuildIndexWorkflowOutput(BaseModel):
     dimension: int
     removed_versions: list[str]
     text_num_vectors: int | None = None
+
+
+class SourceSyncWorkflowInput(BaseModel):
+    source_id: int
+    trigger_mode: SourceRunTrigger = SourceRunTrigger.MANUAL
+
+
+class SourceSyncWorkflowOutput(BaseModel):
+    source_id: int
+    source_run_id: int | None = None
+    discovered: int = 0
+    seen: int = 0
+    queued: int = 0
+    duplicates: int = 0
+    failed: int = 0
+    skipped_unsupported: int = 0
+    skipped_invalid: int = 0
