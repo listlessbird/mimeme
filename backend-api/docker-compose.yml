@@ -82,7 +82,8 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile.api
+      dockerfile: Dockerfile.cpu
+      target: api
     container_name: mimeme-api
     ports:
       - "8000:8000"
@@ -118,7 +119,8 @@ services:
   worker:
     build:
       context: .
-      dockerfile: Dockerfile.worker
+      dockerfile: Dockerfile.cpu
+      target: worker
     container_name: mimeme-worker
     command: python -m workers.worker
     environment:

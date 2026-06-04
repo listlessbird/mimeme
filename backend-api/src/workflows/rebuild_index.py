@@ -29,6 +29,7 @@ with workflow.unsafe.imports_passed_through():
         StartRebuildJobInput,
         UpdateJobProgressInput,
     )
+
     from workflows.models import RebuildIndexWorkflowInput, RebuildIndexWorkflowOutput
 
 RETRY_DB = RetryPolicy(

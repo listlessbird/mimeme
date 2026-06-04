@@ -1,11 +1,11 @@
 import time
 
 import structlog
+from shared.logging import emit_activity_event
 from temporalio import activity
 
 from activities.gpu_backends import get_gpu_backend
 from activities.vision.models import AnnotateImageInput, AnnotateImageOutput
-from shared.logging import emit_activity_event
 
 
 @activity.defn

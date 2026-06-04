@@ -4,12 +4,9 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from unittest.mock import MagicMock
 
+import domain.search_index as search_index
 import numpy as np
 import pytest
-from sqlalchemy.orm import Session
-from tests.factories import create_annotation, create_image, create_index_build
-
-import domain.search_index as search_index
 from domain.search_index import (
     SearchImageNotFoundError,
     SearchIndexExecution,
@@ -18,6 +15,8 @@ from domain.search_index import (
     SearchService,
     reciprocal_rank_fusion,
 )
+from sqlalchemy.orm import Session
+from tests.factories import create_annotation, create_image, create_index_build
 
 
 class _TextEncoder:
@@ -251,4 +250,3 @@ def test_reciprocal_rank_fusion_orders_shared_results_first() -> None:
     )
 
     assert [image_id for image_id, _ in fused] == [2, 1, 3]
-

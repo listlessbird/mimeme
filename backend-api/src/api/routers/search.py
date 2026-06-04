@@ -1,8 +1,6 @@
 import asyncio
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request
-
 from api.auth import ReadonlyRequired
 from api.deps import IndexManagerDep
 from api.models.search import SearchResponse
@@ -16,6 +14,7 @@ from domain.search_index import (
     SearchInvalidRequestError,
     SearchQueryEncodingError,
 )
+from fastapi import APIRouter, HTTPException, Query, Request
 
 router = APIRouter(prefix="/search", tags=["Search"])
 
@@ -31,7 +30,9 @@ async def search(
     offset: Annotated[int, Query(ge=0)] = 0,
     mode: Annotated[
         Literal["hybrid"] | None,
-        Query(description="Optional mode. Omit for image search; use 'hybrid' to fuse image and text indexes."),
+        Query(
+            description="Optional mode. Omit for image search; use 'hybrid' to fuse image and text indexes."
+        ),
     ] = None,
 ) -> SearchResponse:
     resolved_mode: Literal["image", "hybrid"] = "hybrid" if mode == "hybrid" else "image"

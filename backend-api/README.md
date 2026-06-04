@@ -192,15 +192,56 @@ uv run modal secret create findmeme-s3 \
 
 ## Development Commands
 
+Install all backend development groups:
+
+```bash
+uv sync --all-groups
+```
+
+The repo includes a `justfile` for common backend commands if you have `just` installed:
+
+```bash
+just fmt
+just lint
+just type
+just test
+just check
+```
+
+The same commands can be run directly with `uv`:
+
+Format code and sort imports:
+
+```bash
+uv run ruff check --select I --fix src tests
+uv run ruff format src tests
+```
+
+Run lint, typecheck, and tests:
+
+```bash
+uv run ruff format --check src tests
+uv run ruff check src tests
+uv run pyright
+uv run pytest -q
+```
+
+Install pre-commit hooks:
+
+```bash
+uv run pre-commit install
+```
+
 Run tests:
 
 ```bash
-uv run --group test pytest -q
+uv run pytest -q
 ```
 
 Run Ruff:
 
 ```bash
+uv run ruff format --check src tests
 uv run ruff check src tests
 ```
 

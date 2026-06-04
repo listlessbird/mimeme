@@ -4,8 +4,6 @@ from types import SimpleNamespace
 
 import pytest
 import torch
-from PIL import Image
-
 from activities.embedding.models import EmbedBatchInput, EmbedImageInput
 from activities.vision.moondream import Moondream2
 from domain.inference import (
@@ -16,6 +14,7 @@ from domain.inference import (
     select_pooled_feature_tensor,
     to_modal_embedding_item,
 )
+from PIL import Image
 
 
 def test_prepare_rgb_image_for_inference_converts_rgb() -> None:

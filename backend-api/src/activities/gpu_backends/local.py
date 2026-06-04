@@ -4,7 +4,13 @@ import tempfile
 from pathlib import Path
 from typing import cast
 
+from domain.inference import (
+    build_image_embedding_key,
+    build_text_embedding_key_for_image_embedding,
+    prepare_rgb_image_for_inference,
+)
 from PIL import Image as PILImage
+from shared.services import StorageService, get_storage_service
 
 from activities.embedding.models import (
     EmbedBatchInput,
@@ -14,12 +20,6 @@ from activities.embedding.models import (
 from activities.embedding.siglip import SiglipEmbedder
 from activities.vision.models import AnnotateImageInput, AnnotateImageOutput
 from activities.vision.moondream import Moondream2
-from domain.inference import (
-    build_image_embedding_key,
-    build_text_embedding_key_for_image_embedding,
-    prepare_rgb_image_for_inference,
-)
-from shared.services import StorageService, get_storage_service
 
 
 class LocalGpuBackend:

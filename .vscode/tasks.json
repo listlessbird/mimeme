@@ -1,0 +1,42 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "backend: format",
+      "type": "shell",
+      "command": "uv run ruff check --select I --fix src tests && uv run ruff format src tests",
+      "options": { "cwd": "${workspaceFolder}/backend-api" },
+      "problemMatcher": []
+    },
+    {
+      "label": "backend: lint",
+      "type": "shell",
+      "command": "uv run ruff format --check src tests && uv run ruff check src tests",
+      "options": { "cwd": "${workspaceFolder}/backend-api" },
+      "problemMatcher": []
+    },
+    {
+      "label": "backend: typecheck",
+      "type": "shell",
+      "command": "uv run pyright",
+      "options": { "cwd": "${workspaceFolder}/backend-api" },
+      "problemMatcher": "$pyright"
+    },
+    {
+      "label": "backend: test",
+      "type": "shell",
+      "command": "uv run pytest -q",
+      "options": { "cwd": "${workspaceFolder}/backend-api" },
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "backend: check",
+      "type": "shell",
+      "command": "uv run ruff format --check src tests && uv run ruff check src tests && uv run pyright && uv run pytest -q",
+      "options": { "cwd": "${workspaceFolder}/backend-api" },
+      "group": "build",
+      "problemMatcher": "$pyright"
+    }
+  ]
+}

@@ -9,12 +9,6 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from temporalio import activity
-from temporalio.contrib.pydantic import pydantic_data_converter
-from temporalio.exceptions import ApplicationError
-from temporalio.testing import WorkflowEnvironment
-from temporalio.worker import Worker
-
 from activities.embedding.models import EmbedBatchInput, EmbedBatchOutput, EmbedImageOutput
 from activities.storage.models import (
     DownloadImageInput,
@@ -33,6 +27,11 @@ from activities.workflow_state.models import (
     SaveEmbeddingInfoInput,
     UpdateJobProgressInput,
 )
+from temporalio import activity
+from temporalio.contrib.pydantic import pydantic_data_converter
+from temporalio.exceptions import ApplicationError
+from temporalio.testing import WorkflowEnvironment
+from temporalio.worker import Worker
 from workflows.ingest import IngestWorkflow
 from workflows.models import IngestWorkflowInput
 

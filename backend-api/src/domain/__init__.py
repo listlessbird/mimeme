@@ -8,4 +8,3 @@ business rules in place.
 Domain modules should be added only when they move real behavior behind a small
 interface. Avoid placeholder modules and hypothetical adapter interfaces.
 """
-

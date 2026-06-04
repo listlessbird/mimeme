@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import Field, PostgresDsn, RedisDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -15,8 +15,8 @@ class Settings(BaseSettings):
     debug: bool = Field(default=True)
     log_level: str = Field(default="INFO")
 
-    db_url: PostgresDsn = "postgresql://postgres:postgres@localhost:5432/mimeme"  # ty:ignore[invalid-assignment]
-    redis_url: RedisDsn = "redis://localhost:6379/0"  # ty:ignore[invalid-assignment]
+    db_url: PostgresDsn = cast(PostgresDsn, "postgresql://postgres:postgres@localhost:5432/mimeme")
+    redis_url: RedisDsn = cast(RedisDsn, "redis://localhost:6379/0")
 
     api_key_admin: str | None = None
     api_key_readonly: str | None = None

@@ -3,15 +3,14 @@ from __future__ import annotations
 import json
 
 import pytest
-from sqlalchemy.orm import Session
-from tests.factories import create_image, create_ingest_url, create_job
-
 from domain.job_lifecycle import (
     JobLifecycle,
     JobLifecycleInvalidStateError,
     JobLifecycleNotFoundError,
 )
 from shared.models.orm import IngestURL, JobStatus, JobType, ProcessingStatus
+from sqlalchemy.orm import Session
+from tests.factories import create_image, create_ingest_url, create_job
 
 
 def test_create_ingest_job_deduplicates_urls_and_preserves_order(db_session: Session) -> None:
@@ -237,4 +236,3 @@ def test_mark_ingest_url_done_with_existing_image(db_session: Session) -> None:
     assert result.image_exists is True
     assert url.status == ProcessingStatus.DONE
     assert url.image_id == image.id
-

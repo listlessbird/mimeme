@@ -1,17 +1,23 @@
 {
   "include": [
-    "services/src"
+    "backend-api/src"
   ],
   "extraPaths": [
-    "services/src"
+    "backend-api",
+    "backend-api/src"
   ],
   "executionEnvironments": [
     {
-      "root": "services/src",
-      "pythonVersion": "3.13"
+      "root": "backend-api",
+      "pythonVersion": "3.13",
+      "extraPaths": [
+        "backend-api",
+        "backend-api/src"
+      ]
     }
   ],
   "typeCheckingMode": "basic",
   "useLibraryCodeForTypes": true,
-  "reportMissingTypeStubs": false
+  "reportMissingTypeStubs": false,
+  "reportPrivateImportUsage": false
 }

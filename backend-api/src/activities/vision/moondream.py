@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 import structlog
 from PIL.Image import Image
@@ -48,7 +48,7 @@ class Moondream2:
                 trust_remote_code=True,
                 device_map={"": config.device},
             )
-            self.model: MoondreamModel = loaded_model
+            self.model = cast("MoondreamModel", loaded_model)
             log.info("vision_step", step="model_load_complete")
 
             if config.compile_model:

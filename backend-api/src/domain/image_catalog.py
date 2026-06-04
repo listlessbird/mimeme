@@ -4,13 +4,12 @@ from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
-from sqlalchemy import and_, false, func, or_, select
-from sqlalchemy.orm import Session
-
 from shared.config import settings
 from shared.models import Annotation, Processing, ProcessingStatus
 from shared.models import ORMImage as Image
 from shared.services.storage import StorageService
+from sqlalchemy import and_, false, func, or_, select
+from sqlalchemy.orm import Session
 
 ImageCatalogStatus = Literal[
     "pending",
@@ -104,14 +103,18 @@ class ImageCatalog:
                 self._status_filter(status)
             )
 
-        total = self._db.execute(select(func.count()).select_from(id_query.subquery())).scalar() or 0
+        total = (
+            self._db.execute(select(func.count()).select_from(id_query.subquery())).scalar() or 0
+        )
 
         order_by = Image.id.desc() if sort == "newest" else Image.id.asc()
-        image_ids = self._db.execute(
-            id_query.order_by(order_by).limit(limit).offset(offset)
-        ).scalars().all()
+        image_ids = (
+            self._db.execute(id_query.order_by(order_by).limit(limit).offset(offset))
+            .scalars()
+            .all()
+        )
 
-        images = self._load_images(image_ids)
+        images = self._load_images(list(image_ids))
         return ImageCatalogPage(
             images=images,
             total=total,

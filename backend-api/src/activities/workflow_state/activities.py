@@ -3,8 +3,6 @@ from __future__ import annotations
 import time
 
 import structlog
-from temporalio import activity
-
 from domain.job_lifecycle import JobLifecycle
 from shared.db import session_scope
 from shared.logging import emit_activity_event
@@ -13,6 +11,7 @@ from shared.models import (
     Processing,
     ProcessingStatus,
 )
+from temporalio import activity
 
 from .models import (
     CompleteIngestJobInput,

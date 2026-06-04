@@ -5,10 +5,9 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from temporalio.testing import ActivityEnvironment
-
 from activities.vision.activities import annotate_image_activity
 from activities.vision.models import AnnotateImageInput, AnnotateImageOutput
+from temporalio.testing import ActivityEnvironment
 
 
 @pytest.fixture()

@@ -1,0 +1,21 @@
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.2
+    hooks:
+      - id: ruff-check
+        args: [--fix, --config=backend-api/pyproject.toml]
+        files: ^backend-api/(src|tests)/.*\.py$
+      - id: ruff-format
+        args: [--config=backend-api/pyproject.toml]
+        files: ^backend-api/(src|tests)/.*\.py$
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-toml
+        files: ^backend-api/pyproject\.toml$
+      - id: check-yaml
+        files: ^backend-api/.*\.ya?ml$
+      - id: end-of-file-fixer
+        files: ^backend-api/((src|tests)/.*\.py|pyproject\.toml|docker-compose\.yml|docker\.compose\.prod\.yml|justfile|\.pre-commit-config\.yaml)
+      - id: trailing-whitespace
+        files: ^backend-api/((src|tests)/.*\.py|pyproject\.toml|docker-compose\.yml|docker\.compose\.prod\.yml|justfile|\.pre-commit-config\.yaml)

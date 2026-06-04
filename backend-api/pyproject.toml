@@ -43,13 +43,17 @@ packages = ["src/activities", "src/api", "src/domain", "src/modal_app", "src/sha
 
 [dependency-groups]
 dev = [
-    "ipykernel==7.2.0",
-    "matplotlib==3.10.8",
-    "nbstripout==0.9.1",
-    "pandas==3.0.1",
+    { include-group = "lint" },
+    { include-group = "typecheck" },
+    { include-group = "test" },
+    { include-group = "notebook" },
+    { include-group = "hooks" },
+]
+lint = [
     "ruff==0.15.2",
-    "seaborn==0.13.2",
-    "types-boto3-custom==1.40.59",
+]
+typecheck = [
+    "pyright",
 ]
 test = [
     "pytest==9.0.2",
@@ -57,6 +61,17 @@ test = [
     "pytest-cov==7.1.0",
     "factory-boy==3.3.3",
     "respx==0.22.0",
+]
+notebook = [
+    "ipykernel==7.2.0",
+    "matplotlib==3.10.8",
+    "nbstripout==0.9.1",
+    "pandas==3.0.1",
+    "seaborn==0.13.2",
+    "types-boto3-custom==1.40.59",
+]
+hooks = [
+    "pre-commit",
 ]
 
 [tool.pytest.ini_options]
@@ -70,10 +85,22 @@ filterwarnings = [
 [tool.ruff]
 line-length = 100
 src = ["src"]
+target-version = "py313"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
 ignore = ["E501"]
+
+[tool.pyright]
+include = ["src"]
+extraPaths = [".", "src"]
+executionEnvironments = [
+    { root = ".", pythonVersion = "3.13", extraPaths = [".", "src"] },
+]
+typeCheckingMode = "basic"
+useLibraryCodeForTypes = true
+reportMissingTypeStubs = false
+reportPrivateImportUsage = false
 
 [tool.uv.sources]
 types-boto3-custom = { path = "vendored/types_boto3_custom-1.40.59-py3-none-any.whl" }

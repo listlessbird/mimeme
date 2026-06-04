@@ -4,6 +4,8 @@ import asyncio
 from typing import TYPE_CHECKING
 
 import modal
+from domain.inference import to_modal_embedding_item
+from shared.config import settings
 
 from activities.embedding.models import (
     EmbedBatchInput,
@@ -11,8 +13,6 @@ from activities.embedding.models import (
     EmbedImageOutput,
 )
 from activities.vision.models import AnnotateImageInput, AnnotateImageOutput
-from domain.inference import to_modal_embedding_item
-from shared.config import settings
 
 if TYPE_CHECKING:
     from modal_app import EmbeddingService, VisionService
@@ -45,7 +45,9 @@ class ModalGpuBackend:
         items = [to_modal_embedding_item(item, input.dataset) for item in input.items]
 
         embedding = self._embedding_cls()
-        result = await asyncio.to_thread(embedding.embed_batch.remote, items=items)
+        result = await asyncio.to_thread(
+            embedding.embed_batch.remote, items=[dict(item) for item in items]
+        )
 
         return EmbedBatchOutput(
             results=[

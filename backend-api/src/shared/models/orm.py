@@ -127,26 +127,20 @@ class Processing(Base):
         SAEnum(ProcessingStatus), default=ProcessingStatus.PENDING, nullable=False
     )
     ocr_model: Mapped[str | None] = mapped_column(Text, nullable=True)
-    ocr_updated_at: Mapped[datetime.datetime | None] = mapped_column(
-        DateTime(), nullable=True
-    )
+    ocr_updated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(), nullable=True)
 
     caption_status: Mapped[ProcessingStatus] = mapped_column(
         SAEnum(ProcessingStatus), default=ProcessingStatus.PENDING, nullable=False
     )
     caption_model: Mapped[str | None] = mapped_column(Text, nullable=True)
-    caption_updated_at: Mapped[datetime.datetime | None] = mapped_column(
-        DateTime(), nullable=True
-    )
+    caption_updated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(), nullable=True)
 
     embed_status: Mapped[ProcessingStatus] = mapped_column(
         SAEnum(ProcessingStatus), default=ProcessingStatus.PENDING, nullable=False
     )
     embed_model: Mapped[str | None] = mapped_column(Text, nullable=True)
     embed_dim: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    embed_updated_at: Mapped[datetime.datetime | None] = mapped_column(
-        DateTime(), nullable=True
-    )
+    embed_updated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(), nullable=True)
     embed_s3_key: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     image: Mapped[Image] = relationship(back_populates="processing")
@@ -181,6 +175,7 @@ class Artifact(Base):
     )
 
     image: Mapped[Image] = relationship(back_populates="artifacts")
+
 
 class IndexBuild(Base):
     __tablename__ = "index_builds"
