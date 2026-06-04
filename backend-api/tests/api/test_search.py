@@ -7,6 +7,11 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 from api.models.search import SearchResult
+from domain.search_index import (
+    SearchImageNotFoundError,
+    SearchIndexPage,
+    SearchIndexUnavailableError,
+)
 
 
 def _make_search_result(
@@ -37,14 +42,17 @@ class TestSearchEndpoint:
         self, client: TestClient, mock_index_manager: MagicMock
     ) -> None:
         results = [_make_search_result(id=1), _make_search_result(id=2)]
-        with (
-            patch("api.routers.search._ensure_index_loaded_for_thread"),
-            patch("api.routers.search._search_by_embedding_for_thread", return_value=results),
-            patch("api.routers.search.SearchTextEncoder") as mock_encoder_cls,
-        ):
-            mock_encoder = MagicMock()
-            mock_encoder.encode.return_value = MagicMock(tolist=lambda: [0.1] * 768)
-            mock_encoder_cls.get_instance.return_value = mock_encoder
+        page = SearchIndexPage(
+            query="funny cat",
+            results=results,
+            total=2,
+            limit=20,
+            offset=0,
+            search_time_ms=1.0,
+            index_version="v1-test",
+        )
+        with patch("api.routers.search.SearchIndexExecution") as execution_cls:
+            execution_cls.return_value.search.return_value = page
 
             resp = client.get("/search?q=funny+cat")
 
@@ -55,15 +63,18 @@ class TestSearchEndpoint:
         assert "search_time_ms" in data
 
     def test_search_respects_limit(self, client: TestClient, mock_index_manager: MagicMock) -> None:
-        results = [_make_search_result(id=i) for i in range(10)]
-        with (
-            patch("api.routers.search._ensure_index_loaded_for_thread"),
-            patch("api.routers.search._search_by_embedding_for_thread", return_value=results),
-            patch("api.routers.search.SearchTextEncoder") as mock_encoder_cls,
-        ):
-            mock_encoder = MagicMock()
-            mock_encoder.encode.return_value = MagicMock(tolist=lambda: [0.1] * 768)
-            mock_encoder_cls.get_instance.return_value = mock_encoder
+        results = [_make_search_result(id=i) for i in range(3)]
+        page = SearchIndexPage(
+            query="test",
+            results=results,
+            total=10,
+            limit=3,
+            offset=0,
+            search_time_ms=1.0,
+            index_version="v1-test",
+        )
+        with patch("api.routers.search.SearchIndexExecution") as execution_cls:
+            execution_cls.return_value.search.return_value = page
 
             resp = client.get("/search?q=test&limit=3")
 
@@ -83,12 +94,10 @@ class TestSearchEndpoint:
         self, client: TestClient, mock_index_manager: MagicMock
     ) -> None:
         """When no index is loaded, search should return 503."""
-        from fastapi import HTTPException
-
-        def _raise_503(*args, **kwargs):
-            raise HTTPException(status_code=503, detail="Search index not loaded")
-
-        with patch("api.routers.search._ensure_index_loaded_for_thread", side_effect=_raise_503):
+        with patch("api.routers.search.SearchIndexExecution") as execution_cls:
+            execution_cls.return_value.search.side_effect = SearchIndexUnavailableError(
+                "Search index not loaded"
+            )
             resp = client.get("/search?q=test")
         assert resp.status_code == 503
 
@@ -98,10 +107,17 @@ class TestSimilarEndpoint:
         self, client: TestClient, mock_index_manager: MagicMock
     ) -> None:
         results = [_make_search_result(id=2), _make_search_result(id=3)]
-        with (
-            patch("api.routers.search._ensure_index_loaded_for_thread"),
-            patch("api.routers.search._find_similar_for_thread", return_value=results),
-        ):
+        page = SearchIndexPage(
+            query="similar_to:1",
+            results=results,
+            total=2,
+            limit=20,
+            offset=0,
+            search_time_ms=1.0,
+            index_version="v1-test",
+        )
+        with patch("api.routers.search.SearchIndexExecution") as execution_cls:
+            execution_cls.return_value.find_similar.return_value = page
             resp = client.get("/search/similar/1")
 
         assert resp.status_code == 200
@@ -114,14 +130,20 @@ class TestSimilarEndpoint:
     ) -> None:
         """Results should not include the query image itself."""
         results = [
-            _make_search_result(id=1),  # the query image
             _make_search_result(id=2),
             _make_search_result(id=3),
         ]
-        with (
-            patch("api.routers.search._ensure_index_loaded_for_thread"),
-            patch("api.routers.search._find_similar_for_thread", return_value=results),
-        ):
+        page = SearchIndexPage(
+            query="similar_to:1",
+            results=results,
+            total=2,
+            limit=20,
+            offset=0,
+            search_time_ms=1.0,
+            index_version="v1-test",
+        )
+        with patch("api.routers.search.SearchIndexExecution") as execution_cls:
+            execution_cls.return_value.find_similar.return_value = page
             resp = client.get("/search/similar/1")
 
         data = resp.json()
@@ -131,12 +153,9 @@ class TestSimilarEndpoint:
     def test_find_similar_unknown_image_returns_404(
         self, client: TestClient, mock_index_manager: MagicMock
     ) -> None:
-        with (
-            patch("api.routers.search._ensure_index_loaded_for_thread"),
-            patch(
-                "api.routers.search._find_similar_for_thread",
-                side_effect=ValueError("Image not in index"),
-            ),
-        ):
+        with patch("api.routers.search.SearchIndexExecution") as execution_cls:
+            execution_cls.return_value.find_similar.side_effect = SearchImageNotFoundError(
+                "Image not in index"
+            )
             resp = client.get("/search/similar/999999")
         assert resp.status_code == 404

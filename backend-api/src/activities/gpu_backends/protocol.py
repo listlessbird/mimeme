@@ -7,11 +7,10 @@ if TYPE_CHECKING:
         EmbedBatchInput,
         EmbedBatchOutput,
     )
-    from activities.vision.models import CaptionInput, CaptionOutput, OCRInput, OCROutput
+    from activities.vision.models import AnnotateImageInput, AnnotateImageOutput
 
 
 @runtime_checkable
 class GpuBackend(Protocol):
-    async def caption(self, input: CaptionInput) -> CaptionOutput: ...
-    async def ocr(self, input: OCRInput) -> OCROutput: ...
+    async def annotate_image(self, input: AnnotateImageInput) -> AnnotateImageOutput: ...
     async def embed_batch(self, input: EmbedBatchInput) -> EmbedBatchOutput: ...

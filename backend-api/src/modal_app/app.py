@@ -14,6 +14,13 @@ import modal
 import structlog
 from botocore.config import Config as BotoConfig
 
+from domain.inference import (
+    build_image_embedding_key,
+    build_text_embedding_key_for_image_embedding,
+    pooled_features_to_numpy,
+    prepare_rgb_image_for_inference,
+)
+
 MODAL_APP_NAME = os.environ.get("MODAL_APP_NAME", "findmeme-gpu")
 MODAL_HF_CACHE_VOLUME_NAME = os.environ.get("MODAL_HF_CACHE_VOLUME_NAME", "findmeme-hf-cache")
 MODAL_S3_SECRET_NAME = os.environ.get("MODAL_S3_SECRET_NAME", "findmeme-s3")
@@ -33,6 +40,7 @@ gpu_image = (
         "numpy>=2.0",
         "boto3>=1.40",
         "bitsandbytes>=0.48",
+        "pyvips>=3.1",
         "structlog>=25.5",
     )
 )
@@ -183,7 +191,7 @@ class VisionService:
             )
 
     @modal.method()
-    def caption(self, s3_key: str, length: str = "normal") -> dict:
+    def annotate_image(self, s3_key: str, length: str = "normal") -> dict:
         started = time.monotonic()
         outcome = "success"
         error_message: str | None = None
@@ -191,25 +199,34 @@ class VisionService:
 
         tmp_path = _download_image(s3_key)
         try:
-            pil = Image.open(tmp_path).convert("RGB")
-            caption_fn = getattr(self._model, "caption", None)
-            if not callable(caption_fn):
-                raise ValueError("Moondream model does not expose callable caption()")
-            out = caption_fn(pil, length)
-            cap = out.get("caption", "") if isinstance(out, dict) else out
-
-            if not isinstance(cap, str):
-                cap = "".join(list(cap))
-
-            return {"caption": cap, "model": self.model_version}
+            pil = prepare_rgb_image_for_inference(Image.open(tmp_path))
+            encoded_image = self._model.encode_image(pil)
+            caption = self._model.caption(encoded_image, length=length)["caption"]
+            ocr_text = self._model.query(
+                encoded_image,
+                "Transcribe the text in natural reading order.",
+                reasoning=False,
+            )["answer"]
+            return {
+                "caption": caption,
+                "caption_model": self.model_version,
+                "ocr_text": ocr_text,
+                "ocr_model": self.model_version,
+            }
         except Exception as exc:
             outcome = "error"
             error_message = str(exc)
-            log.error("modal_step", operation="caption", step="failed", s3_key=s3_key, exc_info=True)
+            log.error(
+                "modal_step",
+                operation="annotate_image",
+                step="failed",
+                s3_key=s3_key,
+                exc_info=True,
+            )
             raise
         finally:
             _emit_modal_event(
-                operation="caption",
+                operation="annotate_image",
                 started_at=started,
                 outcome=outcome,
                 error=error_message,
@@ -218,40 +235,6 @@ class VisionService:
                 model_version=self.model_version,
             )
 
-            tmp_path.unlink(missing_ok=True)
-
-    @modal.method()
-    def ocr(self, s3_key: str) -> dict:
-        started = time.monotonic()
-        outcome = "success"
-        error_message: str | None = None
-        from PIL import Image
-
-        tmp_path = _download_image(s3_key)
-        try:
-            pil = Image.open(tmp_path).convert("RGB")
-            query_fn = getattr(self._model, "query", None)
-            if not callable(query_fn):
-                raise ValueError("Moondream model does not expose callable query()")
-            out = query_fn(pil, "Transcribe the text in natural reading order.")
-            text = out.get("answer", "") if isinstance(out, dict) else str(out)
-            if not isinstance(text, str):
-                text = "".join(list(text))
-            return {"text": text, "model": self.model_version}
-        except Exception as exc:
-            outcome = "error"
-            error_message = str(exc)
-            log.error("modal_step", operation="ocr", step="failed", s3_key=s3_key, exc_info=True)
-            raise
-        finally:
-            _emit_modal_event(
-                operation="ocr",
-                started_at=started,
-                outcome=outcome,
-                error=error_message,
-                s3_key=s3_key,
-                model_version=self.model_version,
-            )
             tmp_path.unlink(missing_ok=True)
 
 
@@ -306,25 +289,7 @@ class EmbeddingService:
             )
 
     def _tensor_to_numpy(self, value: Any, *, kind: str):
-        # Some model APIs return a tensor, others return an output object with tensor fields.
-        if hasattr(value, "cpu"):
-            return value.cpu().numpy()
-
-        candidates = (
-            ("image_embeds", "pooler_output", "last_hidden_state")
-            if kind == "image"
-            else ("text_embeds", "pooler_output", "last_hidden_state")
-        )
-
-        for field in candidates:
-            if hasattr(value, field):
-                tensor = getattr(value, field)
-                if field == "last_hidden_state":
-                    tensor = tensor[:, 0, :]
-                if hasattr(tensor, "cpu"):
-                    return tensor.cpu().numpy()
-
-        raise ValueError(f"Could not convert {kind} features to numpy from type {type(value)!r}")
+        return pooled_features_to_numpy(value, kind=kind)
 
     def _to_device(self, inputs: dict) -> dict:
         import torch
@@ -353,20 +318,13 @@ class EmbeddingService:
             if self._has_image_features:
                 feats = self.model.get_image_features(**inputs)
             else:
-                out = self.model(**inputs)
-                if hasattr(out, "image_embeds"):
-                    feats = out.image_embeds
-                elif hasattr(out, "last_hidden_state"):
-                    feats = out.last_hidden_state[:, 0, :]
-                else:
-                    raise ValueError("Could not extract image features")
+                feats = self.model(**inputs)
         return self._tensor_to_numpy(feats, kind="image")
 
     def _encode_texts(self, texts: list[str]):
         import torch
 
         if self._is_siglip2:
-            texts = [t.lower() for t in texts]
             inputs = self.processor(
                 text=texts, return_tensors="pt", padding="max_length", max_length=64
             )
@@ -379,15 +337,7 @@ class EmbeddingService:
             if self._has_text_features:
                 feats = self.model.get_text_features(**inputs)
             else:
-                out = self.model(**inputs)
-                if hasattr(out, "text_embeds"):
-                    feats = out.text_embeds
-                elif hasattr(out, "pooler_output"):
-                    feats = out.pooler_output
-                elif hasattr(out, "last_hidden_state"):
-                    feats = out.last_hidden_state[:, 0, :]
-                else:
-                    raise ValueError("Unknown text output format")
+                feats = self.model(**inputs)
         return self._tensor_to_numpy(feats, kind="text")
 
     @modal.method()
@@ -404,9 +354,7 @@ class EmbeddingService:
             tmp_path = _download_image(item["s3_key"])
             try:
                 with Image.open(tmp_path) as pil:
-                    if pil.mode == "P" and "transparency" in pil.info:
-                        pil = pil.convert("RGBA")
-                    rgb = pil.convert("RGB")
+                    rgb = prepare_rgb_image_for_inference(pil)
                     return item, rgb.copy()
             finally:
                 tmp_path.unlink(missing_ok=True)
@@ -438,16 +386,18 @@ class EmbeddingService:
             img_feats = self._encode_images(images)
             txt_feats = self._encode_texts(texts)
             del images, prepared
-            model_slug = self.model_name.replace("/", "_")
             dimension = int(img_feats.shape[-1])
 
             def _upload_one(position: int) -> dict:
                 item = ordered_items[position]
-                source = item.get("dataset") or "api-ingested"
                 sha = item["sha256"]
 
-                img_key = f"embeddings/{model_slug}/{source}/{sha}.npy"
-                txt_key = f"embeddings/{model_slug}/{source}/{sha}_text.npy"
+                img_key = build_image_embedding_key(
+                    sha256=sha,
+                    model_name=self.model_name,
+                    dataset=item.get("dataset"),
+                )
+                txt_key = build_text_embedding_key_for_image_embedding(img_key)
 
                 _upload_numpy(img_feats[position], img_key)
                 _upload_numpy(txt_feats[position], txt_key)

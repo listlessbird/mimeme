@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import json
-import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
@@ -10,8 +8,13 @@ from api.auth import AdminRequired
 from api.deps import DbSession, TemporalClientDep
 from api.models.health import IndexVersionResponse, IndexVersionsResponse
 from api.models.jobs import JobListResponse, JobResponse, RebuildIndexRequest
+from domain.job_lifecycle import (
+    JobLifecycle,
+    JobLifecycleInvalidStateError,
+    JobLifecycleNotFoundError,
+)
 from shared.config import settings
-from shared.models import IndexBuild, Job, JobStatus, JobType
+from shared.models import IndexBuild, JobStatus, JobType
 from workflows import RebuildIndexWorkflow, RebuildIndexWorkflowInput
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"])
@@ -19,28 +22,11 @@ router = APIRouter(prefix="/jobs", tags=["Jobs"])
 
 @router.get("/{job_id}", response_model=JobResponse)
 async def get_job(_auth: AdminRequired, job_id: str, db: DbSession) -> JobResponse:
-    job = db.query(Job).filter_by(id=job_id).first()
-    if not job:
+    try:
+        job = JobLifecycle(db).get_job(job_id)
+    except JobLifecycleNotFoundError:
         raise HTTPException(status_code=404, detail="Job not found")
-
-    result_data = None
-    if job.result:
-        try:
-            result_data = json.loads(job.result)
-        except json.JSONDecodeError:
-            result_data = {"raw": job.result}
-
-    return JobResponse(
-        id=job.id,
-        type=job.type,
-        status=job.status,
-        progress=job.progress,
-        message=job.message,
-        created_at=job.created_at,
-        started_at=job.started_at,
-        completed_at=job.completed_at,
-        result=result_data,
-    )
+    return JobResponse.model_construct(**job.model_dump())
 
 
 @router.post("/rebuild-index", response_model=JobResponse, status_code=202)
@@ -51,35 +37,34 @@ async def trigger_rebuild_index(
     request: RebuildIndexRequest | None = None,
 ) -> JobResponse:
     request = request or RebuildIndexRequest()
-    job_id = f"rebuild-{uuid.uuid4().hex[:12]}"
+    lifecycle = JobLifecycle(db)
+    rebuild = lifecycle.create_rebuild_job(
+        force=request.force,
+        model_name=request.model_name or settings.embed_model,
+        index_type=settings.index_type,
+    )
 
-    job = Job(id=job_id, type=JobType.REBUILD_INDEX)
-    db.add(job)
-    db.commit()
-
-    workflow_id = f"rebuild-workflow-{job_id}"
     await temporal.start_workflow(
         RebuildIndexWorkflow.run,
         RebuildIndexWorkflowInput(
-            job_id=job_id,
-            force=request.force,
-            model_name=request.model_name or settings.embed_model,
-            index_type=settings.index_type,
+            job_id=rebuild.job.id,
+            force=rebuild.force,
+            model_name=rebuild.model_name,
+            index_type=rebuild.index_type,
         ),
-        id=workflow_id,
+        id=rebuild.workflow_id,
         task_queue=settings.temporal_task_queue,
     )
 
-    job.workflow_id = workflow_id
-    db.commit()
+    lifecycle.record_workflow_id(rebuild.job.id, rebuild.workflow_id)
 
     return JobResponse(
-        id=job_id,
+        id=rebuild.job.id,
         type=JobType.REBUILD_INDEX,
         status=JobStatus.PENDING,
         progress=0.0,
         message="Index rebuild queued",
-        created_at=job.created_at,
+        created_at=rebuild.job.created_at,
     )
 
 
@@ -87,19 +72,19 @@ async def trigger_rebuild_index(
 async def cancel_job(
     _auth: AdminRequired, job_id: str, db: DbSession, temporal: TemporalClientDep
 ) -> None:
-    job = db.query(Job).filter_by(id=job_id).first()
-    if not job:
+    lifecycle = JobLifecycle(db)
+    try:
+        cancellation = lifecycle.request_cancellation(job_id)
+    except JobLifecycleNotFoundError:
         raise HTTPException(status_code=404, detail="Job not found")
+    except JobLifecycleInvalidStateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
-    if job.status in (JobStatus.COMPLETED, JobStatus.FAILED):
-        raise HTTPException(status_code=400, detail="Cannot cancel completed job")
-
-    if job.workflow_id:
-        handle = temporal.get_workflow_handle(job.workflow_id)
+    if cancellation.workflow_id:
+        handle = temporal.get_workflow_handle(cancellation.workflow_id)
         await handle.cancel()
 
-    job.status = JobStatus.CANCELLED
-    db.commit()
+    lifecycle.mark_cancelled(job_id)
 
 
 @router.get("", response_model=JobListResponse)
@@ -110,32 +95,11 @@ async def list_jobs(
     job_type: Annotated[JobType | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> JobListResponse:
-    query = db.query(Job)
-
-    if status:
-        query = query.filter(Job.status == status)
-    if job_type:
-        query = query.filter(Job.type == job_type)
-
-    total = query.count()
-    jobs = query.order_by(Job.created_at.desc()).limit(limit).all()
+    result = JobLifecycle(db).list_jobs(status=status, job_type=job_type, limit=limit)
 
     return JobListResponse(
-        jobs=[
-            JobResponse(
-                id=j.id,
-                type=j.type,
-                status=j.status,
-                progress=j.progress,
-                message=j.message,
-                created_at=j.created_at,
-                started_at=j.started_at,
-                completed_at=j.completed_at,
-                result=json.loads(j.result) if j.result else None,
-            )
-            for j in jobs
-        ],
-        total=total,
+        jobs=[JobResponse.model_construct(**job.model_dump()) for job in result.jobs],
+        total=result.total,
     )
 
 

@@ -7,13 +7,26 @@ import uuid
 import pytest
 from temporalio import activity
 from temporalio.client import WorkflowFailureError
+from temporalio.common import RetryPolicy
+from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
-from activities.indexing.models import BuildIndexOutput, GarbageCollectOutput
+from activities.indexing.models import (
+    BuildIndexInput,
+    BuildIndexOutput,
+    GarbageCollectOutput,
+    SwapIndexInput,
+)
+from activities.workflow_state.models import (
+    CompleteRebuildJobInput,
+    FailRebuildJobInput,
+    StartRebuildJobInput,
+    UpdateJobProgressInput,
+)
 from workflows.models import RebuildIndexWorkflowInput
-from workflows.rebuild_index import RebuildIndexWorkflow
+from workflows.rebuild_index import RETRY_INDEX_BUILD, RebuildIndexWorkflow
 
 # ---------------------------------------------------------------------------
 # Mock activities
@@ -24,18 +37,18 @@ _progress_values: list[float] = []
 
 
 @activity.defn(name="start_rebuild_job_activity")
-async def mock_start_rebuild(input: dict) -> None:
+async def mock_start_rebuild(input: StartRebuildJobInput) -> None:
     _activity_calls.append("start_rebuild_job_activity")
 
 
 @activity.defn(name="update_job_progress_activity")
-async def mock_update_progress(input: dict) -> None:
+async def mock_update_progress(input: UpdateJobProgressInput) -> None:
     _activity_calls.append("update_job_progress_activity")
-    _progress_values.append(input["progress"])
+    _progress_values.append(input.progress)
 
 
 @activity.defn(name="build_index_activity")
-async def mock_build_index(input: dict) -> dict:
+async def mock_build_index(input: BuildIndexInput) -> BuildIndexOutput:
     _activity_calls.append("build_index_activity")
     return BuildIndexOutput(
         version="v-test-001",
@@ -44,27 +57,27 @@ async def mock_build_index(input: dict) -> dict:
         s3_key="indexes/v-test-001/index.faiss",
         text_num_vectors=500,
         text_s3_key="indexes/v-test-001/text_index.faiss",
-    ).model_dump()
+    )
 
 
 @activity.defn(name="swap_index_activity")
-async def mock_swap_index(input: dict) -> None:
+async def mock_swap_index(input: SwapIndexInput) -> None:
     _activity_calls.append("swap_index_activity")
 
 
 @activity.defn(name="garbage_collect_indexes_activity")
-async def mock_gc_indexes() -> dict:
+async def mock_gc_indexes() -> GarbageCollectOutput:
     _activity_calls.append("garbage_collect_indexes_activity")
-    return GarbageCollectOutput(removed_versions=["v-old-001"]).model_dump()
+    return GarbageCollectOutput(removed_versions=["v-old-001"])
 
 
 @activity.defn(name="complete_rebuild_job_activity")
-async def mock_complete_rebuild(input: dict) -> None:
+async def mock_complete_rebuild(input: CompleteRebuildJobInput) -> None:
     _activity_calls.append("complete_rebuild_job_activity")
 
 
 @activity.defn(name="fail_rebuild_job_activity")
-async def mock_fail_rebuild(input: dict) -> None:
+async def mock_fail_rebuild(input: FailRebuildJobInput) -> None:
     _activity_calls.append("fail_rebuild_job_activity")
 
 
@@ -85,6 +98,11 @@ def _reset_calls() -> None:
     _progress_values.clear()
 
 
+def test_index_build_retry_policy_is_single_attempt() -> None:
+    assert isinstance(RETRY_INDEX_BUILD, RetryPolicy)
+    assert RETRY_INDEX_BUILD.maximum_attempts == 1
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -93,7 +111,9 @@ def _reset_calls() -> None:
 class TestRebuildWorkflowHappyPath:
     async def test_full_rebuild_succeeds(self) -> None:
         task_queue = str(uuid.uuid4())
-        async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        ) as env:
             async with Worker(
                 env.client,
                 task_queue=task_queue,
@@ -102,7 +122,9 @@ class TestRebuildWorkflowHappyPath:
             ):
                 result = await env.client.execute_workflow(
                     RebuildIndexWorkflow.run,
-                    RebuildIndexWorkflowInput(job_id="rebuild-1", model_name="test-model", index_type="flat"),
+                    RebuildIndexWorkflowInput(
+                        job_id="rebuild-1", model_name="test-model", index_type="flat"
+                    ),
                     id=str(uuid.uuid4()),
                     task_queue=task_queue,
                 )
@@ -115,7 +137,9 @@ class TestRebuildWorkflowHappyPath:
 
     async def test_activity_call_order(self) -> None:
         task_queue = str(uuid.uuid4())
-        async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        ) as env:
             async with Worker(
                 env.client,
                 task_queue=task_queue,
@@ -124,7 +148,9 @@ class TestRebuildWorkflowHappyPath:
             ):
                 await env.client.execute_workflow(
                     RebuildIndexWorkflow.run,
-                    RebuildIndexWorkflowInput(job_id="rebuild-order", model_name="test-model", index_type="flat"),
+                    RebuildIndexWorkflowInput(
+                        job_id="rebuild-order", model_name="test-model", index_type="flat"
+                    ),
                     id=str(uuid.uuid4()),
                     task_queue=task_queue,
                 )
@@ -142,7 +168,9 @@ class TestRebuildWorkflowHappyPath:
 
     async def test_progress_values(self) -> None:
         task_queue = str(uuid.uuid4())
-        async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        ) as env:
             async with Worker(
                 env.client,
                 task_queue=task_queue,
@@ -151,7 +179,9 @@ class TestRebuildWorkflowHappyPath:
             ):
                 await env.client.execute_workflow(
                     RebuildIndexWorkflow.run,
-                    RebuildIndexWorkflowInput(job_id="rebuild-progress", model_name="test-model", index_type="flat"),
+                    RebuildIndexWorkflowInput(
+                        job_id="rebuild-progress", model_name="test-model", index_type="flat"
+                    ),
                     id=str(uuid.uuid4()),
                     task_queue=task_queue,
                 )
@@ -162,14 +192,17 @@ class TestRebuildWorkflowHappyPath:
 class TestRebuildWorkflowFailure:
     async def test_build_index_failure_marks_job_failed(self) -> None:
         @activity.defn(name="build_index_activity")
-        async def mock_build_fail(input: dict) -> dict:
+        async def mock_build_fail(input: BuildIndexInput) -> BuildIndexOutput:
+            _activity_calls.append("build_index_activity")
             raise ApplicationError("No embeddings found", non_retryable=True)
 
         activities = [a for a in ALL_MOCK_ACTIVITIES if a.__name__ != "mock_build_index"]
         activities.append(mock_build_fail)
 
         task_queue = str(uuid.uuid4())
-        async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        ) as env:
             async with Worker(
                 env.client,
                 task_queue=task_queue,
@@ -179,7 +212,9 @@ class TestRebuildWorkflowFailure:
                 with pytest.raises(WorkflowFailureError):
                     await env.client.execute_workflow(
                         RebuildIndexWorkflow.run,
-                        RebuildIndexWorkflowInput(job_id="rebuild-fail", model_name="test-model", index_type="flat"),
+                        RebuildIndexWorkflowInput(
+                            job_id="rebuild-fail", model_name="test-model", index_type="flat"
+                        ),
                         id=str(uuid.uuid4()),
                         task_queue=task_queue,
                     )
@@ -189,14 +224,17 @@ class TestRebuildWorkflowFailure:
 
     async def test_swap_failure_marks_job_failed(self) -> None:
         @activity.defn(name="swap_index_activity")
-        async def mock_swap_fail(input: dict) -> None:
+        async def mock_swap_fail(input: SwapIndexInput) -> None:
+            _activity_calls.append("swap_index_activity")
             raise ApplicationError("Failed to swap index", non_retryable=True)
 
         activities = [a for a in ALL_MOCK_ACTIVITIES if a.__name__ != "mock_swap_index"]
         activities.append(mock_swap_fail)
 
         task_queue = str(uuid.uuid4())
-        async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        ) as env:
             async with Worker(
                 env.client,
                 task_queue=task_queue,
@@ -206,7 +244,9 @@ class TestRebuildWorkflowFailure:
                 with pytest.raises(WorkflowFailureError):
                     await env.client.execute_workflow(
                         RebuildIndexWorkflow.run,
-                        RebuildIndexWorkflowInput(job_id="rebuild-swap-fail", model_name="test-model", index_type="flat"),
+                        RebuildIndexWorkflowInput(
+                            job_id="rebuild-swap-fail", model_name="test-model", index_type="flat"
+                        ),
                         id=str(uuid.uuid4()),
                         task_queue=task_queue,
                     )
@@ -217,14 +257,17 @@ class TestRebuildWorkflowFailure:
 class TestRebuildWorkflowGarbageCollect:
     async def test_empty_removed_versions(self) -> None:
         @activity.defn(name="garbage_collect_indexes_activity")
-        async def mock_gc_empty() -> dict:
-            return GarbageCollectOutput(removed_versions=[]).model_dump()
+        async def mock_gc_empty() -> GarbageCollectOutput:
+            _activity_calls.append("garbage_collect_indexes_activity")
+            return GarbageCollectOutput(removed_versions=[])
 
         activities = [a for a in ALL_MOCK_ACTIVITIES if a.__name__ != "mock_gc_indexes"]
         activities.append(mock_gc_empty)
 
         task_queue = str(uuid.uuid4())
-        async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        ) as env:
             async with Worker(
                 env.client,
                 task_queue=task_queue,
@@ -233,7 +276,9 @@ class TestRebuildWorkflowGarbageCollect:
             ):
                 result = await env.client.execute_workflow(
                     RebuildIndexWorkflow.run,
-                    RebuildIndexWorkflowInput(job_id="rebuild-no-gc", model_name="test-model", index_type="flat"),
+                    RebuildIndexWorkflowInput(
+                        job_id="rebuild-no-gc", model_name="test-model", index_type="flat"
+                    ),
                     id=str(uuid.uuid4()),
                     task_queue=task_queue,
                 )

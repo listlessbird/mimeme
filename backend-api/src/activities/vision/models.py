@@ -12,24 +12,15 @@ class VisionModelConfig(BaseModel):
     model_config = {"frozen": True}
 
 
-class CaptionInput(BaseModel):
+class AnnotateImageInput(BaseModel):
     image_id: int
     s3_key: str
     length: str = Field(default="normal")
 
 
-class CaptionOutput(BaseModel):
+class AnnotateImageOutput(BaseModel):
     image_id: int
     caption: str
-    model: str
-
-
-class OCRInput(BaseModel):
-    image_id: int
-    s3_key: str
-
-
-class OCROutput(BaseModel):
-    image_id: int
-    text: str
-    model: str
+    caption_model: str
+    ocr_text: str
+    ocr_model: str

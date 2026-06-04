@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any
 
 import numpy as np
 import structlog
 import torch
 from transformers import AutoModel, AutoProcessor
 
+from domain.inference import select_pooled_feature_tensor
 from shared.config import settings
 
 _log = structlog.get_logger().bind(component="search_text_encoder")
@@ -72,18 +72,16 @@ class SearchTextEncoder:
         Returns the raw (unnormalised) embedding — L2 normalisation is
         handled by FaissIndexManager.search() before querying the index.
         """
-        text = query.lower() if self._is_siglip2 else query
-
         if self._is_siglip2:
             inputs = self._processor(
-                text=[text],
+                text=[query],
                 return_tensors="pt",
                 padding="max_length",
                 max_length=64,
             )
         else:
             inputs = self._processor(
-                text=[text],
+                text=[query],
                 return_tensors="pt",
                 padding="max_length",
             )
@@ -92,22 +90,11 @@ class SearchTextEncoder:
 
         with torch.no_grad():
             if hasattr(self._model, "get_text_features"):
-                feats = self._extract_tensor_features(self._model.get_text_features(**inputs))
+                feats = select_pooled_feature_tensor(
+                    self._model.get_text_features(**inputs),
+                    kind="text",
+                )
             else:
-                out = self._model(**inputs)
-                feats = self._extract_tensor_features(out)
+                feats = select_pooled_feature_tensor(self._model(**inputs), kind="text")
 
         return feats.detach().cpu().numpy().astype(np.float32)[0]
-
-    def _extract_tensor_features(self, out: Any) -> torch.Tensor:
-        if isinstance(out, torch.Tensor):
-            return out
-
-        if hasattr(out, "text_embeds"):
-            return out.text_embeds
-        if hasattr(out, "pooler_output"):
-            return out.pooler_output
-        if hasattr(out, "last_hidden_state"):
-            return out.last_hidden_state[:, 0, :]
-
-        raise ValueError("Unknown model output format")

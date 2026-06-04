@@ -37,6 +37,8 @@ RETRY_DB = RetryPolicy(
     maximum_interval=timedelta(seconds=10),
 )
 
+RETRY_INDEX_BUILD = RetryPolicy(maximum_attempts=1)
+
 
 @workflow.defn
 class RebuildIndexWorkflow:
@@ -102,7 +104,7 @@ class RebuildIndexWorkflow:
                     force=input.force,
                 ),
                 start_to_close_timeout=timedelta(hours=2),
-                heartbeat_timeout=timedelta(minutes=5),
+                retry_policy=RETRY_INDEX_BUILD,
             )
 
             last_step = "progress_70"

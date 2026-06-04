@@ -10,6 +10,7 @@ from PIL.Image import Image
 from transformers import AutoModel, AutoProcessor, BitsAndBytesConfig
 
 from activities.embedding.models import EmbedderConfig
+from domain.inference import select_pooled_feature_tensor
 
 
 class SiglipEmbedder:
@@ -168,21 +169,16 @@ class SiglipEmbedder:
 
         with torch.no_grad():
             if self.has_get_image_features:
-                feats = self.model.get_image_features(**inputs)
+                feats = select_pooled_feature_tensor(
+                    self.model.get_image_features(**inputs),
+                    kind="image",
+                )
             else:
                 out = self.model(**inputs)
-                if hasattr(out, "image_embeds"):
-                    feats = out.image_embeds
-                elif hasattr(out, "last_hidden_state"):
-                    feats = out.last_hidden_state[:, 0, :]
-                else:
-                    raise ValueError("Couldnt find image features in the model output")
+                feats = select_pooled_feature_tensor(out, kind="image")
         return feats.cpu().numpy()
 
     def encode_texts(self, texts: list[str]) -> np.ndarray:
-        if self.is_siglip2:
-            texts = [text.lower() for text in texts]
-
         if self.is_siglip2:
             inputs = self.processor(
                 text=texts,
@@ -211,17 +207,13 @@ class SiglipEmbedder:
 
         with torch.no_grad():
             if self.has_get_text_features:
-                feats = self.model.get_text_features(**inputs)
+                feats = select_pooled_feature_tensor(
+                    self.model.get_text_features(**inputs),
+                    kind="text",
+                )
             else:
                 out = self.model(**inputs)
-                if hasattr(out, "text_embeds"):
-                    feats = out.text_embeds
-                elif hasattr(out, "pooler_output"):
-                    feats = out.pooler_output
-                elif hasattr(out, "last_hidden_state"):
-                    feats = out.last_hidden_state[:, 0, :]
-                else:
-                    raise ValueError("Unknown model output format")
+                feats = select_pooled_feature_tensor(out, kind="text")
 
         return feats.cpu().numpy()
 

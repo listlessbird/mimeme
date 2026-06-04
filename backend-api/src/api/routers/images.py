@@ -1,8 +1,6 @@
-import uuid
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Query, Request
-from sqlalchemy import func, select
 
 from api.auth import AdminRequired
 from api.deps import DbSession, StorageDep, TemporalClientDep
@@ -14,17 +12,9 @@ from api.models.images import (
     ImageStatus,
 )
 from api.rate_limit import ADMIN_LIMIT, limiter
+from domain.image_catalog import ImageCatalog, ImageCatalogNotFoundError
+from domain.job_lifecycle import JobLifecycle
 from shared.config import settings
-from shared.models import (
-    Annotation,
-    Artifact,
-    IngestURL,
-    Job,
-    JobType,
-    Processing,
-    ProcessingStatus,
-)
-from shared.models import ORMImage as Image
 from workflows import IngestWorkflow, IngestWorkflowInput
 
 router = APIRouter(prefix="/images", tags=["Images"])
@@ -40,38 +30,32 @@ async def ingest_images(
     temporal: TemporalClientDep,
 ) -> ImageIngestResponse:
     urls = [str(url) for url in ingest_request.urls]
-    unique_urls = list(dict.fromkeys(urls))
-    duplicates = len(urls) - len(unique_urls)
-
-    job_id = f"ingest-{uuid.uuid4().hex[:12]}"
-
-    job = Job(id=job_id, type=JobType.INGEST)
-    db.add(job)
-    db.flush()
-
-    for url in unique_urls:
-        ingest_url = IngestURL(job_id=job_id, url=url)
-        db.add(ingest_url)
-
-    db.commit()
+    lifecycle = JobLifecycle(db)
+    job = lifecycle.create_ingest_job(
+        urls=urls,
+        dataset=ingest_request.dataset,
+        tags=ingest_request.tags,
+        callback_url=str(ingest_request.callback_url) if ingest_request.callback_url else None,
+    )
 
     await temporal.start_workflow(
         IngestWorkflow.run,
         IngestWorkflowInput(
-            job_id=job_id,
-            dataset=ingest_request.dataset,
-            tags=ingest_request.tags,
-            callback_url=str(ingest_request.callback_url) if ingest_request.callback_url else None,
+            job_id=job.job_id,
+            dataset=job.dataset,
+            tags=job.tags,
+            callback_url=job.callback_url,
         ),
-        id=f"ingest-workflow-{job_id}",
+        id=job.workflow_id,
         task_queue=settings.temporal_task_queue,
     )
+    lifecycle.record_workflow_id(job.job_id, job.workflow_id)
 
     return ImageIngestResponse(
-        job_id=job_id,
-        queued=len(unique_urls),
-        duplicates=duplicates,
-        message=f"Queued {len(unique_urls)} images for processing",
+        job_id=job.job_id,
+        queued=job.queued,
+        duplicates=job.duplicates,
+        message=f"Queued {job.queued} images for processing",
     )
 
 
@@ -88,80 +72,26 @@ async def list_images(
     dataset: Annotated[str | None, Query()] = None,
     sort: Annotated[Literal["newest", "oldest"], Query()] = "newest",
 ) -> ImageListResponse:
-    query = select(Image)
-
-    if dataset:
-        query = query.where(Image.dataset == dataset)
-
-    if status:
-        query = query.join(Processing, Image.id == Processing.image_id, isouter=True)
-
-        if status == ImageStatus.DONE:
-            query = query.where(Processing.embed_status == ProcessingStatus.DONE)
-        elif status == ImageStatus.PENDING:
-            query = query.where(
-                (Processing.embed_status == ProcessingStatus.PENDING)
-                | (Processing.embed_status.is_(None))
-            )
-        elif status == ImageStatus.FAILED:
-            query = query.where(
-                (Processing.ocr_status == ProcessingStatus.FAILED)
-                | (Processing.caption_status == ProcessingStatus.FAILED)
-                | (Processing.embed_status == ProcessingStatus.FAILED)
-            )
-
-    count_query = select(func.count()).select_from(query.subquery())
-    total = db.execute(count_query).scalar() or 0
-
-    if sort == "newest":
-        query = query.order_by(Image.id.desc())
-    else:
-        query = query.order_by(Image.id.asc())
-
-    query = query.limit(limit).offset(offset)
-    images = db.execute(query).scalars().all()
-
-    results: list[ImageResponse] = []
-    for img in images:
-        proc = db.query(Processing).filter_by(image_id=img.id).first()
-        ann = db.query(Annotation).filter_by(image_id=img.id).first()
-
-        img_status = _compute_status(proc)
-
-        url = None
-        if img.s3_key:
-            url = storage.generate_presigned_url(
-                img.s3_key, expiration=settings.s3_presigned_url_expiry
-            )
-
-        results.append(
-            ImageResponse(
-                id=img.id,
-                sha256=img.sha256,
-                url=url,
-                s3_key=img.s3_key,
-                dataset=img.dataset,
-                width=img.width,
-                height=img.height,
-                format=img.format,
-                phash=img.phash,
-                status=img_status,
-                ocr_status=proc.ocr_status.value if proc else None,
-                caption_status=proc.caption_status.value if proc else None,
-                embed_status=proc.embed_status.value if proc else None,
-                caption=ann.caption_text if ann else None,
-                ocr_text=ann.ocr_text if ann else None,
-                tags=[],
-                created_at=img.created_at,
-            )
-        )
-
-    return ImageListResponse(
-        images=results,
-        total=total,
+    page = ImageCatalog(db, storage).list_images(
         limit=limit,
         offset=offset,
-        has_more=(offset + len(results)) < total,
+        status=status.value if status else None,
+        dataset=dataset,
+        sort=sort,
+    )
+
+    image_responses: list[ImageResponse] = []
+    for image in page.images:
+        payload = image.model_dump()
+        payload["status"] = ImageStatus(payload["status"])
+        image_responses.append(ImageResponse.model_construct(**payload))
+
+    return ImageListResponse(
+        images=image_responses,
+        total=page.total,
+        limit=page.limit,
+        offset=page.offset,
+        has_more=page.has_more,
     )
 
 
@@ -172,40 +102,13 @@ async def get_image(
     db: DbSession,
     storage: StorageDep,
 ) -> ImageResponse:
-    img = db.query(Image).filter_by(id=image_id).first()
-    if not img:
+    try:
+        image = ImageCatalog(db, storage).get_image(image_id)
+    except ImageCatalogNotFoundError:
         raise HTTPException(status_code=404, detail="Image not found")
-
-    proc = db.query(Processing).filter_by(image_id=img.id).first()
-    ann = db.query(Annotation).filter_by(image_id=img.id).first()
-
-    img_status = _compute_status(proc)
-
-    url = None
-    if img.s3_key:
-        url = storage.generate_presigned_url(
-            img.s3_key, expiration=settings.s3_presigned_url_expiry
-        )
-
-    return ImageResponse(
-        id=img.id,
-        sha256=img.sha256,
-        url=url,
-        s3_key=img.s3_key,
-        dataset=img.dataset,
-        width=img.width,
-        height=img.height,
-        format=img.format,
-        phash=img.phash,
-        status=img_status,
-        ocr_status=proc.ocr_status.value if proc else None,
-        caption_status=proc.caption_status.value if proc else None,
-        embed_status=proc.embed_status.value if proc else None,
-        caption=ann.caption_text if ann else None,
-        ocr_text=ann.ocr_text if ann else None,
-        tags=[],
-        created_at=img.created_at,
-    )
+    payload = image.model_dump()
+    payload["status"] = ImageStatus(payload["status"])
+    return ImageResponse.model_construct(**payload)
 
 
 @router.delete("/{image_id}", status_code=204)
@@ -215,52 +118,7 @@ async def delete_image(
     db: DbSession,
     storage: StorageDep,
 ) -> None:
-    img = db.query(Image).filter_by(id=image_id).first()
-    if not img:
+    try:
+        ImageCatalog(db, storage).delete_image(image_id)
+    except ImageCatalogNotFoundError:
         raise HTTPException(status_code=404, detail="Image not found")
-
-    if img.s3_key:
-        try:
-            storage.delete(img.s3_key)
-        except Exception:
-            pass
-
-    proc = db.query(Processing).filter_by(image_id=image_id).first()
-    if proc and proc.embed_s3_key:
-        try:
-            storage.delete(proc.embed_s3_key)
-            text_key = proc.embed_s3_key.replace(".npy", "_text.npy")
-            storage.delete(text_key)
-        except Exception:
-            pass
-
-    db.query(Annotation).filter_by(image_id=image_id).delete()
-    db.query(Processing).filter_by(image_id=image_id).delete()
-    db.query(Artifact).filter_by(image_id=image_id).delete()
-    db.delete(img)
-    db.commit()
-
-
-def _compute_status(proc: Processing | None) -> ImageStatus:
-    if not proc:
-        return ImageStatus.PENDING
-
-    if proc.embed_status == ProcessingStatus.DONE:
-        return ImageStatus.DONE
-
-    if any(
-        s == ProcessingStatus.FAILED
-        for s in [proc.ocr_status, proc.caption_status, proc.embed_status]
-    ):
-        return ImageStatus.FAILED
-
-    if proc.embed_status == ProcessingStatus.RUNNING:
-        return ImageStatus.EMBEDDING
-
-    if (
-        proc.caption_status == ProcessingStatus.RUNNING
-        or proc.ocr_status == ProcessingStatus.RUNNING
-    ):
-        return ImageStatus.ANNOTATING
-
-    return ImageStatus.PENDING

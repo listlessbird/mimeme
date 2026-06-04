@@ -105,8 +105,10 @@ class TestDownloadImageActivity:
         assert result.error is not None
         assert "content type" in result.error.lower() or "content_type" in result.error.lower()
 
-    async def test_http_error_returns_failure(self, activity_env: ActivityEnvironment) -> None:
-        """HTTP errors (404, 500) are caught and returned as success=False."""
+    async def test_terminal_http_error_returns_failure(
+        self, activity_env: ActivityEnvironment
+    ) -> None:
+        """Terminal HTTP errors are returned as success=False."""
         import httpx
 
         fake_response = MagicMock()
@@ -133,10 +135,38 @@ class TestDownloadImageActivity:
         assert result.success is False
         assert result.error is not None
 
-    async def test_connection_error_returns_failure(
+    async def test_retryable_http_error_raises(self, activity_env: ActivityEnvironment) -> None:
+        """Retryable HTTP errors are raised so Temporal can retry the activity."""
+        import httpx
+
+        fake_response = MagicMock()
+        fake_response.status_code = 500
+        fake_response.headers = {"content-type": "text/html"}
+        fake_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "Server Error", request=MagicMock(), response=fake_response
+        )
+
+        fake_client = MagicMock()
+        fake_client.get.return_value = fake_response
+        fake_client.__enter__ = MagicMock(return_value=fake_client)
+        fake_client.__exit__ = MagicMock(return_value=False)
+
+        inp = DownloadImageInput(
+            url="https://example.com/error.jpg",
+            job_id="test-job",
+            ingest_url_id=4,
+        )
+
+        with (
+            patch("activities.storage.activities.httpx.Client", return_value=fake_client),
+            pytest.raises(httpx.HTTPStatusError),
+        ):
+            activity_env.run(download_image_activity, inp)
+
+    async def test_connection_error_raises_for_retry(
         self, activity_env: ActivityEnvironment
     ) -> None:
-        """Network errors are caught and returned as success=False."""
+        """Network errors are raised so Temporal can retry the activity."""
         import httpx
 
         fake_client = MagicMock()
@@ -147,13 +177,14 @@ class TestDownloadImageActivity:
         inp = DownloadImageInput(
             url="https://unreachable.example.com/img.jpg",
             job_id="test-job",
-            ingest_url_id=4,
+            ingest_url_id=5,
         )
 
-        with patch("activities.storage.activities.httpx.Client", return_value=fake_client):
-            result = activity_env.run(download_image_activity, inp)
-
-        assert result.success is False
+        with (
+            patch("activities.storage.activities.httpx.Client", return_value=fake_client),
+            pytest.raises(httpx.ConnectError),
+        ):
+            activity_env.run(download_image_activity, inp)
 
 
 # ==========================================================================
