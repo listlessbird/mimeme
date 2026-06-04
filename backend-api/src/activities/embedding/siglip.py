@@ -6,11 +6,11 @@ import time
 import numpy as np
 import structlog
 import torch
-from domain.inference import select_pooled_feature_tensor
 from PIL.Image import Image
 from transformers import AutoModel, AutoProcessor, BitsAndBytesConfig
 
 from activities.embedding.models import EmbedderConfig
+from domain.inference import select_pooled_feature_tensor
 
 
 class SiglipEmbedder:

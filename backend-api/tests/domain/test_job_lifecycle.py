@@ -3,14 +3,15 @@ from __future__ import annotations
 import json
 
 import pytest
+from sqlalchemy.orm import Session
+from tests.factories import create_image, create_ingest_url, create_job
+
 from domain.job_lifecycle import (
     JobLifecycle,
     JobLifecycleInvalidStateError,
     JobLifecycleNotFoundError,
 )
-from shared.models.orm import IngestURL, JobStatus, JobType, ProcessingStatus
-from sqlalchemy.orm import Session
-from tests.factories import create_image, create_ingest_url, create_job
+from shared.models.orm import DuplicateReason, IngestURL, JobStatus, JobType, ProcessingStatus
 
 
 def test_create_ingest_job_deduplicates_urls_and_preserves_order(db_session: Session) -> None:
@@ -236,3 +237,38 @@ def test_mark_ingest_url_done_with_existing_image(db_session: Session) -> None:
     assert result.image_exists is True
     assert url.status == ProcessingStatus.DONE
     assert url.image_id == image.id
+
+
+def test_mark_ingest_url_done_records_duplicate_provenance(db_session: Session) -> None:
+    """A deduped URL points at the canonical image and records why."""
+    job = create_job(session=db_session)
+    canonical = create_image(session=db_session)
+    url = create_ingest_url(session=db_session, job=job)
+    db_session.flush()
+
+    JobLifecycle(db_session).mark_ingest_url_done(
+        url.id,
+        canonical.id,
+        duplicate_reason=DuplicateReason.PHASH,
+        duplicate_of_image_id=canonical.id,
+    )
+
+    db_session.refresh(url)
+    assert url.status == ProcessingStatus.DONE
+    assert url.image_id == canonical.id
+    assert url.duplicate_reason == DuplicateReason.PHASH
+    assert url.duplicate_of_image_id == canonical.id
+
+
+def test_mark_ingest_url_done_leaves_provenance_null_for_new_image(db_session: Session) -> None:
+    """A genuinely-new image records no duplicate provenance."""
+    job = create_job(session=db_session)
+    image = create_image(session=db_session)
+    url = create_ingest_url(session=db_session, job=job)
+    db_session.flush()
+
+    JobLifecycle(db_session).mark_ingest_url_done(url.id, image.id)
+
+    db_session.refresh(url)
+    assert url.duplicate_reason is None
+    assert url.duplicate_of_image_id is None

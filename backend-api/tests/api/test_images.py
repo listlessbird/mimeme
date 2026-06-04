@@ -5,9 +5,9 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
-from shared.models.orm import IngestURL, Job, JobType, ProcessingStatus
 from sqlalchemy.orm import Session
 
+from shared.models.orm import IngestURL, Job, JobType, ProcessingStatus
 from tests.factories import (
     create_annotation,
     create_image,

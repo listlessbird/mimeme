@@ -6,9 +6,9 @@ import json
 from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
-from shared.models.orm import JobStatus, JobType
 from sqlalchemy.orm import Session
 
+from shared.models.orm import JobStatus, JobType
 from tests.factories import create_index_build, create_job
 
 

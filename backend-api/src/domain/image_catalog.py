@@ -4,12 +4,13 @@ from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field
+from sqlalchemy import and_, false, func, or_, select
+from sqlalchemy.orm import Session
+
 from shared.config import settings
 from shared.models import Annotation, Processing, ProcessingStatus
 from shared.models import ORMImage as Image
 from shared.services.storage import StorageService
-from sqlalchemy import and_, false, func, or_, select
-from sqlalchemy.orm import Session
 
 ImageCatalogStatus = Literal[
     "pending",

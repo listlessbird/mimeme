@@ -9,13 +9,13 @@ from typing import Any, NamedTuple
 
 import numpy as np
 import structlog
-from shared.config import settings
-from shared.services.storage import get_storage_service
 from sqlalchemy.orm import Session
 
 from activities.indexing.faiss_vectors import FaissVectorIndex
 from activities.indexing.index_artifacts import IndexArtifactStore
 from activities.indexing.index_catalog import ActiveIndexCatalog
+from shared.config import settings
+from shared.services.storage import get_storage_service
 
 log = structlog.get_logger()
 

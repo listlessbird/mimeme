@@ -8,7 +8,7 @@ import httpx
 import structlog
 from shared.db import session_scope
 from shared.logging import emit_activity_event
-from shared.models import ORMImage, Processing
+from shared.models import DuplicateReason, ORMImage, Processing
 from shared.services import StorageService, get_storage_service
 from temporalio import activity
 
@@ -19,6 +19,7 @@ from activities.storage.models import (
     ProcessImageInput,
     ProcessImageOutput,
 )
+from activities.storage.phash_index import get_phash_index
 
 log = structlog.get_logger()
 
@@ -221,6 +222,8 @@ def process_image_activity(input: ProcessImageInput) -> ProcessImageOutput:
                     step="duplicate_detected",
                     ingest_url_id=input.ingest_url_id,
                     image_id=existing.id,
+                    duplicate_reason=DuplicateReason.SHA256,
+                    duplicate_of_image_id=existing.id,
                 )
                 return ProcessImageOutput(
                     ingest_url_id=input.ingest_url_id,
@@ -231,9 +234,28 @@ def process_image_activity(input: ProcessImageInput) -> ProcessImageOutput:
                     height=existing.height,
                     format=existing.format,
                     is_duplicate=True,
+                    duplicate_reason=DuplicateReason.SHA256,
+                    duplicate_of_image_id=existing.id,
                 )
 
         phash = compute_phash(local_path)
+
+        matched_image_id = get_phash_index().match(phash)
+
+        if matched_image_id is not None:
+            return ProcessImageOutput(
+                ingest_url_id=input.ingest_url_id,
+                image_id=matched_image_id,
+                sha256=sha256,
+                s3_key="",
+                width=None,
+                height=None,
+                format=None,
+                is_duplicate=True,
+                duplicate_reason=DuplicateReason.PHASH,
+                duplicate_of_image_id=matched_image_id,
+            )
+
         width, height, format = get_image_info(local_path)
 
         file_size = local_path.stat().st_size
@@ -259,6 +281,9 @@ def process_image_activity(input: ProcessImageInput) -> ProcessImageOutput:
             session.add(img)
             session.flush()
             image_id = img.id
+
+            get_phash_index().add(image_id, phash)
+
             is_duplicate = False
 
             proc = Processing(image_id=image_id)

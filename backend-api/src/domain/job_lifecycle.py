@@ -6,9 +6,10 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel
-from shared.models import IngestURL, Job, JobStatus, JobType, ProcessingStatus
-from shared.models import ORMImage as Image
 from sqlalchemy.orm import Session
+
+from shared.models import DuplicateReason, IngestURL, Job, JobStatus, JobType, ProcessingStatus
+from shared.models import ORMImage as Image
 
 
 class JobLifecycleNotFoundError(Exception):
@@ -267,7 +268,13 @@ class JobLifecycle:
         self._db.flush()
         return True
 
-    def mark_ingest_url_done(self, ingest_url_id: int, image_id: int) -> IngestUrlDoneResult:
+    def mark_ingest_url_done(
+        self,
+        ingest_url_id: int,
+        image_id: int,
+        duplicate_reason: DuplicateReason | None = None,
+        duplicate_of_image_id: int | None = None,
+    ) -> IngestUrlDoneResult:
         url = self._db.get(IngestURL, ingest_url_id)
         if url is None:
             return IngestUrlDoneResult(found=False, image_exists=None)
@@ -276,6 +283,8 @@ class JobLifecycle:
         if image_exists:
             url.status = ProcessingStatus.DONE
             url.image_id = image_id
+            url.duplicate_reason = duplicate_reason
+            url.duplicate_of_image_id = duplicate_of_image_id
         else:
             url.status = ProcessingStatus.FAILED
             url.error_message = f"Image {image_id} not found while marking ingest URL done"

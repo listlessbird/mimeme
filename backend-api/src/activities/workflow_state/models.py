@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from shared.models import DuplicateReason
+
 
 class IngestUrlItem(BaseModel):
     id: int
@@ -20,6 +22,8 @@ class MarkIngestUrlFailedInput(BaseModel):
 class MarkIngestUrlDoneInput(BaseModel):
     ingest_url_id: int
     image_id: int
+    duplicate_reason: DuplicateReason | None = None
+    duplicate_of_image_id: int | None = None
 
 
 class SaveAnnotationsInput(BaseModel):

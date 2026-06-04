@@ -20,7 +20,7 @@
       "type": "shell",
       "command": "uv run pyright",
       "options": { "cwd": "${workspaceFolder}/backend-api" },
-      "problemMatcher": "$pyright"
+      "problemMatcher": []
     },
     {
       "label": "backend: test",
@@ -36,7 +36,7 @@
       "command": "uv run ruff format --check src tests && uv run ruff check src tests && uv run pyright && uv run pytest -q",
       "options": { "cwd": "${workspaceFolder}/backend-api" },
       "group": "build",
-      "problemMatcher": "$pyright"
+      "problemMatcher": []
     }
   ]
 }

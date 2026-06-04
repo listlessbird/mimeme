@@ -36,7 +36,6 @@ with workflow.unsafe.imports_passed_through():
         UpdateJobProgressInput,
     )
     from domain.ingest_policy import IngestPolicy
-
     from workflows.models import IngestWorkflowInput, IngestWorkflowOutput
 
 RETRY_GPU = RetryPolicy(
@@ -156,6 +155,8 @@ class IngestWorkflow:
                                 MarkIngestUrlDoneInput(
                                     ingest_url_id=ingest_url_id,
                                     image_id=duplicate.image_id,
+                                    duplicate_reason=process_result.duplicate_reason,
+                                    duplicate_of_image_id=process_result.duplicate_of_image_id,
                                 ),
                                 start_to_close_timeout=timedelta(minutes=1),
                                 retry_policy=RETRY_DB,

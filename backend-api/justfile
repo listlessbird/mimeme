@@ -39,3 +39,13 @@ worker:
 
 migrate:
     uv run alembic upgrade head
+
+# Generate a migration by diffing the ORM against the DB (run `just migrate` first
+# so the diff baseline is head). Review the output: enums need CREATE/DROP TYPE by
+# hand, name your constraints, and prune unrelated drift before applying.
+makemigration name:
+    uv run alembic revision --autogenerate -m "{{name}}"
+
+# Roll back one revision.
+migrate-down:
+    uv run alembic downgrade -1

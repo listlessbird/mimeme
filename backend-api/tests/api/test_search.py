@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+from fastapi.testclient import TestClient
+
 from api.models.search import SearchResult
 from domain.search_index import (
     SearchImageNotFoundError,
     SearchIndexPage,
     SearchIndexUnavailableError,
 )
-from fastapi.testclient import TestClient
 
 
 def _make_search_result(

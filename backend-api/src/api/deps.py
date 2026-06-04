@@ -3,14 +3,15 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Annotated
 
-from activities.indexing import FaissIndexManager
 from fastapi import Depends
-from shared.config import settings
-from shared.db import get_db
-from shared.services.storage import StorageService, get_storage_service
 from sqlalchemy.orm import Session
 from temporalio.client import Client
 from temporalio.contrib.pydantic import pydantic_data_converter
+
+from activities.indexing import FaissIndexManager
+from shared.config import settings
+from shared.db import get_db
+from shared.services.storage import StorageService, get_storage_service
 
 DbSession = Annotated[Session, Depends(get_db)]
 

@@ -11,6 +11,10 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+from temporalio.testing import ActivityEnvironment
+
 from activities.storage.activities import (
     cleanup_temp_file_activity,
     download_image_activity,
@@ -26,10 +30,6 @@ from shared.models.orm import (
     Image,
     Processing,
 )
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
-from temporalio.testing import ActivityEnvironment
-
 from tests.factories import (
     create_annotation,
     create_artifact,
