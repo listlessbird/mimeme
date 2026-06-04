@@ -3,6 +3,8 @@ from __future__ import annotations
 import time
 
 import structlog
+from temporalio import activity
+
 from domain.job_lifecycle import JobLifecycle
 from shared.db import session_scope
 from shared.logging import emit_activity_event
@@ -11,7 +13,6 @@ from shared.models import (
     Processing,
     ProcessingStatus,
 )
-from temporalio import activity
 
 from .models import (
     CompleteIngestJobInput,
@@ -100,6 +101,8 @@ def mark_ingest_url_done_activity(input: MarkIngestUrlDoneInput) -> None:
             result = JobLifecycle(session).mark_ingest_url_done(
                 input.ingest_url_id,
                 input.image_id,
+                duplicate_reason=input.duplicate_reason,
+                duplicate_of_image_id=input.duplicate_of_image_id,
             )
             found = result.found
             image_exists = result.image_exists

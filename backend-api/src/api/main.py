@@ -3,17 +3,18 @@ from __future__ import annotations
 from typing import cast
 
 import uvicorn
-from api.lifespan import lifespan
-from api.middleware import register_middleware
-from api.rate_limit import limiter, rate_limit_exceeded_handler
-from api.routers import health, images, jobs, search
 from fastapi import FastAPI
-from shared.config import settings
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
 from starlette.types import ExceptionHandler
+
+from api.lifespan import lifespan
+from api.middleware import register_middleware
+from api.rate_limit import limiter, rate_limit_exceeded_handler
+from api.routers import health, images, jobs, search
+from shared.config import settings
 
 
 def create_app() -> FastAPI:

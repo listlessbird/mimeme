@@ -6,9 +6,10 @@ import time
 import numpy as np
 import structlog
 import torch
+from transformers import AutoModel, AutoProcessor
+
 from domain.inference import select_pooled_feature_tensor
 from shared.config import settings
-from transformers import AutoModel, AutoProcessor
 
 _log = structlog.get_logger().bind(component="search_text_encoder")
 

@@ -2,6 +2,7 @@ from shared.models.orm import (
     Annotation,
     Artifact,
     Base,
+    DuplicateReason,
     IndexBuild,
     IngestURL,
     Job,
@@ -24,4 +25,5 @@ __all__ = [
     "Annotation",
     "Artifact",
     "IndexBuild",
+    "DuplicateReason",
 ]

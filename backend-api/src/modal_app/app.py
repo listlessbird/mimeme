@@ -13,6 +13,7 @@ import boto3
 import modal
 import structlog
 from botocore.config import Config as BotoConfig
+
 from domain.inference import (
     build_image_embedding_key,
     build_text_embedding_key_for_image_embedding,

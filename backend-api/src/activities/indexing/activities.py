@@ -7,10 +7,6 @@ import time
 import numpy as np
 import structlog
 from botocore.exceptions import ClientError
-from shared.db import session_scope
-from shared.logging import emit_activity_event
-from shared.models import Processing, ProcessingStatus
-from shared.services.storage import get_storage_service
 from temporalio import activity
 
 from activities.indexing.faiss_manager import FaissIndexManager
@@ -20,6 +16,10 @@ from activities.indexing.models import (
     GarbageCollectOutput,
     SwapIndexInput,
 )
+from shared.db import session_scope
+from shared.logging import emit_activity_event
+from shared.models import Processing, ProcessingStatus
+from shared.services.storage import get_storage_service
 
 log = structlog.get_logger()
 MAX_DOWNLOAD_WORKERS = max(4, min(32, (os.cpu_count() or 8) * 2))

@@ -13,6 +13,9 @@ from unittest.mock import MagicMock, patch
 
 import numpy as np
 import pytest
+from sqlalchemy.orm import Session
+from temporalio.testing import ActivityEnvironment
+
 from activities.indexing.activities import (
     build_index_activity,
     garbage_collect_indexes_activity,
@@ -20,9 +23,6 @@ from activities.indexing.activities import (
 )
 from activities.indexing.models import BuildIndexInput, SwapIndexInput
 from shared.models.orm import ProcessingStatus
-from sqlalchemy.orm import Session
-from temporalio.testing import ActivityEnvironment
-
 from tests.factories import create_image, create_processing
 
 

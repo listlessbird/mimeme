@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from shared.models import DuplicateReason
+
 
 class DownloadImageInput(BaseModel):
     url: str
@@ -33,6 +35,8 @@ class ProcessImageOutput(BaseModel):
     height: int | None
     format: str | None
     is_duplicate: bool = False
+    duplicate_reason: DuplicateReason | None = None
+    duplicate_of_image_id: int | None = None
 
 
 class ImageMetadata(BaseModel):

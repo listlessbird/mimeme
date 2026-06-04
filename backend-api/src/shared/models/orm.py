@@ -32,6 +32,12 @@ class ProcessingStatus(StrEnum):
     FAILED = "FAILED"
 
 
+class DuplicateReason(StrEnum):
+    SOURCE_SEEN = "SOURCE_SEEN"
+    SHA256 = "SHA256"
+    PHASH = "PHASH"
+
+
 class Job(Base):
     __tablename__ = "jobs"
 
@@ -80,7 +86,17 @@ class IngestURL(Base):
     )
 
     job: Mapped[Job] = relationship(back_populates="ingest_urls")
-    image: Mapped[Image | None] = relationship(back_populates="ingest_url")
+    image: Mapped[Image | None] = relationship(
+        back_populates="ingest_urls", foreign_keys=[image_id]
+    )
+
+    duplicate_reason: Mapped[DuplicateReason | None] = mapped_column(
+        SAEnum(DuplicateReason), nullable=True
+    )
+
+    duplicate_of_image_id: Mapped[int | None] = mapped_column(
+        ForeignKey("images.id", ondelete="SET NULL"), nullable=True, index=True
+    )
 
 
 class Image(Base):
@@ -113,7 +129,9 @@ class Image(Base):
         back_populates="image", cascade="all, delete-orphan"
     )
 
-    ingest_url: Mapped[IngestURL | None] = relationship(back_populates="image", uselist=False)
+    ingest_urls: Mapped[list[IngestURL]] = relationship(
+        back_populates="image", foreign_keys="IngestURL.image_id"
+    )
 
 
 class Processing(Base):

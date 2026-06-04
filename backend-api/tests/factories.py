@@ -15,6 +15,8 @@ import uuid
 from typing import Any, cast
 
 import factory
+from sqlalchemy.orm import Session
+
 from shared.models.orm import (
     Annotation,
     Artifact,
@@ -27,7 +29,6 @@ from shared.models.orm import (
     Processing,
     ProcessingStatus,
 )
-from sqlalchemy.orm import Session
 
 
 class _BaseMeta:

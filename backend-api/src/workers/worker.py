@@ -6,11 +6,12 @@ import ctypes.util
 from concurrent.futures import ThreadPoolExecutor
 
 import structlog
-from shared.config import settings
-from shared.logging import setup_logging
 from temporalio.client import Client
 from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.worker import Worker
+
+from shared.config import settings
+from shared.logging import setup_logging
 
 
 def _preload_native_image_libs(log: structlog.BoundLogger) -> tuple[int, int]:
@@ -38,6 +39,12 @@ async def main() -> None:
 
     if settings.gpu_backend == "local":
         _preload_native_image_libs(log)
+
+    from activities.storage.phash_index import get_phash_index
+    from shared.db import session_scope
+
+    with session_scope() as session:
+        get_phash_index().load_from_db(session)
 
     from activities import ACTIVITIES
     from workflows import ALL_WORKFLOWS

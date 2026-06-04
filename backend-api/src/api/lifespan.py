@@ -7,9 +7,10 @@ from pathlib import Path
 from typing import Any
 
 import structlog
+from fastapi import FastAPI
+
 from api.deps import get_index_manager
 from api.services.text_encoder import SearchTextEncoder
-from fastapi import FastAPI
 from shared.config import settings
 from shared.db import get_db
 from shared.logging import setup_logging

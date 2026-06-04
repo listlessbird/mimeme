@@ -146,7 +146,6 @@ def test_active_index_catalog_swap_marks_only_requested_build_active(
     db_session,
 ) -> None:
     from activities.indexing.index_catalog import ActiveIndexCatalog
-
     from tests.factories import create_index_build
 
     create_index_build(session=db_session, version="v1", is_active=True)
@@ -167,7 +166,6 @@ def test_active_index_catalog_garbage_collection_retains_newest_and_skips_active
     db_session,
 ) -> None:
     from activities.indexing.index_catalog import ActiveIndexCatalog
-
     from tests.factories import create_index_build
 
     base = datetime(2026, 1, 1, 12, 0, 0)

@@ -6,18 +6,19 @@ from typing import Literal, cast
 
 import numpy as np
 import structlog
+from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from activities.indexing import FaissIndexManager
 from api.models.search import SearchResult
 from api.services.text_encoder import SearchTextEncoder
-from pydantic import BaseModel
 from shared.config import settings
 from shared.db import session_scope
 from shared.models import IndexBuild
 from shared.models.orm import Annotation
 from shared.models.orm import Image as ORMImage
 from shared.services.storage import StorageService, get_storage_service
-from sqlalchemy import select
-from sqlalchemy.orm import Session
 
 log = structlog.get_logger()
 
