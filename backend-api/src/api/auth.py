@@ -7,7 +7,6 @@ from typing import Annotated
 import structlog
 from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader
-
 from shared.config import settings
 
 log = structlog.getLogger()

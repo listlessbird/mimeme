@@ -5,7 +5,7 @@ import re
 import shutil
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, ClassVar, Protocol
 
 import structlog
 
@@ -13,7 +13,7 @@ log = structlog.get_logger()
 
 
 class IndexStorage(Protocol):
-    INDEXES_PREFIX: str
+    INDEXES_PREFIX: ClassVar[str]
 
     def build_index_key(self, version: str, filename: str) -> str: ...
 

@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 import structlog
-from fastapi import APIRouter, Response, status
-from sqlalchemy import text
-from temporalio.client import Client
-from temporalio.contrib.pydantic import pydantic_data_converter
-
 from api.models.health import HealthResponse
+from fastapi import APIRouter, Response, status
 from shared.config import settings
 from shared.db import get_engine
 from shared.services.storage import get_storage_service
+from sqlalchemy import text
+from temporalio.client import Client
+from temporalio.contrib.pydantic import pydantic_data_converter
 
 router = APIRouter(tags=["Health"])
 log = structlog.get_logger()

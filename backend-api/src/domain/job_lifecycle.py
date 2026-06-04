@@ -6,10 +6,9 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel
-from sqlalchemy.orm import Session
-
 from shared.models import IngestURL, Job, JobStatus, JobType, ProcessingStatus
 from shared.models import ORMImage as Image
+from sqlalchemy.orm import Session
 
 
 class JobLifecycleNotFoundError(Exception):

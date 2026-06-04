@@ -10,8 +10,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from temporalio.testing import ActivityEnvironment
-
 from activities.embedding.activity import embed_batch_activity
 from activities.embedding.models import (
     EmbedBatchInput,
@@ -19,6 +17,7 @@ from activities.embedding.models import (
     EmbedImageInput,
     EmbedImageOutput,
 )
+from temporalio.testing import ActivityEnvironment
 
 
 @pytest.fixture()

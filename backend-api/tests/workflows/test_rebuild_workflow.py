@@ -5,14 +5,6 @@ from __future__ import annotations
 import uuid
 
 import pytest
-from temporalio import activity
-from temporalio.client import WorkflowFailureError
-from temporalio.common import RetryPolicy
-from temporalio.contrib.pydantic import pydantic_data_converter
-from temporalio.exceptions import ApplicationError
-from temporalio.testing import WorkflowEnvironment
-from temporalio.worker import Worker
-
 from activities.indexing.models import (
     BuildIndexInput,
     BuildIndexOutput,
@@ -25,6 +17,13 @@ from activities.workflow_state.models import (
     StartRebuildJobInput,
     UpdateJobProgressInput,
 )
+from temporalio import activity
+from temporalio.client import WorkflowFailureError
+from temporalio.common import RetryPolicy
+from temporalio.contrib.pydantic import pydantic_data_converter
+from temporalio.exceptions import ApplicationError
+from temporalio.testing import WorkflowEnvironment
+from temporalio.worker import Worker
 from workflows.models import RebuildIndexWorkflowInput
 from workflows.rebuild_index import RETRY_INDEX_BUILD, RebuildIndexWorkflow
 

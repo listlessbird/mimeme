@@ -1,0 +1,41 @@
+set dotenv-load := true
+
+default:
+    @just --list
+
+sync:
+    uv sync --all-groups
+
+fmt:
+    uv run ruff check --select I --fix src tests
+    uv run ruff format src tests
+
+lint:
+    uv run ruff format --check src tests
+    uv run ruff check src tests
+
+type:
+    uv run pyright
+
+test:
+    uv run pytest -q
+
+cov:
+    uv run pytest --cov=src --cov-report=term-missing -q
+
+check: lint type test
+
+hooks-install:
+    uv run pre-commit install
+
+hooks:
+    uv run pre-commit run --all-files
+
+api:
+    uv run uvicorn api.main:app --reload
+
+worker:
+    uv run python -m workers.worker
+
+migrate:
+    uv run alembic upgrade head

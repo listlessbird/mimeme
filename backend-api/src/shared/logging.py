@@ -3,6 +3,7 @@ from __future__ import annotations
 import atexit
 import logging
 import time
+from typing import cast
 
 import structlog
 from axiom_py import Client
@@ -41,7 +42,7 @@ def setup_logging(service: str = "api") -> None:
     ]
 
     if axiom_proc:
-        processors.append(axiom_proc)
+        processors.append(cast(structlog.types.Processor, axiom_proc))
 
     processors.append(
         structlog.dev.ConsoleRenderer() if settings.debug else structlog.processors.JSONRenderer()

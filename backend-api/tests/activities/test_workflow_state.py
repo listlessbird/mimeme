@@ -12,10 +12,6 @@ from __future__ import annotations
 import json
 
 import pytest
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
-from temporalio.testing import ActivityEnvironment
-
 from activities.workflow_state.activities import (
     complete_ingest_job_activity,
     complete_rebuild_job_activity,
@@ -49,6 +45,10 @@ from shared.models.orm import (
     Processing,
     ProcessingStatus,
 )
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+from temporalio.testing import ActivityEnvironment
+
 from tests.factories import (
     create_image,
     create_ingest_url,

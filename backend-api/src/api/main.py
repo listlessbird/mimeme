@@ -1,17 +1,19 @@
 from __future__ import annotations
 
-import uvicorn
-from fastapi import FastAPI
-from slowapi.errors import RateLimitExceeded
-from slowapi.middleware import SlowAPIMiddleware
-from starlette.middleware import Middleware
-from starlette.middleware.cors import CORSMiddleware
+from typing import cast
 
+import uvicorn
 from api.lifespan import lifespan
 from api.middleware import register_middleware
 from api.rate_limit import limiter, rate_limit_exceeded_handler
 from api.routers import health, images, jobs, search
+from fastapi import FastAPI
 from shared.config import settings
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from starlette.middleware import Middleware
+from starlette.middleware.cors import CORSMiddleware
+from starlette.types import ExceptionHandler
 
 
 def create_app() -> FastAPI:
@@ -23,7 +25,7 @@ def create_app() -> FastAPI:
             allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
-        )
+        ),
     ]
     app = FastAPI(
         title="Find-Meme API",
@@ -36,7 +38,9 @@ def create_app() -> FastAPI:
     )
 
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+    app.add_exception_handler(
+        RateLimitExceeded, cast(ExceptionHandler, rate_limit_exceeded_handler)
+    )
 
     register_middleware(app)
 

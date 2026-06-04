@@ -36,6 +36,7 @@ with workflow.unsafe.imports_passed_through():
         UpdateJobProgressInput,
     )
     from domain.ingest_policy import IngestPolicy
+
     from workflows.models import IngestWorkflowInput, IngestWorkflowOutput
 
 RETRY_GPU = RetryPolicy(

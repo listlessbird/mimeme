@@ -3,6 +3,8 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 import pytest
+from domain.image_catalog import ImageCatalog, ImageCatalogNotFoundError
+from shared.models.orm import Annotation, Artifact, Image, Processing, ProcessingStatus
 from sqlalchemy.orm import Session
 from tests.factories import (
     create_annotation,
@@ -10,9 +12,6 @@ from tests.factories import (
     create_image,
     create_processing,
 )
-
-from domain.image_catalog import ImageCatalog, ImageCatalogNotFoundError
-from shared.models.orm import Annotation, Artifact, Image, Processing, ProcessingStatus
 
 
 def test_list_images_empty(db_session: Session, mock_storage: MagicMock) -> None:
@@ -191,4 +190,3 @@ def test_delete_image_storage_failure_does_not_block_database_deletion(
     ImageCatalog(db_session, mock_storage).delete_image(image.id)
 
     assert db_session.get(Image, image.id) is None
-

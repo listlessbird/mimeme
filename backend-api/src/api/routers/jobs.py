@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, HTTPException, Query
-
 from api.auth import AdminRequired
 from api.deps import DbSession, TemporalClientDep
 from api.models.health import IndexVersionResponse, IndexVersionsResponse
@@ -13,6 +11,7 @@ from domain.job_lifecycle import (
     JobLifecycleInvalidStateError,
     JobLifecycleNotFoundError,
 )
+from fastapi import APIRouter, HTTPException, Query
 from shared.config import settings
 from shared.models import IndexBuild, JobStatus, JobType
 from workflows import RebuildIndexWorkflow, RebuildIndexWorkflowInput

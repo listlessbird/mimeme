@@ -5,9 +5,8 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
-from fastapi import HTTPException
-
 from api.auth import ApiKeyRole, _resolve_role, require_admin, require_readonly
+from fastapi import HTTPException
 
 # ---------------------------------------------------------------------------
 # _resolve_role

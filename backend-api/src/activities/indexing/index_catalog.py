@@ -3,9 +3,8 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, Protocol
 
-from sqlalchemy.orm import Session
-
 from shared.models import IndexBuild
+from sqlalchemy.orm import Session
 
 
 class StoredIndexArtifacts(Protocol):

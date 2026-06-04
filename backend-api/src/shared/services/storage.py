@@ -4,7 +4,7 @@ import io
 import tempfile
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, BinaryIO, cast
+from typing import TYPE_CHECKING, BinaryIO, ClassVar, cast
 
 import boto3
 import numpy as np
@@ -64,7 +64,7 @@ def get_s3_client() -> S3Client:
 class StorageService:
     IMAGES_PREFIX = "images"
     EMBEGGINGS_PREFIX = "embeddings"
-    INDEXES_PREFIX = "indexes"
+    INDEXES_PREFIX: ClassVar[str] = "indexes"
 
     def __init__(self) -> None:
         self._client: S3Client | None = None

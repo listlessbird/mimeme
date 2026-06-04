@@ -15,11 +15,14 @@ def test_artifact_store_fetches_text_artifacts_when_image_artifacts_are_cached(
     storage = MagicMock()
     storage.INDEXES_PREFIX = "indexes"
     storage.build_index_key.side_effect = lambda version, filename: f"indexes/{version}/{filename}"
-    storage.exists.side_effect = lambda key: key in {
-        "indexes/v1/text_index.faiss",
-        "indexes/v1/text_mapping.json",
-        "indexes/v1/text_metadata.json",
-    }
+    storage.exists.side_effect = lambda key: (
+        key
+        in {
+            "indexes/v1/text_index.faiss",
+            "indexes/v1/text_mapping.json",
+            "indexes/v1/text_metadata.json",
+        }
+    )
 
     cached = tmp_path / "v1"
     cached.mkdir()
@@ -52,10 +55,13 @@ def test_artifact_store_lists_versions_by_timestamp_and_requires_image_artifacts
         ("indexes/v20251231-235959/index.faiss", 1),
     ]
     storage.build_index_key.side_effect = lambda version, filename: f"indexes/{version}/{filename}"
-    storage.exists.side_effect = lambda key: key in {
-        "indexes/v20260101-010000-a/index.faiss",
-        "indexes/v20260101-010000-a/mapping.json",
-    }
+    storage.exists.side_effect = lambda key: (
+        key
+        in {
+            "indexes/v20260101-010000-a/index.faiss",
+            "indexes/v20260101-010000-a/mapping.json",
+        }
+    )
 
     store = IndexArtifactStore(storage=storage, cache_dir=tmp_path)
 
@@ -140,6 +146,7 @@ def test_active_index_catalog_swap_marks_only_requested_build_active(
     db_session,
 ) -> None:
     from activities.indexing.index_catalog import ActiveIndexCatalog
+
     from tests.factories import create_index_build
 
     create_index_build(session=db_session, version="v1", is_active=True)
@@ -151,8 +158,7 @@ def test_active_index_catalog_swap_marks_only_requested_build_active(
     catalog.swap_to_version("v2", db_session)
 
     builds = {
-        build.version: build.is_active
-        for build in catalog.list_builds_newest_first(db_session)
+        build.version: build.is_active for build in catalog.list_builds_newest_first(db_session)
     }
     assert builds == {"v1": False, "v2": True}
 
@@ -161,6 +167,7 @@ def test_active_index_catalog_garbage_collection_retains_newest_and_skips_active
     db_session,
 ) -> None:
     from activities.indexing.index_catalog import ActiveIndexCatalog
+
     from tests.factories import create_index_build
 
     base = datetime(2026, 1, 1, 12, 0, 0)
@@ -192,8 +199,7 @@ def test_active_index_catalog_garbage_collection_retains_newest_and_skips_active
     )
 
     remaining = {
-        build.version
-        for build in ActiveIndexCatalog().list_builds_newest_first(db_session)
+        build.version for build in ActiveIndexCatalog().list_builds_newest_first(db_session)
     }
     assert removed == ["v-old"]
     assert remaining == {"v-new", "v-active-old"}

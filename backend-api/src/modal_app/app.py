@@ -7,13 +7,12 @@ import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, cast
 
 import boto3
 import modal
 import structlog
 from botocore.config import Config as BotoConfig
-
 from domain.inference import (
     build_image_embedding_key,
     build_text_embedding_key_for_image_embedding,
@@ -200,9 +199,10 @@ class VisionService:
         tmp_path = _download_image(s3_key)
         try:
             pil = prepare_rgb_image_for_inference(Image.open(tmp_path))
-            encoded_image = self._model.encode_image(pil)
-            caption = self._model.caption(encoded_image, length=length)["caption"]
-            ocr_text = self._model.query(
+            model = cast(Any, self._model)
+            encoded_image = model.encode_image(pil)
+            caption = model.caption(encoded_image, length=length)["caption"]
+            ocr_text = model.query(
                 encoded_image,
                 "Transcribe the text in natural reading order.",
                 reasoning=False,
@@ -288,7 +288,7 @@ class EmbeddingService:
                 model_name=self.model_name,
             )
 
-    def _tensor_to_numpy(self, value: Any, *, kind: str):
+    def _tensor_to_numpy(self, value: Any, *, kind: Literal["image", "text"]):
         return pooled_features_to_numpy(value, kind=kind)
 
     def _to_device(self, inputs: dict) -> dict:

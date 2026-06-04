@@ -7,4 +7,3 @@ def test_domain_package_imports() -> None:
     import domain
 
     assert domain.__doc__
-
