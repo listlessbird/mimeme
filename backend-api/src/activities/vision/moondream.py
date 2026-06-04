@@ -2,21 +2,26 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Protocol
 
 import structlog
 from PIL.Image import Image
 from transformers import AutoModelForCausalLM
 
-from activities.vision.models import CaptionOutput, OCROutput, VisionModelConfig
+from activities.vision.models import AnnotateImageOutput, VisionModelConfig
 
 if TYPE_CHECKING:
 
     class MoondreamModel(Protocol):
-        def caption(self, image: Image, length: str) -> dict[str, Any] | str: ...
+        def encode_image(self, image: Image) -> object: ...
+
+        def caption(
+            self, image: object, length: str = "normal", stream: bool = False
+        ) -> dict[str, str]: ...
+
         def query(
-            self, image: Image, question: str, stream: bool = False
-        ) -> dict[str, Any] | str: ...
+            self, image: object, question: str, reasoning: bool = True, stream: bool = False
+        ) -> dict[str, str]: ...
 
 
 class Moondream2:
@@ -32,7 +37,9 @@ class Moondream2:
         error_type: str | None = None
         error_message: str | None = None
         self.config = config
-        log = self._log.bind(model_id=config.model_id, model_revision=config.revision, model_device=config.device)
+        log = self._log.bind(
+            model_id=config.model_id, model_revision=config.revision, model_device=config.device
+        )
         log.info("vision_step", step="model_load_start")
         try:
             loaded_model = AutoModelForCausalLM.from_pretrained(
@@ -93,21 +100,14 @@ class Moondream2:
     def model_version(self) -> str:
         return f"{self.config.model_id}@{self.config.revision or 'latest'}"
 
-    def caption(self, image: Image, length: str = "normal") -> CaptionOutput:
-        out = self.model.caption(image, length)
-        cap = out.get("caption", "") if isinstance(out, dict) else out
-
-        if not isinstance(cap, str):
-            cap = "".join(list(cap))
-
-        # ill override teh image id at the caller
-        return CaptionOutput(image_id=0, caption=cap, model=self.model_version)
-
-    def ocr(self, image: Image, prompt: str = _ocr_prompt) -> OCROutput:
-        out = self.model.query(image, prompt)
-        text = out.get("answer", "") if isinstance(out, dict) else str(out)
-
-        if not isinstance(text, str):
-            text = "".join(list(text))
-
-        return OCROutput(image_id=0, text=text, model=self.model_version)
+    def annotate_image(self, image: Image, length: str = "normal") -> AnnotateImageOutput:
+        encoded_image = self.model.encode_image(image)
+        caption = self.model.caption(encoded_image, length=length)["caption"]
+        ocr_text = self.model.query(encoded_image, self._ocr_prompt, reasoning=False)["answer"]
+        return AnnotateImageOutput(
+            image_id=0,
+            caption=caption,
+            caption_model=self.model_version,
+            ocr_text=ocr_text,
+            ocr_model=self.model_version,
+        )

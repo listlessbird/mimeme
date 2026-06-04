@@ -99,24 +99,76 @@ def download_image_activity(input: DownloadImageInput) -> DownloadImageOutput:
                     success=True,
                 )
 
-    except Exception as e:
+    except httpx.HTTPStatusError as e:
+        if e.response is not None:
+            status_code = e.response.status_code
+            content_type = e.response.headers.get("content-type")
+
+        if (
+            status_code is not None
+            and 400 <= status_code < 500
+            and status_code
+            not in {
+                408,
+                425,
+                429,
+            }
+        ):
+            log.info(
+                "activity_step",
+                activity_name="download_image_activity",
+                step="terminal_http_error",
+                job_id=input.job_id,
+                ingest_url_id=input.ingest_url_id,
+                status_code=status_code,
+                error=str(e),
+            )
+            outcome = "failed"
+            error_message = str(e)
+            return DownloadImageOutput(
+                ingest_url_id=input.ingest_url_id,
+                local_path="",
+                filename="",
+                success=False,
+                error=str(e),
+            )
+
         log.info(
             "activity_step",
             activity_name="download_image_activity",
-            step="download_error",
+            step="retryable_http_error",
+            job_id=input.job_id,
+            ingest_url_id=input.ingest_url_id,
+            status_code=status_code,
+            error=str(e),
+        )
+        outcome = "error"
+        error_message = str(e)
+        raise
+    except httpx.TransportError as e:
+        log.info(
+            "activity_step",
+            activity_name="download_image_activity",
+            step="retryable_transport_error",
             job_id=input.job_id,
             ingest_url_id=input.ingest_url_id,
             error=str(e),
         )
-        outcome = "failed"
+        outcome = "error"
         error_message = str(e)
-        return DownloadImageOutput(
+        raise
+    except Exception as e:
+        log.info(
+            "activity_step",
+            activity_name="download_image_activity",
+            step="unexpected_download_error",
+            job_id=input.job_id,
             ingest_url_id=input.ingest_url_id,
-            local_path="",
-            filename="",
-            success=False,
             error=str(e),
         )
+        outcome = "error"
+        error_message = str(e)
+        raise
     finally:
         emit_activity_event(
             log=log,

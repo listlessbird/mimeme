@@ -1,20 +1,15 @@
 from __future__ import annotations
 
-import json
 import time
-from datetime import UTC, datetime
 
 import structlog
 from temporalio import activity
 
+from domain.job_lifecycle import JobLifecycle
 from shared.db import session_scope
 from shared.logging import emit_activity_event
 from shared.models import (
     Annotation,
-    IngestURL,
-    Job,
-    JobStatus,
-    ORMImage,
     Processing,
     ProcessingStatus,
 )
@@ -41,14 +36,10 @@ def ingest_initialize_activity(job_id: str) -> IngestInitOutput:
     started = time.monotonic()
     try:
         with session_scope() as session:
-            job = session.query(Job).filter_by(id=job_id).first()
-            if not job:
-                raise ValueError(f"Job {job_id} not found")
-
-            job.status = JobStatus.RUNNING
-            job.started_at = datetime.now(UTC)
-            urls = session.query(IngestURL).filter_by(job_id=job_id).all()
-            output = IngestInitOutput(urls=[IngestUrlItem(id=u.id, url=u.url) for u in urls])
+            init = JobLifecycle(session).initialize_ingest(job_id)
+            output = IngestInitOutput(
+                urls=[IngestUrlItem(id=url.id, url=url.url) for url in init.urls]
+            )
         emit_activity_event(
             log=log,
             activity_name="ingest_initialize_activity",
@@ -76,11 +67,10 @@ def mark_ingest_url_failed_activity(input: MarkIngestUrlFailedInput) -> None:
     try:
         error_message = input.error[:1000] if input.error else input.error
         with session_scope() as session:
-            url = session.query(IngestURL).filter_by(id=input.ingest_url_id).first()
-            found = url is not None
-            if url:
-                url.status = ProcessingStatus.FAILED
-                url.error_message = error_message
+            found = JobLifecycle(session).mark_ingest_url_failed(
+                input.ingest_url_id,
+                input.error,
+            )
         emit_activity_event(
             log=log,
             activity_name="mark_ingest_url_failed_activity",
@@ -108,19 +98,12 @@ def mark_ingest_url_done_activity(input: MarkIngestUrlDoneInput) -> None:
     try:
         image_exists: bool | None = None
         with session_scope() as session:
-            url = session.query(IngestURL).filter_by(id=input.ingest_url_id).first()
-            found = url is not None
-            if url:
-                image_exists = (
-                    session.query(ORMImage.id).filter(ORMImage.id == input.image_id).first() is not None
-                )
-                if image_exists:
-                    url.status = ProcessingStatus.DONE
-                    url.image_id = input.image_id
-                else:
-                    # Keep ingest row consistent even if upstream passed a stale/non-existent image id.
-                    url.status = ProcessingStatus.FAILED
-                    url.error_message = f"Image {input.image_id} not found while marking ingest URL done"
+            result = JobLifecycle(session).mark_ingest_url_done(
+                input.ingest_url_id,
+                input.image_id,
+            )
+            found = result.found
+            image_exists = result.image_exists
         emit_activity_event(
             log=log,
             activity_name="mark_ingest_url_done_activity",
@@ -222,12 +205,11 @@ def update_job_progress_activity(input: UpdateJobProgressInput) -> None:
     started = time.monotonic()
     try:
         with session_scope() as session:
-            job = session.query(Job).filter_by(id=input.job_id).first()
-            found = job is not None
-            if job:
-                job.progress = input.progress
-                if input.message is not None:
-                    job.message = input.message
+            found = JobLifecycle(session).update_progress(
+                input.job_id,
+                input.progress,
+                input.message,
+            )
         emit_activity_event(
             log=log,
             activity_name="update_job_progress_activity",
@@ -255,19 +237,12 @@ def complete_ingest_job_activity(input: CompleteIngestJobInput) -> None:
     started = time.monotonic()
     try:
         with session_scope() as session:
-            job = session.query(Job).filter_by(id=input.job_id).first()
-            found = job is not None
-            if job:
-                job.status = JobStatus.COMPLETED if input.failed == 0 else JobStatus.FAILED
-                job.progress = 100.0
-                job.completed_at = datetime.now(UTC)
-                job.result = json.dumps(
-                    {
-                        "processed": input.processed,
-                        "failed": input.failed,
-                        "duplicates": input.duplicates,
-                    }
-                )
+            found = JobLifecycle(session).complete_ingest_job(
+                job_id=input.job_id,
+                processed=input.processed,
+                failed=input.failed,
+                duplicates=input.duplicates,
+            )
         emit_activity_event(
             log=log,
             activity_name="complete_ingest_job_activity",
@@ -296,11 +271,7 @@ def start_rebuild_job_activity(input: StartRebuildJobInput) -> None:
     started = time.monotonic()
     try:
         with session_scope() as session:
-            job = session.query(Job).filter_by(id=input.job_id).first()
-            if not job:
-                raise ValueError(f"Job {input.job_id} not found")
-            job.status = JobStatus.RUNNING
-            job.started_at = datetime.now(UTC)
+            JobLifecycle(session).start_job(input.job_id)
         emit_activity_event(
             log=log,
             activity_name="start_rebuild_job_activity",
@@ -324,14 +295,8 @@ def start_rebuild_job_activity(input: StartRebuildJobInput) -> None:
 def fail_rebuild_job_activity(input: FailRebuildJobInput) -> None:
     started = time.monotonic()
     try:
-        error_message = input.error[:2000] if input.error else input.error
         with session_scope() as session:
-            job = session.query(Job).filter_by(id=input.job_id).first()
-            found = job is not None
-            if job:
-                job.status = JobStatus.FAILED
-                job.message = error_message
-                job.completed_at = datetime.now(UTC)
+            found = JobLifecycle(session).fail_rebuild_job(input.job_id, input.error)
         emit_activity_event(
             log=log,
             activity_name="fail_rebuild_job_activity",
@@ -357,20 +322,13 @@ def complete_rebuild_job_activity(input: CompleteRebuildJobInput) -> None:
     started = time.monotonic()
     try:
         with session_scope() as session:
-            job = session.query(Job).filter_by(id=input.job_id).first()
-            if not job:
-                raise ValueError(f"Job {input.job_id} not found")
-            job.status = JobStatus.COMPLETED
-            job.progress = 100.0
-            job.completed_at = datetime.now(UTC)
-            job.result = json.dumps(
-                {
-                    "version": input.version,
-                    "num_vectors": input.num_vectors,
-                    "dimension": input.dimension,
-                    "removed_versions": input.removed_versions,
-                    "text_num_vectors": input.text_num_vectors,
-                }
+            JobLifecycle(session).complete_rebuild_job(
+                job_id=input.job_id,
+                version=input.version,
+                num_vectors=input.num_vectors,
+                dimension=input.dimension,
+                removed_versions=input.removed_versions,
+                text_num_vectors=input.text_num_vectors,
             )
         emit_activity_event(
             log=log,

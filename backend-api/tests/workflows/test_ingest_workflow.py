@@ -10,16 +10,28 @@ import uuid
 
 import pytest
 from temporalio import activity
+from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
-from activities.embedding.models import EmbedBatchOutput, EmbedImageOutput
-from activities.storage.models import DownloadImageOutput, ProcessImageOutput
-from activities.vision.models import CaptionOutput, OCROutput
+from activities.embedding.models import EmbedBatchInput, EmbedBatchOutput, EmbedImageOutput
+from activities.storage.models import (
+    DownloadImageInput,
+    DownloadImageOutput,
+    ProcessImageInput,
+    ProcessImageOutput,
+)
+from activities.vision.models import AnnotateImageInput, AnnotateImageOutput
 from activities.workflow_state.models import (
+    CompleteIngestJobInput,
     IngestInitOutput,
     IngestUrlItem,
+    MarkIngestUrlDoneInput,
+    MarkIngestUrlFailedInput,
+    SaveAnnotationsInput,
+    SaveEmbeddingInfoInput,
+    UpdateJobProgressInput,
 )
 from workflows.ingest import IngestWorkflow
 from workflows.models import IngestWorkflowInput
@@ -32,106 +44,97 @@ _activity_calls: list[str] = []
 
 
 @activity.defn(name="ingest_initialize_activity")
-async def mock_ingest_initialize(job_id: str) -> dict:
+async def mock_ingest_initialize(job_id: str) -> IngestInitOutput:
     _activity_calls.append("ingest_initialize_activity")
     return IngestInitOutput(
         urls=[
             IngestUrlItem(id=1, url="https://example.com/img1.jpg"),
             IngestUrlItem(id=2, url="https://example.com/img2.png"),
         ]
-    ).model_dump()
+    )
 
 
 @activity.defn(name="download_image_activity")
-async def mock_download_image(input: dict) -> dict:
+async def mock_download_image(input: DownloadImageInput) -> DownloadImageOutput:
     _activity_calls.append("download_image_activity")
     return DownloadImageOutput(
-        ingest_url_id=input["ingest_url_id"],
+        ingest_url_id=input.ingest_url_id,
         local_path="/tmp/test.jpg",
         filename="test.jpg",
         success=True,
-    ).model_dump()
+    )
 
 
 @activity.defn(name="process_image_activity")
-async def mock_process_image(input: dict) -> dict:
+async def mock_process_image(input: ProcessImageInput) -> ProcessImageOutput:
     _activity_calls.append("process_image_activity")
     return ProcessImageOutput(
-        ingest_url_id=input["ingest_url_id"],
-        image_id=input["ingest_url_id"] * 100,
-        sha256=f"hash-{input['ingest_url_id']}",
-        s3_key=f"images/test/{input['ingest_url_id']}.jpg",
+        ingest_url_id=input.ingest_url_id,
+        image_id=input.ingest_url_id * 100,
+        sha256=f"hash-{input.ingest_url_id}",
+        s3_key=f"images/test/{input.ingest_url_id}.jpg",
         width=800,
         height=600,
         format="jpeg",
         is_duplicate=False,
-    ).model_dump()
+    )
 
 
-@activity.defn(name="caption_activity")
-async def mock_caption(input: dict) -> dict:
-    _activity_calls.append("caption_activity")
-    return CaptionOutput(
-        image_id=input["image_id"],
+@activity.defn(name="annotate_image_activity")
+async def mock_annotate_image(input: AnnotateImageInput) -> AnnotateImageOutput:
+    _activity_calls.append("annotate_image_activity")
+    return AnnotateImageOutput(
+        image_id=input.image_id,
         caption="A funny meme",
-        model="moondream2",
-    ).model_dump()
-
-
-@activity.defn(name="ocr_activity")
-async def mock_ocr(input: dict) -> dict:
-    _activity_calls.append("ocr_activity")
-    return OCROutput(
-        image_id=input["image_id"],
-        text="IMPACT TEXT",
-        model="moondream2",
-    ).model_dump()
+        caption_model="moondream2",
+        ocr_text="IMPACT TEXT",
+        ocr_model="moondream2",
+    )
 
 
 @activity.defn(name="save_annotations_activity")
-async def mock_save_annotations(input: dict) -> None:
+async def mock_save_annotations(input: SaveAnnotationsInput) -> None:
     _activity_calls.append("save_annotations_activity")
 
 
 @activity.defn(name="embed_batch_activity")
-async def mock_embed_batch(input: dict) -> dict:
+async def mock_embed_batch(input: EmbedBatchInput) -> EmbedBatchOutput:
     _activity_calls.append("embed_batch_activity")
-    items = input.get("items", [])
     results = [
         EmbedImageOutput(
-            image_id=item["image_id"],
-            image_embedding_key=f"embeddings/{item['image_id']}.npy",
-            text_embedding_key=f"embeddings/{item['image_id']}_text.npy",
+            image_id=item.image_id,
+            image_embedding_key=f"embeddings/{item.image_id}.npy",
+            text_embedding_key=f"embeddings/{item.image_id}_text.npy",
             model="siglip2-base",
             dimension=768,
-        ).model_dump()
-        for item in items
+        )
+        for item in input.items
     ]
-    return EmbedBatchOutput(results=results, failed_ids=[]).model_dump()
+    return EmbedBatchOutput(results=results, failed_ids=[])
 
 
 @activity.defn(name="save_embedding_info_activity")
-async def mock_save_embedding_info(input: dict) -> None:
+async def mock_save_embedding_info(input: SaveEmbeddingInfoInput) -> None:
     _activity_calls.append("save_embedding_info_activity")
 
 
 @activity.defn(name="mark_ingest_url_done_activity")
-async def mock_mark_done(input: dict) -> None:
+async def mock_mark_done(input: MarkIngestUrlDoneInput) -> None:
     _activity_calls.append("mark_ingest_url_done_activity")
 
 
 @activity.defn(name="mark_ingest_url_failed_activity")
-async def mock_mark_failed(input: dict) -> None:
+async def mock_mark_failed(input: MarkIngestUrlFailedInput) -> None:
     _activity_calls.append("mark_ingest_url_failed_activity")
 
 
 @activity.defn(name="update_job_progress_activity")
-async def mock_update_progress(input: dict) -> None:
+async def mock_update_progress(input: UpdateJobProgressInput) -> None:
     _activity_calls.append("update_job_progress_activity")
 
 
 @activity.defn(name="complete_ingest_job_activity")
-async def mock_complete_job(input: dict) -> None:
+async def mock_complete_job(input: CompleteIngestJobInput) -> None:
     _activity_calls.append("complete_ingest_job_activity")
 
 
@@ -139,8 +142,7 @@ ALL_MOCK_ACTIVITIES = [
     mock_ingest_initialize,
     mock_download_image,
     mock_process_image,
-    mock_caption,
-    mock_ocr,
+    mock_annotate_image,
     mock_save_annotations,
     mock_embed_batch,
     mock_save_embedding_info,
@@ -164,7 +166,9 @@ def _reset_activity_calls() -> None:
 class TestIngestWorkflowHappyPath:
     async def test_all_urls_succeed(self) -> None:
         task_queue = str(uuid.uuid4())
-        async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        ) as env:
             async with Worker(
                 env.client,
                 task_queue=task_queue,
@@ -195,28 +199,32 @@ class TestIngestWorkflowPartialFailure:
         """When download returns success=False, the URL is marked failed."""
 
         @activity.defn(name="download_image_activity")
-        async def mock_download_fail_first(input: dict) -> dict:
+        async def mock_download_fail_first(
+            input: DownloadImageInput,
+        ) -> DownloadImageOutput:
             _activity_calls.append("download_image_activity")
-            if input["ingest_url_id"] == 1:
+            if input.ingest_url_id == 1:
                 return DownloadImageOutput(
                     ingest_url_id=1,
                     local_path="",
                     filename="",
                     success=False,
                     error="HTTP 404",
-                ).model_dump()
+                )
             return DownloadImageOutput(
-                ingest_url_id=input["ingest_url_id"],
+                ingest_url_id=input.ingest_url_id,
                 local_path="/tmp/test.jpg",
                 filename="test.jpg",
                 success=True,
-            ).model_dump()
+            )
 
         activities = [a for a in ALL_MOCK_ACTIVITIES if a.__name__ != "mock_download_image"]
         activities.append(mock_download_fail_first)
 
         task_queue = str(uuid.uuid4())
-        async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        ) as env:
             async with Worker(
                 env.client,
                 task_queue=task_queue,
@@ -240,10 +248,12 @@ class TestIngestWorkflowDuplicateHandling:
         """When process_image returns is_duplicate=True, remaining steps are skipped."""
 
         @activity.defn(name="process_image_activity")
-        async def mock_process_duplicate(input: dict) -> dict:
+        async def mock_process_duplicate(
+            input: ProcessImageInput,
+        ) -> ProcessImageOutput:
             _activity_calls.append("process_image_activity")
             return ProcessImageOutput(
-                ingest_url_id=input["ingest_url_id"],
+                ingest_url_id=input.ingest_url_id,
                 image_id=42,
                 sha256="dup-hash",
                 s3_key="images/test/dup.jpg",
@@ -251,13 +261,15 @@ class TestIngestWorkflowDuplicateHandling:
                 height=600,
                 format="jpeg",
                 is_duplicate=True,
-            ).model_dump()
+            )
 
         activities = [a for a in ALL_MOCK_ACTIVITIES if a.__name__ != "mock_process_image"]
         activities.append(mock_process_duplicate)
 
         task_queue = str(uuid.uuid4())
-        async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        ) as env:
             async with Worker(
                 env.client,
                 task_queue=task_queue,
@@ -273,8 +285,8 @@ class TestIngestWorkflowDuplicateHandling:
 
         assert result.duplicates == 2
         assert result.processed == 0
-        # Caption/OCR/embed should NOT be called for duplicates
-        assert "caption_activity" not in _activity_calls
+        # Annotation/embed should NOT be called for duplicates
+        assert "annotate_image_activity" not in _activity_calls
         assert "embed_batch_activity" not in _activity_calls
 
 
@@ -283,15 +295,17 @@ class TestIngestWorkflowEmptyUrls:
         """When the job has no URLs, the workflow completes immediately."""
 
         @activity.defn(name="ingest_initialize_activity")
-        async def mock_init_empty(job_id: str) -> dict:
+        async def mock_init_empty(job_id: str) -> IngestInitOutput:
             _activity_calls.append("ingest_initialize_activity")
-            return IngestInitOutput(urls=[]).model_dump()
+            return IngestInitOutput(urls=[])
 
         activities = [a for a in ALL_MOCK_ACTIVITIES if a.__name__ != "mock_ingest_initialize"]
         activities.append(mock_init_empty)
 
         task_queue = str(uuid.uuid4())
-        async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        ) as env:
             async with Worker(
                 env.client,
                 task_queue=task_queue,
@@ -313,20 +327,25 @@ class TestIngestWorkflowEmptyUrls:
         """When every URL fails download, workflow completes with all failures."""
 
         @activity.defn(name="download_image_activity")
-        async def mock_download_all_fail(input: dict) -> dict:
+        async def mock_download_all_fail(
+            input: DownloadImageInput,
+        ) -> DownloadImageOutput:
+            _activity_calls.append("download_image_activity")
             return DownloadImageOutput(
-                ingest_url_id=input["ingest_url_id"],
+                ingest_url_id=input.ingest_url_id,
                 local_path="",
                 filename="",
                 success=False,
                 error="Server error",
-            ).model_dump()
+            )
 
         activities = [a for a in ALL_MOCK_ACTIVITIES if a.__name__ != "mock_download_image"]
         activities.append(mock_download_all_fail)
 
         task_queue = str(uuid.uuid4())
-        async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        ) as env:
             async with Worker(
                 env.client,
                 task_queue=task_queue,
@@ -350,14 +369,17 @@ class TestIngestWorkflowActivityException:
         """If embed_batch raises, the URL is caught and marked failed."""
 
         @activity.defn(name="embed_batch_activity")
-        async def mock_embed_fail(input: dict) -> dict:
+        async def mock_embed_fail(input: EmbedBatchInput) -> EmbedBatchOutput:
+            _activity_calls.append("embed_batch_activity")
             raise ApplicationError("GPU out of memory", non_retryable=True)
 
         activities = [a for a in ALL_MOCK_ACTIVITIES if a.__name__ != "mock_embed_batch"]
         activities.append(mock_embed_fail)
 
         task_queue = str(uuid.uuid4())
-        async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        ) as env:
             async with Worker(
                 env.client,
                 task_queue=task_queue,
@@ -389,14 +411,16 @@ class TestIngestWorkflowIdempotency:
 
         from temporalio.exceptions import WorkflowAlreadyStartedError
 
+        started = threading.Event()
         barrier = threading.Event()
 
         @activity.defn(name="ingest_initialize_activity")
-        def mock_init_blocking(job_id: str) -> dict:
+        def mock_init_blocking(job_id: str) -> IngestInitOutput:
             """Sync activity that blocks until the test signals it."""
             _activity_calls.append("ingest_initialize_activity")
+            started.set()
             barrier.wait(timeout=30)
-            return IngestInitOutput(urls=[]).model_dump()
+            return IngestInitOutput(urls=[])
 
         activities = [a for a in ALL_MOCK_ACTIVITIES if a.__name__ != "mock_ingest_initialize"]
         activities.append(mock_init_blocking)
@@ -404,7 +428,9 @@ class TestIngestWorkflowIdempotency:
         task_queue = str(uuid.uuid4())
         workflow_id = f"ingest-test-{uuid.uuid4().hex[:8]}"
 
-        async with await WorkflowEnvironment.start_time_skipping() as env:
+        async with await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        ) as env:
             async with Worker(
                 env.client,
                 task_queue=task_queue,
@@ -420,17 +446,15 @@ class TestIngestWorkflowIdempotency:
                     task_queue=task_queue,
                 )
 
-                # Give the worker a moment to pick up the task
-                await asyncio.sleep(0.5)
+                assert await asyncio.to_thread(started.wait, 30)
 
-                # Second start with SAME workflow ID while first is running
-                with pytest.raises(WorkflowAlreadyStartedError):
-                    await env.client.start_workflow(
-                        IngestWorkflow.run,
-                        IngestWorkflowInput(job_id="test-1"),
-                        id=workflow_id,
-                        task_queue=task_queue,
-                    )
-
-                # Unblock so the worker shuts down cleanly
-                barrier.set()
+                try:
+                    with pytest.raises(WorkflowAlreadyStartedError):
+                        await env.client.start_workflow(
+                            IngestWorkflow.run,
+                            IngestWorkflowInput(job_id="test-1"),
+                            id=workflow_id,
+                            task_queue=task_queue,
+                        )
+                finally:
+                    barrier.set()

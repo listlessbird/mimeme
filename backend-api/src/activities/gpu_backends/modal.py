@@ -10,7 +10,8 @@ from activities.embedding.models import (
     EmbedBatchOutput,
     EmbedImageOutput,
 )
-from activities.vision.models import CaptionInput, CaptionOutput, OCRInput, OCROutput
+from activities.vision.models import AnnotateImageInput, AnnotateImageOutput
+from domain.inference import to_modal_embedding_item
 from shared.config import settings
 
 if TYPE_CHECKING:
@@ -25,35 +26,23 @@ class ModalGpuBackend:
         self._vision_cls = modal.Cls.from_name(settings.modal_app_name, "VisionService")  # type: ignore[assignment]
         self._embedding_cls = modal.Cls.from_name(settings.modal_app_name, "EmbeddingService")  # type: ignore[assignment]
 
-    async def caption(self, input: CaptionInput) -> CaptionOutput:
+    async def annotate_image(self, input: AnnotateImageInput) -> AnnotateImageOutput:
         vision = self._vision_cls()
 
         result = await asyncio.to_thread(
-            vision.caption.remote, s3_key=input.s3_key, length=input.length
+            vision.annotate_image.remote, s3_key=input.s3_key, length=input.length
         )
 
-        return CaptionOutput(
-            image_id=input.image_id, caption=result["caption"], model=result["model"]
+        return AnnotateImageOutput(
+            image_id=input.image_id,
+            caption=result["caption"],
+            caption_model=result["caption_model"],
+            ocr_text=result["ocr_text"],
+            ocr_model=result["ocr_model"],
         )
-
-    async def ocr(self, input: OCRInput) -> OCROutput:
-        vision = self._vision_cls()
-
-        result = await asyncio.to_thread(vision.ocr.remote, s3_key=input.s3_key)
-
-        return OCROutput(image_id=input.image_id, text=result["text"], model=result["model"])
 
     async def embed_batch(self, input: EmbedBatchInput) -> EmbedBatchOutput:
-        items = [
-            {
-                "image_id": item.image_id,
-                "s3_key": item.s3_key,
-                "text": item.text,
-                "sha256": item.sha256,
-                "dataset": item.dataset or input.dataset,
-            }
-            for item in input.items
-        ]
+        items = [to_modal_embedding_item(item, input.dataset) for item in input.items]
 
         embedding = self._embedding_cls()
         result = await asyncio.to_thread(embedding.embed_batch.remote, items=items)

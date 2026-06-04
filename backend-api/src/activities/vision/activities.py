@@ -4,18 +4,18 @@ import structlog
 from temporalio import activity
 
 from activities.gpu_backends import get_gpu_backend
-from activities.vision.models import CaptionInput, CaptionOutput, OCRInput, OCROutput
+from activities.vision.models import AnnotateImageInput, AnnotateImageOutput
 from shared.logging import emit_activity_event
 
 
 @activity.defn
-async def caption_activity(input: CaptionInput) -> CaptionOutput:
+async def annotate_image_activity(input: AnnotateImageInput) -> AnnotateImageOutput:
     started = time.monotonic()
     outcome = "success"
     error_message: str | None = None
 
     log = structlog.get_logger().bind(
-        activity_name="caption_activity",
+        activity_name="annotate_image_activity",
         image_id=input.image_id,
         s3_key=input.s3_key,
     )
@@ -23,9 +23,14 @@ async def caption_activity(input: CaptionInput) -> CaptionOutput:
     try:
         backend = get_gpu_backend()
         log.info("activity_step", step="start", backend=type(backend).__name__)
-        result = await backend.caption(input)
+        result = await backend.annotate_image(input)
         log.info(
-            "activity_step", step="complete", model=result.model, caption_chars=len(result.caption)
+            "activity_step",
+            step="complete",
+            caption_model=result.caption_model,
+            ocr_model=result.ocr_model,
+            caption_chars=len(result.caption),
+            ocr_chars=len(result.ocr_text),
         )
         return result
 
@@ -37,45 +42,11 @@ async def caption_activity(input: CaptionInput) -> CaptionOutput:
     finally:
         emit_activity_event(
             log=log,
-            activity_name="caption_activity",
+            activity_name="annotate_image_activity",
             started_at=started,
             outcome=outcome,
             error=error_message,
             image_id=input.image_id,
             s3_key=input.s3_key,
             length=input.length,
-        )
-
-
-@activity.defn
-async def ocr_activity(input: OCRInput) -> OCROutput:
-    started = time.monotonic()
-    outcome = "success"
-    error_message: str | None = None
-    log = structlog.get_logger().bind(
-        activity_name="ocr_activity",
-        image_id=input.image_id,
-        s3_key=input.s3_key,
-    )
-
-    try:
-        backend = get_gpu_backend()
-        log.info("activity_step", step="start", backend=type(backend).__name__)
-        result = await backend.ocr(input)
-        log.info("activity_step", step="complete", model=result.model, text_chars=len(result.text))
-        return result
-    except Exception as exc:
-        outcome = "error"
-        error_message = str(exc)
-        log.error("activity_step", step="failed", error=error_message, exc_info=True)
-        raise
-    finally:
-        emit_activity_event(
-            log=log,
-            activity_name="ocr_activity",
-            started_at=started,
-            outcome=outcome,
-            error=error_message,
-            image_id=input.image_id,
-            s3_key=input.s3_key,
         )

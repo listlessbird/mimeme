@@ -9,7 +9,7 @@ from activities.storage import (
     download_image_activity,
     process_image_activity,
 )
-from activities.vision import caption_activity, ocr_activity
+from activities.vision import annotate_image_activity
 from activities.workflow_state import (
     complete_ingest_job_activity,
     complete_rebuild_job_activity,
@@ -27,8 +27,7 @@ ACTIVITIES = [
     download_image_activity,
     process_image_activity,
     cleanup_temp_file_activity,
-    caption_activity,
-    ocr_activity,
+    annotate_image_activity,
     embed_batch_activity,
     build_index_activity,
     swap_index_activity,
@@ -51,8 +50,7 @@ __all__ = [
     "download_image_activity",
     "process_image_activity",
     "cleanup_temp_file_activity",
-    "caption_activity",
-    "ocr_activity",
+    "annotate_image_activity",
     "embed_batch_activity",
     "build_index_activity",
     "swap_index_activity",
