@@ -55,6 +55,15 @@ class RebuildJobCreation(BaseModel, frozen=True):
     index_type: str
 
 
+class SourceIngestItem(BaseModel, frozen=True):
+    """One new Source item to queue for ingest, carrying its provenance."""
+
+    url: str
+    source_id: int
+    source_run_id: int
+    source_item_id: int
+
+
 class IngestUrlRef(BaseModel, frozen=True):
     id: int
     url: str
@@ -106,6 +115,46 @@ class JobLifecycle:
             dataset=dataset,
             tags=tags,
             callback_url=callback_url,
+        )
+
+    def create_source_ingest_job(
+        self,
+        *,
+        dataset: str | None,
+        items: list[SourceIngestItem],
+    ) -> IngestJobCreation:
+        """Create the INGEST Job + provenance-carrying ingest_urls for a Source run.
+
+        Unlike ``create_ingest_job`` (the manual path), this only ``flush``es —
+        the calling activity owns the transaction boundary via ``session_scope``.
+        """
+        job_id = f"ingest-{uuid.uuid4().hex[:12]}"
+        workflow_id = f"ingest-workflow-{job_id}"
+
+        job = Job(id=job_id, type=JobType.INGEST)
+        self._db.add(job)
+        self._db.flush()
+
+        for item in items:
+            self._db.add(
+                IngestURL(
+                    job_id=job_id,
+                    url=item.url,
+                    source_id=item.source_id,
+                    source_run_id=item.source_run_id,
+                    source_item_id=item.source_item_id,
+                )
+            )
+
+        self._db.flush()
+        return IngestJobCreation(
+            job_id=job_id,
+            workflow_id=workflow_id,
+            queued=len(items),
+            duplicates=0,
+            dataset=dataset,
+            tags=[],
+            callback_url=None,
         )
 
     def create_rebuild_job(

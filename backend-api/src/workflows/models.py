@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from shared.models import SourceRunStatus, SourceRunTrigger
+
 
 class IngestWorkflowInput(BaseModel):
     job_id: str
@@ -32,3 +34,18 @@ class RebuildIndexWorkflowOutput(BaseModel):
     dimension: int
     removed_versions: list[str]
     text_num_vectors: int | None = None
+
+
+class SourceSyncWorkflowInput(BaseModel):
+    source_id: int
+    trigger: SourceRunTrigger = SourceRunTrigger.MANUAL
+
+
+class SourceSyncWorkflowOutput(BaseModel):
+    source_run_id: int
+    status: SourceRunStatus
+    discovered: int
+    queued: int
+    duplicate: int
+    failed: int
+    ingest_job_id: str | None = None

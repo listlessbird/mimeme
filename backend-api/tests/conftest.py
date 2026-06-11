@@ -124,6 +124,7 @@ def _patch_session_scope(db_session: Session, monkeypatch: pytest.MonkeyPatch) -
         "activities.workflow_state.activities.session_scope",
         "activities.storage.activities.session_scope",
         "activities.indexing.activities.session_scope",
+        "activities.ingestion.activities.session_scope",
     ]:
         monkeypatch.setattr(module_path, _test_session_scope)
 

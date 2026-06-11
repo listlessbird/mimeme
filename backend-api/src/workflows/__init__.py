@@ -4,10 +4,13 @@ from workflows.models import (
     IngestWorkflowOutput,
     RebuildIndexWorkflowInput,
     RebuildIndexWorkflowOutput,
+    SourceSyncWorkflowInput,
+    SourceSyncWorkflowOutput,
 )
 from workflows.rebuild_index import RebuildIndexWorkflow
+from workflows.source_sync import SourceSyncWorkflow
 
-ALL_WORKFLOWS = [IngestWorkflow, RebuildIndexWorkflow]
+ALL_WORKFLOWS = [IngestWorkflow, RebuildIndexWorkflow, SourceSyncWorkflow]
 
 __all__ = [
     "ALL_WORKFLOWS",
@@ -17,4 +20,7 @@ __all__ = [
     "RebuildIndexWorkflow",
     "RebuildIndexWorkflowInput",
     "RebuildIndexWorkflowOutput",
+    "SourceSyncWorkflow",
+    "SourceSyncWorkflowInput",
+    "SourceSyncWorkflowOutput",
 ]

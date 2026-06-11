@@ -1,10 +1,11 @@
 import datetime
-from typing import Any, Final
+from typing import Any
 
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from domain.adapters.registry import KNOWN_ADAPTER_KEYS, UnknownAdapterKeyError
 from domain.source_run_accounting import UrlOutcome, derive_run_accounting
 from shared.models.orm import (
     IngestionSource,
@@ -15,14 +16,8 @@ from shared.models.orm import (
     SourceRunTrigger,
 )
 
-KNOWN_ADAPTERS: Final = frozenset({"meme_api"})
-
 
 class SourceNotFoundError(Exception):
-    pass
-
-
-class UnknownAdapterKeyError(Exception):
     pass
 
 
@@ -97,7 +92,7 @@ class SourceRegistry:
         enabled: bool = True,
     ) -> SourceView:
 
-        if adapter_key not in KNOWN_ADAPTERS:
+        if adapter_key not in KNOWN_ADAPTER_KEYS:
             raise UnknownAdapterKeyError(adapter_key)
 
         if self._live_name_exists(name):

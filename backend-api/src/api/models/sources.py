@@ -74,3 +74,8 @@ class SourceDetailResponse(SourceResponse):
 class SourceListResponse(BaseModel):
     sources: list[SourceListItemResponse]
     total: int
+
+
+class TriggerRunResponse(BaseModel):
+    workflow_id: str
+    message: str

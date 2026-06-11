@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import uuid
+
 from fastapi import APIRouter, HTTPException
 
 from api.auth import AdminRequired
-from api.deps import DbSession
+from api.deps import DbSession, TemporalClientDep
 from api.models.sources import (
     CreateSourceRequest,
     SourceDetailResponse,
     SourceListItemResponse,
     SourceListResponse,
     SourceResponse,
+    TriggerRunResponse,
     UpdateSourceRequest,
 )
 from domain.source_registry import (
@@ -18,6 +21,9 @@ from domain.source_registry import (
     SourceRegistry,
     UnknownAdapterKeyError,
 )
+from shared.config import settings
+from shared.models import SourceRunTrigger
+from workflows import SourceSyncWorkflow, SourceSyncWorkflowInput
 
 router = APIRouter(prefix="/sources", tags=["Sources"])
 
@@ -74,6 +80,28 @@ async def update_source(
         raise HTTPException(status_code=404, detail="Source not found")
 
     return SourceResponse.model_validate(view.model_dump())
+
+
+@router.post("/{source_id}/run", response_model=TriggerRunResponse, status_code=202)
+async def trigger_source_run(
+    _auth: AdminRequired, source_id: int, db: DbSession, temporal: TemporalClientDep
+) -> TriggerRunResponse:
+    try:
+        SourceRegistry(db).get_source(source_id)
+    except SourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Source not found")
+
+    # A fresh id per manual trigger so it never collides with the scheduled
+    # Source's deterministic schedule workflow id (issue 04).
+    workflow_id = f"source-sync-manual-{source_id}-{uuid.uuid4().hex[:12]}"
+    await temporal.start_workflow(
+        SourceSyncWorkflow.run,
+        SourceSyncWorkflowInput(source_id=source_id, trigger=SourceRunTrigger.MANUAL),
+        id=workflow_id,
+        task_queue=settings.temporal_task_queue,
+    )
+
+    return TriggerRunResponse(workflow_id=workflow_id, message="Source run started")
 
 
 @router.delete("/{source_id}", status_code=204)

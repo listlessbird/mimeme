@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -162,6 +164,36 @@ class TestDeleteSource:
         assert client.delete("/sources/999999").status_code == 404
 
 
+class TestTriggerSourceRun:
+    def test_run_starts_workflow_and_returns_202(
+        self, client: TestClient, db_session: Session, mock_temporal: MagicMock
+    ) -> None:
+        src = create_ingestion_source(session=db_session)
+
+        resp = client.post(f"/sources/{src.id}/run")
+
+        assert resp.status_code == 202
+        body = resp.json()
+        assert body["workflow_id"].startswith(f"source-sync-manual-{src.id}-")
+        mock_temporal.start_workflow.assert_called_once()
+
+    def test_run_unknown_source_returns_404(self, client: TestClient) -> None:
+        resp = client.post("/sources/999999/run")
+
+        assert resp.status_code == 404
+
+    def test_run_soft_deleted_source_returns_404(
+        self, client: TestClient, db_session: Session, mock_temporal: MagicMock
+    ) -> None:
+        src = create_ingestion_source(session=db_session)
+        client.delete(f"/sources/{src.id}")
+
+        resp = client.post(f"/sources/{src.id}/run")
+
+        assert resp.status_code == 404
+        mock_temporal.start_workflow.assert_not_called()
+
+
 class TestAdminOnly:
     """Non-admin callers are rejected on every Source endpoint.
 
@@ -180,4 +212,5 @@ class TestAdminOnly:
         assert client.get("/sources").status_code == 403
         assert client.get(f"/sources/{src.id}").status_code == 403
         assert client.patch(f"/sources/{src.id}", json={"enabled": False}).status_code == 403
+        assert client.post(f"/sources/{src.id}/run").status_code == 403
         assert client.delete(f"/sources/{src.id}").status_code == 403
