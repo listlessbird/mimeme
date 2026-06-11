@@ -4,6 +4,13 @@ from activities.indexing import (
     garbage_collect_indexes_activity,
     swap_index_activity,
 )
+from activities.ingestion import (
+    discover_and_queue_activity,
+    fail_source_run_activity,
+    fetch_source_activity,
+    finalize_source_run_activity,
+    start_source_run_activity,
+)
 from activities.storage import (
     cleanup_temp_file_activity,
     download_image_activity,
@@ -24,6 +31,11 @@ from activities.workflow_state import (
 )
 
 ACTIVITIES = [
+    start_source_run_activity,
+    fetch_source_activity,
+    discover_and_queue_activity,
+    finalize_source_run_activity,
+    fail_source_run_activity,
     download_image_activity,
     process_image_activity,
     cleanup_temp_file_activity,
@@ -47,6 +59,11 @@ ACTIVITIES = [
 
 __all__ = [
     "ACTIVITIES",
+    "start_source_run_activity",
+    "fetch_source_activity",
+    "discover_and_queue_activity",
+    "finalize_source_run_activity",
+    "fail_source_run_activity",
     "download_image_activity",
     "process_image_activity",
     "cleanup_temp_file_activity",
