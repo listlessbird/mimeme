@@ -7,6 +7,7 @@ import torch
 from PIL import Image
 
 from activities.embedding.models import EmbedBatchInput, EmbedImageInput
+from activities.vision.models import VisionModelConfig
 from activities.vision.moondream import Moondream2
 from domain.inference import (
     build_image_embedding_key,
@@ -37,7 +38,7 @@ def test_prepare_rgb_image_for_inference_handles_palette_transparency() -> None:
 
 def test_moondream_annotation_reuses_encoded_image() -> None:
     backend = object.__new__(Moondream2)
-    backend.config = SimpleNamespace(model_id="model", revision="rev")
+    backend.config = VisionModelConfig(model_id="model", revision="rev")
 
     class Model:
         encode_calls = 0
@@ -49,11 +50,15 @@ def test_moondream_annotation_reuses_encoded_image() -> None:
             self.encode_calls += 1
             return "encoded-image"
 
-        def caption(self, image: object, length: str = "normal") -> dict[str, str]:
+        def caption(
+            self, image: object, length: str = "normal", stream: bool = False
+        ) -> dict[str, str]:
             self.caption_image = image
             return {"caption": f"{length} caption"}
 
-        def query(self, image: object, question: str, reasoning: bool = True) -> dict[str, str]:
+        def query(
+            self, image: object, question: str, reasoning: bool = True, stream: bool = False
+        ) -> dict[str, str]:
             self.query_image = image
             self.query_reasoning = reasoning
             return {"answer": question}
@@ -84,17 +89,19 @@ def test_select_pooled_feature_tensor_from_named_fields() -> None:
     text_embeds = torch.tensor([[3.0, 4.0]])
     pooler_output = torch.tensor([[5.0, 6.0]])
 
-    assert torch.equal(
-        select_pooled_feature_tensor(SimpleNamespace(image_embeds=image_embeds), kind="image"),
-        image_embeds,
+    # The selector returns the matched field object itself, so identity holds —
+    # which also sidesteps comparing a PooledFeatureTensor protocol via torch.equal.
+    assert (
+        select_pooled_feature_tensor(SimpleNamespace(image_embeds=image_embeds), kind="image")
+        is image_embeds
     )
-    assert torch.equal(
-        select_pooled_feature_tensor(SimpleNamespace(text_embeds=text_embeds), kind="text"),
-        text_embeds,
+    assert (
+        select_pooled_feature_tensor(SimpleNamespace(text_embeds=text_embeds), kind="text")
+        is text_embeds
     )
-    assert torch.equal(
-        select_pooled_feature_tensor(SimpleNamespace(pooler_output=pooler_output), kind="text"),
-        pooler_output,
+    assert (
+        select_pooled_feature_tensor(SimpleNamespace(pooler_output=pooler_output), kind="text")
+        is pooler_output
     )
 
 

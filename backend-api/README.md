@@ -62,6 +62,16 @@ cd backend-api
 uv run alembic upgrade head
 ```
 
+Create the test database once if you want backend tests to run against local Postgres:
+
+```bash
+docker compose exec postgres createdb -U postgres mimeme_test
+```
+
+The test suite looks for `TEST_DB_URL` first, then tries
+`postgresql://postgres:postgres@localhost:5432/mimeme_test`. If that database
+is not reachable, tests fall back to an in-memory SQLite database.
+
 ### 4. Start The API
 
 ```bash
@@ -236,6 +246,12 @@ Run tests:
 
 ```bash
 uv run pytest -q
+```
+
+To force tests to use a specific Postgres database:
+
+```bash
+TEST_DB_URL=postgresql://postgres:postgres@localhost:5432/mimeme_test uv run pytest -q
 ```
 
 Run Ruff:
