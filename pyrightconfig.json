@@ -1,6 +1,7 @@
 {
   "include": [
-    "backend-api/src"
+    "backend-api/src",
+    "backend-api/tests"
   ],
   "extraPaths": [
     "backend-api",

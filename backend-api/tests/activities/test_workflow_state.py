@@ -616,8 +616,9 @@ class TestJobModelConstraints:
         db_session.flush()
 
         db_session.refresh(job)
-        assert job.result is not None
-        parsed = json.loads(job.result)
+        result = job.result
+        assert result is not None
+        parsed = json.loads(result)
         assert parsed["nested"]["a"] == 1
 
     def test_both_job_types(self, db_session: Session) -> None:

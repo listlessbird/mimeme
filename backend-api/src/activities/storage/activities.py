@@ -6,10 +6,6 @@ from urllib.parse import urlparse
 
 import httpx
 import structlog
-from shared.db import session_scope
-from shared.logging import emit_activity_event
-from shared.models import DuplicateReason, ORMImage, Processing
-from shared.services import StorageService, get_storage_service
 from temporalio import activity
 
 from activities.storage.img_utils import compute_phash, compute_sha256, get_image_info
@@ -20,6 +16,10 @@ from activities.storage.models import (
     ProcessImageOutput,
 )
 from activities.storage.phash_index import get_phash_index
+from shared.db import session_scope
+from shared.logging import emit_activity_event
+from shared.models import DuplicateReason, ORMImage, Processing
+from shared.services import StorageService, get_storage_service
 
 log = structlog.get_logger()
 

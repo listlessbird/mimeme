@@ -22,12 +22,16 @@ from shared.models.orm import (
     Artifact,
     Image,
     IndexBuild,
+    IngestionSource,
     IngestURL,
     Job,
     JobStatus,
     JobType,
     Processing,
     ProcessingStatus,
+    SourceItem,
+    SourceRun,
+    SourceRunTrigger,
 )
 
 
@@ -36,7 +40,7 @@ class _BaseMeta:
     sqlalchemy_session_persistence = "flush"
 
 
-class JobFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[possibly-missing-attribute]
+class JobFactory(factory.alchemy.SQLAlchemyModelFactory):
     class Meta(_BaseMeta):
         model = Job
 
@@ -50,11 +54,11 @@ class JobFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[possibly
         cls, model_class: Any, *args: object, session: Session | None = None, **kwargs: object
     ) -> Job:
         if session is not None:
-            cls._meta.sqlalchemy_session = session  # ty: ignore[invalid-assignment]
+            setattr(cls._meta, "sqlalchemy_session", session)
         return super()._create(model_class, *args, **kwargs)
 
 
-class IngestURLFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[possibly-missing-attribute]
+class IngestURLFactory(factory.alchemy.SQLAlchemyModelFactory):
     class Meta(_BaseMeta):
         model = IngestURL
 
@@ -68,11 +72,11 @@ class IngestURLFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[po
         cls, model_class: Any, *args: object, session: Session | None = None, **kwargs: object
     ) -> IngestURL:
         if session is not None:
-            cls._meta.sqlalchemy_session = session  # ty: ignore[invalid-assignment]
+            setattr(cls._meta, "sqlalchemy_session", session)
         return super()._create(model_class, *args, **kwargs)
 
 
-class ImageFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[possibly-missing-attribute]
+class ImageFactory(factory.alchemy.SQLAlchemyModelFactory):
     class Meta(_BaseMeta):
         model = Image
 
@@ -91,11 +95,11 @@ class ImageFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[possib
         cls, model_class: Any, *args: object, session: Session | None = None, **kwargs: object
     ) -> Image:
         if session is not None:
-            cls._meta.sqlalchemy_session = session  # ty: ignore[invalid-assignment]
+            setattr(cls._meta, "sqlalchemy_session", session)
         return super()._create(model_class, *args, **kwargs)
 
 
-class ProcessingFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[possibly-missing-attribute]
+class ProcessingFactory(factory.alchemy.SQLAlchemyModelFactory):
     class Meta(_BaseMeta):
         model = Processing
 
@@ -110,11 +114,11 @@ class ProcessingFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[p
         cls, model_class: Any, *args: object, session: Session | None = None, **kwargs: object
     ) -> Processing:
         if session is not None:
-            cls._meta.sqlalchemy_session = session  # ty: ignore[invalid-assignment]
+            setattr(cls._meta, "sqlalchemy_session", session)
         return super()._create(model_class, *args, **kwargs)
 
 
-class AnnotationFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[possibly-missing-attribute]
+class AnnotationFactory(factory.alchemy.SQLAlchemyModelFactory):
     class Meta(_BaseMeta):
         model = Annotation
 
@@ -128,11 +132,11 @@ class AnnotationFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[p
         cls, model_class: Any, *args: object, session: Session | None = None, **kwargs: object
     ) -> Annotation:
         if session is not None:
-            cls._meta.sqlalchemy_session = session  # ty: ignore[invalid-assignment]
+            setattr(cls._meta, "sqlalchemy_session", session)
         return super()._create(model_class, *args, **kwargs)
 
 
-class ArtifactFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[possibly-missing-attribute]
+class ArtifactFactory(factory.alchemy.SQLAlchemyModelFactory):
     class Meta(_BaseMeta):
         model = Artifact
 
@@ -147,11 +151,11 @@ class ArtifactFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[pos
         cls, model_class: Any, *args: object, session: Session | None = None, **kwargs: object
     ) -> Artifact:
         if session is not None:
-            cls._meta.sqlalchemy_session = session  # ty: ignore[invalid-assignment]
+            setattr(cls._meta, "sqlalchemy_session", session)
         return super()._create(model_class, *args, **kwargs)
 
 
-class IndexBuildFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[possibly-missing-attribute]
+class IndexBuildFactory(factory.alchemy.SQLAlchemyModelFactory):
     class Meta(_BaseMeta):
         model = IndexBuild
 
@@ -168,7 +172,7 @@ class IndexBuildFactory(factory.alchemy.SQLAlchemyModelFactory):  # ty: ignore[p
         cls, model_class: Any, *args: object, session: Session | None = None, **kwargs: object
     ) -> IndexBuild:
         if session is not None:
-            cls._meta.sqlalchemy_session = session  # ty: ignore[invalid-assignment]
+            setattr(cls._meta, "sqlalchemy_session", session)
         return super()._create(model_class, *args, **kwargs)
 
 
@@ -198,3 +202,74 @@ def create_artifact(*, session: Session, **kwargs: object) -> Artifact:
 
 def create_index_build(*, session: Session, **kwargs: object) -> IndexBuild:
     return cast(IndexBuild, IndexBuildFactory(session=session, **kwargs))
+
+
+class IngestionSourceFactory(factory.alchemy.SQLAlchemyModelFactory):
+    class Meta(_BaseMeta):
+        model = IngestionSource
+
+    name = factory.Sequence(lambda n: f"source-{n}")
+    adapter_key = "meme_api"
+    adapter_config = factory.LazyFunction(lambda: {"subreddits": ["memes"]})
+    dataset = "test-dataset"
+    schedule_cron = "0 * * * *"
+    schedule_timezone = "UTC"
+    max_items_per_run = 50
+    enabled = True
+
+    @classmethod
+    def _create(
+        cls, model_class: Any, *args: object, session: Session | None = None, **kwargs: object
+    ) -> IngestionSource:
+        if session is not None:
+            setattr(cls._meta, "sqlalchemy_session", session)
+        return super()._create(model_class, *args, **kwargs)
+
+
+class SourceRunFactory(factory.alchemy.SQLAlchemyModelFactory):
+    class Meta(_BaseMeta):
+        model = SourceRun
+
+    trigger_mode = SourceRunTrigger.MANUAL
+    source = factory.SubFactory(IngestionSourceFactory)
+    source_id = factory.LazyAttribute(lambda o: o.source.id)
+
+    @classmethod
+    def _create(
+        cls, model_class: Any, *args: object, session: Session | None = None, **kwargs: object
+    ) -> SourceRun:
+        if session is not None:
+            setattr(cls._meta, "sqlalchemy_session", session)
+        return super()._create(model_class, *args, **kwargs)
+
+
+class SourceItemFactory(factory.alchemy.SQLAlchemyModelFactory):
+    class Meta(_BaseMeta):
+        model = SourceItem
+
+    external_item_id = factory.Sequence(lambda n: f"ext-{n}")
+    canonical_item_url = factory.Sequence(lambda n: f"https://example.com/post/{n}")
+    canonical_image_url = factory.Sequence(lambda n: f"https://example.com/img/{n}.jpg")
+    title = factory.Sequence(lambda n: f"Meme #{n}")
+    source = factory.SubFactory(IngestionSourceFactory)
+    source_id = factory.LazyAttribute(lambda o: o.source.id)
+
+    @classmethod
+    def _create(
+        cls, model_class: Any, *args: object, session: Session | None = None, **kwargs: object
+    ) -> SourceItem:
+        if session is not None:
+            setattr(cls._meta, "sqlalchemy_session", session)
+        return super()._create(model_class, *args, **kwargs)
+
+
+def create_ingestion_source(*, session: Session, **kwargs: object) -> IngestionSource:
+    return cast(IngestionSource, IngestionSourceFactory(session=session, **kwargs))
+
+
+def create_source_run(*, session: Session, **kwargs: object) -> SourceRun:
+    return cast(SourceRun, SourceRunFactory(session=session, **kwargs))
+
+
+def create_source_item(*, session: Session, **kwargs: object) -> SourceItem:
+    return cast(SourceItem, SourceItemFactory(session=session, **kwargs))

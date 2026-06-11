@@ -91,6 +91,21 @@ target-version = "py313"
 select = ["E", "F", "I", "N", "W", "UP"]
 ignore = ["E501"]
 
+[tool.ruff.lint.isort]
+# Declared explicitly so first-party detection does not depend on the CWD: the
+# `src = ["src"]` path resolves differently when ruff runs from the repo root
+# (VS Code Ruff extension) vs from backend-api/ (`just fmt`), which otherwise
+# makes the editor and CLI disagree on import grouping.
+known-first-party = [
+    "activities",
+    "api",
+    "domain",
+    "modal_app",
+    "shared",
+    "workers",
+    "workflows",
+]
+
 [tool.pyright]
 include = ["src"]
 extraPaths = [".", "src"]

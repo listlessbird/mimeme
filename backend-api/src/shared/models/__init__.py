@@ -4,12 +4,18 @@ from shared.models.orm import (
     Base,
     DuplicateReason,
     IndexBuild,
+    IngestionSource,
     IngestURL,
     Job,
     JobStatus,
     JobType,
     Processing,
     ProcessingStatus,
+    SourceItem,
+    SourceRun,
+    SourceRunStatus,
+    SourceRunTrigger,
+    SourceType,
 )
 from shared.models.orm import Image as ORMImage
 
@@ -26,4 +32,10 @@ __all__ = [
     "Artifact",
     "IndexBuild",
     "DuplicateReason",
+    "IngestionSource",
+    "SourceRun",
+    "SourceItem",
+    "SourceType",
+    "SourceRunTrigger",
+    "SourceRunStatus",
 ]
