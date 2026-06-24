@@ -1,0 +1,76 @@
+{
+	"$schema": "./node_modules/oxlint/configuration_schema.json",
+	"plugins": [
+		"typescript",
+		"unicorn",
+		"oxc",
+		"react",
+		"jsx-a11y",
+		"import",
+		"promise",
+		"node",
+		"vitest"
+	],
+	"categories": {
+		"correctness": "error",
+		"suspicious": "warn",
+		"perf": "warn"
+	},
+	"env": {
+		"browser": true,
+		"node": true,
+		"es2024": true
+	},
+	"settings": {
+		"react": {
+			"version": "19.2",
+			"linkComponents": [{ "name": "Link", "linkAttribute": ["to", "href"] }]
+		}
+	},
+	"options": {
+		"typeAware": true
+	},
+	"rules": {
+		"react/react-in-jsx-scope": "off"
+	},
+	"ignorePatterns": [
+		"src/routeTree.gen.ts",
+		"src/styles.css",
+		"src/lib/api/schema.d.ts",
+		"dist",
+		"dist-ssr",
+		".output",
+		".nitro",
+		".tanstack",
+		".wrangler"
+	],
+	"overrides": [
+		{
+			"files": ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"],
+			"rules": {
+				"@typescript-eslint/no-explicit-any": "off"
+			}
+		},
+		{
+			"files": ["src/components/ui/**"],
+			"rules": {
+				"jsx-a11y/prefer-tag-over-role": "off",
+				"jsx-a11y/anchor-has-content": "off",
+				"jsx-a11y/click-events-have-key-events": "off",
+				"jsx-a11y/no-noninteractive-element-interactions": "off",
+				"no-unused-vars": "off",
+				"@typescript-eslint/restrict-template-expressions": "off",
+				"react/jsx-no-constructed-context-values": "off",
+				"react/no-array-index-key": "off",
+				"react/no-unstable-nested-components": "off",
+				"typescript/no-unsafe-type-assertion": "off",
+				"typescript/no-unnecessary-type-assertion": "off",
+				"typescript/no-unnecessary-type-conversion": "off",
+				"typescript/no-unnecessary-template-expression": "off",
+				"typescript/consistent-return": "off",
+				"no-shadow": "off",
+				"no-underscore-dangle": "off"
+			}
+		}
+	]
+}

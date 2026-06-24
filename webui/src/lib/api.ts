@@ -1,7 +1,7 @@
-import { infiniteQueryOptions } from "@tanstack/react-query";
-import { createServerFn } from "@tanstack/react-start";
 import { env } from "@/env";
 import { logInfo, serializeError } from "@/lib/observability";
+import { infiniteQueryOptions } from "@tanstack/react-query";
+import { createServerFn } from "@tanstack/react-start";
 
 export const SEARCH_RESULT_LIMIT = 40;
 
@@ -59,9 +59,7 @@ class SearchApiError extends Error {
 }
 
 export const searchMemes = createServerFn({ method: "GET" })
-	.inputValidator(
-		(input: { q: string; limit?: number; offset?: number }) => input,
-	)
+	.inputValidator((input: { q: string; limit?: number; offset?: number }) => input)
 	.handler(async ({ data }) => {
 		const start = Date.now();
 		const requestId = crypto.randomUUID();
