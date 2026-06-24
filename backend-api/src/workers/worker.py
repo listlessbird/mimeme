@@ -47,12 +47,22 @@ async def main() -> None:
         get_phash_index().load_from_db(session)
 
     from activities import ACTIVITIES
+    from activities.scheduling.reconcile import run_reconciliation
+    from activities.scheduling.temporal_store import TemporalScheduleStore
     from workflows import ALL_WORKFLOWS
 
     client = await Client.connect(
         settings.temporal_host,
         data_converter=pydantic_data_converter,
     )
+
+    try:
+        with session_scope() as session:
+            await run_reconciliation(session, TemporalScheduleStore(client))
+        log.info("schedule_reconciliation completed")
+    except Exception as e:
+        log.exception("schedule_reconcialiation_failed", e=str(e))
+
     activity_executor = ThreadPoolExecutor(max_workers=64, thread_name_prefix="activity")
 
     log.info(
