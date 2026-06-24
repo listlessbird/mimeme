@@ -268,7 +268,7 @@ class EmbeddingService:
                 self.model_name,
                 trust_remote_code=True,
                 device_map="auto",
-                dtype=torch.float16,
+                torch_dtype=torch.float16,
                 attn_implementation="sdpa",
             )
             self._is_siglip2 = "siglip2" in self.model_name.lower()

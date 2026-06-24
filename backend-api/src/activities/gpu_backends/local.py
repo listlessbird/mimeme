@@ -25,6 +25,7 @@ from shared.services import StorageService, get_storage_service
 class LocalGpuBackend:
     async def annotate_image(self, input: AnnotateImageInput) -> AnnotateImageOutput:
         storage = cast(StorageService, get_storage_service())
+        SiglipEmbedder.release_instance()
         model = Moondream2.get_instance()
 
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=True) as tmp:
@@ -42,6 +43,7 @@ class LocalGpuBackend:
 
     async def embed_batch(self, input: EmbedBatchInput) -> EmbedBatchOutput:
         storage = cast(StorageService, get_storage_service())
+        Moondream2.release_instance()
         embedder = SiglipEmbedder.get_instance()
 
         results: list[EmbedImageOutput] = []

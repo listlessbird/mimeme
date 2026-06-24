@@ -215,6 +215,7 @@ just fmt
 just lint
 just type
 just test
+just test-model
 just check
 ```
 
@@ -247,6 +248,17 @@ Run tests:
 ```bash
 uv run pytest -q
 ```
+
+Run real model smoke tests explicitly:
+
+```bash
+just test-model
+```
+
+These load the configured Moondream2 and SigLIP2 models and are intentionally
+kept outside the normal `uv run pytest -q`, `just test`, and `just check` paths.
+Use them before changing model IDs/revisions or packages such as `transformers`,
+`torch`, `torchvision`, `accelerate`, or `bitsandbytes`.
 
 To force tests to use a specific Postgres database:
 

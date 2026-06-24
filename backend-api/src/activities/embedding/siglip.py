@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import threading
 import time
 
@@ -35,6 +36,17 @@ class SiglipEmbedder:
         assert cls._instance is not None
         return cls._instance
 
+    @classmethod
+    def release_instance(cls) -> None:
+        with cls._lock:
+            if cls._instance is None:
+                return
+            cls._log.info("embedding_step", step="singleton_instance_released")
+            cls._instance = None
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
     def _load_models(self) -> None:
         started = time.monotonic()
         outcome = "success"
@@ -52,59 +64,37 @@ class SiglipEmbedder:
 
         try:
             log.info("embedding_step", step="model_load_primary_start")
-            try:
-                if quant_cfg:
-                    self.processor = AutoProcessor.from_pretrained(
-                        self.image_model_name, trust_remote_code=True
-                    )
-
-                    self.model = AutoModel.from_pretrained(
-                        self.image_model_name,
-                        trust_remote_code=True,
-                        quantization_config=quant_cfg,
-                        device_map="auto",
-                        dtype=torch.bfloat16,
-                        attn_implementation="sdpa",
-                    )
-
-                else:
-                    dtype = torch.float16 if self.config.fp16_fallback else torch.float32
-
-                    self.processor = AutoProcessor.from_pretrained(
-                        self.image_model_name,
-                        trust_remote_code=True,
-                        dtype=(torch.float16 if dtype == torch.float16 else None),
-                        device_map="auto" if self.device.type == "cuda" else None,
-                    )
-                    self.model = AutoModel.from_pretrained(
-                        self.image_model_name,
-                        trust_remote_code=True,
-                        device_map="auto" if self.device.type == "cuda" else None,
-                        dtype=(torch.float16 if dtype == torch.float16 else None),
-                        attn_implementation="sdpa" if self.device.type == "cuda" else None,
-                    )
-                log.info("embedding_step", step="model_load_primary_complete")
-            except Exception as primary_exc:
-                log.warning(
-                    "embedding_step",
-                    step="model_load_primary_failed",
-                    error_type=type(primary_exc).__name__,
-                    error=str(primary_exc),
+            if quant_cfg:
+                self.processor = AutoProcessor.from_pretrained(
+                    self.image_model_name, trust_remote_code=True
                 )
-                # try with a stable fallback model
-                self.image_model_name = "google/siglip-so400m-patch14-384"
-                log.info(
-                    "embedding_step",
-                    step="model_load_fallback_start",
-                    fallback_model=self.image_model_name,
+
+                self.model = AutoModel.from_pretrained(
+                    self.image_model_name,
+                    trust_remote_code=True,
+                    quantization_config=quant_cfg,
+                    device_map="auto",
+                    torch_dtype=torch.bfloat16,
+                    attn_implementation="sdpa",
                 )
-                self.processor = AutoProcessor.from_pretrained(self.image_model_name)
-                self.model = AutoModel.from_pretrained(self.image_model_name)
-                log.info(
-                    "embedding_step",
-                    step="model_load_fallback_complete",
-                    fallback_model=self.image_model_name,
+
+            else:
+                dtype = torch.float16 if self.config.fp16_fallback else torch.float32
+
+                self.processor = AutoProcessor.from_pretrained(
+                    self.image_model_name,
+                    trust_remote_code=True,
+                    dtype=(torch.float16 if dtype == torch.float16 else None),
+                    device_map="auto" if self.device.type == "cuda" else None,
                 )
+                self.model = AutoModel.from_pretrained(
+                    self.image_model_name,
+                    trust_remote_code=True,
+                    device_map="auto" if self.device.type == "cuda" else None,
+                    torch_dtype=(torch.float16 if dtype == torch.float16 else None),
+                    attn_implementation="sdpa" if self.device.type == "cuda" else None,
+                )
+            log.info("embedding_step", step="model_load_primary_complete")
 
             self.has_get_image_features = hasattr(self.model, "get_image_features")
             self.has_get_text_features = hasattr(self.model, "get_text_features")
