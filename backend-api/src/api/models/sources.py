@@ -19,7 +19,7 @@ class MemeApiRawMetadata(TypedDict, total=False):
     title: str | None
     ups: int | None
     subreddit: str | None
-    preview: str | None
+    preview: str | list[str] | None
     postLink: str | None
 
 
