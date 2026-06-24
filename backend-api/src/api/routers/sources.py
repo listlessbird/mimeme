@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import uuid
 
+import structlog
 from fastapi import APIRouter, HTTPException
 
+from activities.scheduling.reconcile import run_reconciliation
+from activities.scheduling.temporal_store import TemporalScheduleStore
 from api.auth import AdminRequired
 from api.deps import DbSession, TemporalClientDep
 from api.models.sources import (
@@ -26,11 +29,23 @@ from shared.models import SourceRunTrigger
 from workflows import SourceSyncWorkflow, SourceSyncWorkflowInput
 
 router = APIRouter(prefix="/sources", tags=["Sources"])
+log = structlog.get_logger()
+
+
+async def _sync_schedules(db: DbSession, temporal: TemporalClientDep) -> None:
+    try:
+        await run_reconciliation(db, TemporalScheduleStore(temporal))
+    except Exception as exc:
+        log.warning(
+            "inline_schedule_sync_failed",
+            error=str(exc),
+            message="reconciliation will heal on next sweep",
+        )
 
 
 @router.post("", response_model=SourceResponse, status_code=201)
 async def create_source(
-    _auth: AdminRequired, body: CreateSourceRequest, db: DbSession
+    _auth: AdminRequired, body: CreateSourceRequest, db: DbSession, temporal: TemporalClientDep
 ) -> SourceResponse:
     try:
         view = SourceRegistry(db).create(
@@ -47,6 +62,8 @@ async def create_source(
         raise HTTPException(status_code=400, detail=f"Unknown adapter_key: {exc}")
     except DuplicateSourceNameError as exc:
         raise HTTPException(status_code=409, detail=f"Source name already in use: {exc}")
+
+    await _sync_schedules(db, temporal)
 
     return SourceResponse.model_validate(view.model_dump())
 
@@ -72,12 +89,18 @@ async def get_source(_auth: AdminRequired, source_id: int, db: DbSession) -> Sou
 
 @router.patch("/{source_id}", response_model=SourceResponse)
 async def update_source(
-    _auth: AdminRequired, source_id: int, body: UpdateSourceRequest, db: DbSession
+    _auth: AdminRequired,
+    source_id: int,
+    body: UpdateSourceRequest,
+    db: DbSession,
+    temporal: TemporalClientDep,
 ) -> SourceResponse:
     try:
         view = SourceRegistry(db).patch(source_id, **body.model_dump(exclude_unset=True))
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
+
+    await _sync_schedules(db, temporal)
 
     return SourceResponse.model_validate(view.model_dump())
 
@@ -105,8 +128,12 @@ async def trigger_source_run(
 
 
 @router.delete("/{source_id}", status_code=204)
-async def delete_source(_auth: AdminRequired, source_id: int, db: DbSession) -> None:
+async def delete_source(
+    _auth: AdminRequired, source_id: int, db: DbSession, temporal: TemporalClientDep
+) -> None:
     try:
         SourceRegistry(db).soft_delete(source_id)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
+
+    await _sync_schedules(db, temporal)
