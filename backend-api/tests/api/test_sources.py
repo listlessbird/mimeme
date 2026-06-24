@@ -12,6 +12,7 @@ from shared.config import settings
 from shared.models import IngestionSource, ProcessingStatus, SourceRunStatus
 from shared.models.orm import DuplicateReason
 from tests.factories import (
+    create_image,
     create_ingest_url,
     create_ingestion_source,
     create_job,
@@ -194,6 +195,162 @@ class TestTriggerSourceRun:
         mock_temporal.start_workflow.assert_not_called()
 
 
+class TestListSourceItems:
+    def test_returns_items_with_metadata_and_preview(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        src = create_ingestion_source(session=db_session)
+        create_source_item(
+            session=db_session,
+            source=src,
+            external_item_id="abc123",
+            title="A funny meme",
+            raw_metadata={
+                "subreddit": "memes",
+                "author": "u/someone",
+                "ups": 4200,
+                "postLink": "https://reddit.com/r/memes/comments/abc123/x",
+                "preview": "https://preview.redd.it/abc123.jpg",
+            },
+        )
+
+        data = client.get(f"/sources/{src.id}/items").json()
+
+        assert data["total"] == 1
+        item = data["items"][0]
+        assert item["external_item_id"] == "abc123"
+        assert item["title"] == "A funny meme"
+        assert item["raw_metadata"]["subreddit"] == "memes"
+        assert item["thumbnail_url"] == "https://preview.redd.it/abc123.jpg"
+        assert item["first_seen_at"] is not None
+        assert item["last_seen_at"] is not None
+
+    def test_paging(self, client: TestClient, db_session: Session) -> None:
+        src = create_ingestion_source(session=db_session)
+        for _ in range(3):
+            create_source_item(session=db_session, source=src)
+
+        first = client.get(f"/sources/{src.id}/items?limit=2&offset=0").json()
+        second = client.get(f"/sources/{src.id}/items?limit=2&offset=2").json()
+
+        assert first["total"] == 3
+        assert (len(first["items"]), first["limit"], first["offset"]) == (2, 2, 0)
+        assert (len(second["items"]), second["offset"]) == (1, 2)
+
+    def test_missing_source_returns_404(self, client: TestClient) -> None:
+        assert client.get("/sources/999999/items").status_code == 404
+
+
+class TestListRunItems:
+    def test_attempts_carry_status_dedup_and_thumbnail(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        src = create_ingestion_source(session=db_session)
+        run = create_source_run(session=db_session, source=src)
+        job = create_job(session=db_session)
+
+        ingested_img = create_image(session=db_session)
+        ingested_item = create_source_item(
+            session=db_session, source=src, raw_metadata={"preview": "https://prev/ingested.jpg"}
+        )
+        create_ingest_url(
+            session=db_session,
+            job=job,
+            source_id=src.id,
+            source_run_id=run.id,
+            source_item_id=ingested_item.id,
+            status=ProcessingStatus.DONE,
+            image_id=ingested_img.id,
+        )
+
+        sha_img = create_image(session=db_session)
+        sha_item = create_source_item(session=db_session, source=src)
+        create_ingest_url(
+            session=db_session,
+            job=job,
+            source_id=src.id,
+            source_run_id=run.id,
+            source_item_id=sha_item.id,
+            status=ProcessingStatus.DONE,
+            duplicate_reason=DuplicateReason.SHA256,
+            image_id=sha_img.id,
+            duplicate_of_image_id=sha_img.id,
+        )
+
+        phash_img = create_image(session=db_session)
+        phash_item = create_source_item(session=db_session, source=src)
+        create_ingest_url(
+            session=db_session,
+            job=job,
+            source_id=src.id,
+            source_run_id=run.id,
+            source_item_id=phash_item.id,
+            status=ProcessingStatus.DONE,
+            duplicate_reason=DuplicateReason.PHASH,
+            image_id=phash_img.id,
+            duplicate_of_image_id=phash_img.id,
+        )
+
+        failed_item = create_source_item(
+            session=db_session, source=src, raw_metadata={"preview": "https://prev/failed.jpg"}
+        )
+        create_ingest_url(
+            session=db_session,
+            job=job,
+            source_id=src.id,
+            source_run_id=run.id,
+            source_item_id=failed_item.id,
+            status=ProcessingStatus.FAILED,
+        )
+
+        data = client.get(f"/sources/{src.id}/runs/{run.id}/items").json()
+
+        assert data["total"] == 4
+        ingested, sha, phash, failed = data["items"]
+
+        assert ingested["status"] == ProcessingStatus.DONE.value
+        assert ingested["duplicate_reason"] is None
+        assert ingested["image_id"] == ingested_img.id
+        # resolved to an image with an s3_key -> presigned (mock_storage)
+        assert ingested["thumbnail_url"] == "https://mock-s3/presigned"
+
+        assert sha["duplicate_reason"] == DuplicateReason.SHA256.value
+        assert sha["image_id"] == sha_img.id
+        assert phash["duplicate_reason"] == DuplicateReason.PHASH.value
+        assert phash["image_id"] == phash_img.id
+
+        assert failed["status"] == ProcessingStatus.FAILED.value
+        assert failed["image_id"] is None
+        # no resolved image -> falls back to the upstream preview
+        assert failed["thumbnail_url"] == "https://prev/failed.jpg"
+
+    def test_paging(self, client: TestClient, db_session: Session) -> None:
+        src = create_ingestion_source(session=db_session)
+        run = create_source_run(session=db_session, source=src)
+        job = create_job(session=db_session)
+        for _ in range(3):
+            create_ingest_url(
+                session=db_session, job=job, source_id=src.id, source_run_id=run.id
+            )
+
+        first = client.get(f"/sources/{src.id}/runs/{run.id}/items?limit=2&offset=0").json()
+        second = client.get(f"/sources/{src.id}/runs/{run.id}/items?limit=2&offset=2").json()
+
+        assert first["total"] == 3
+        assert (len(first["items"]), first["limit"], first["offset"]) == (2, 2, 0)
+        assert (len(second["items"]), second["offset"]) == (1, 2)
+
+    def test_missing_source_returns_404(self, client: TestClient) -> None:
+        assert client.get("/sources/999999/runs/1/items").status_code == 404
+
+    def test_foreign_run_returns_404(self, client: TestClient, db_session: Session) -> None:
+        owner = create_ingestion_source(session=db_session, name="owner")
+        other = create_ingestion_source(session=db_session, name="other")
+        run = create_source_run(session=db_session, source=other)
+
+        assert client.get(f"/sources/{owner.id}/runs/{run.id}/items").status_code == 404
+
+
 class TestAdminOnly:
     """Non-admin callers are rejected on every Source endpoint.
 
@@ -213,4 +370,6 @@ class TestAdminOnly:
         assert client.get(f"/sources/{src.id}").status_code == 403
         assert client.patch(f"/sources/{src.id}", json={"enabled": False}).status_code == 403
         assert client.post(f"/sources/{src.id}/run").status_code == 403
+        assert client.get(f"/sources/{src.id}/items").status_code == 403
+        assert client.get(f"/sources/{src.id}/runs/1/items").status_code == 403
         assert client.delete(f"/sources/{src.id}").status_code == 403
