@@ -46,7 +46,6 @@ function ResultsPendingComponent() {
 			<div className="mx-auto max-w-6xl px-4 pt-4 pb-6 md:px-6">
 				<div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
 					{Array.from({ length: 12 }).map((_, i) => (
-						// oxlint-disable-next-line react/no-array-index-key -- static skeleton placeholders, never reordered
 						<div key={i} className="aspect-square animate-pulse rounded-md bg-muted" />
 					))}
 				</div>

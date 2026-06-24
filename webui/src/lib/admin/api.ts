@@ -4,8 +4,13 @@ import { logInfo, serializeError } from "@/lib/observability";
 import { queryOptions } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 import createClient from "openapi-fetch";
+import { z } from "zod";
 
 type Schemas = components["schemas"];
+
+const errorBodySchema = z.object({
+	detail: z.union([z.string(), z.array(z.object({ msg: z.string().optional() }))]).optional(),
+});
 
 export type Source = Schemas["SourceResponse"];
 export type SourceListItem = Schemas["SourceListItemResponse"];
@@ -49,17 +54,12 @@ function adminClient() {
 }
 
 function extractDetail(error: unknown): string | undefined {
-	if (!error || typeof error !== "object") return undefined;
-	const detail = (error as { detail?: unknown }).detail;
+	const parsed = errorBodySchema.safeParse(error);
+	if (!parsed.success) return undefined;
+	const detail = parsed.data.detail;
 	if (typeof detail === "string") return detail;
 	if (Array.isArray(detail)) {
-		const messages = detail
-			.map((entry) =>
-				entry && typeof entry === "object" && "msg" in entry
-					? String((entry as { msg: unknown }).msg)
-					: undefined,
-			)
-			.filter(Boolean);
+		const messages = detail.map((entry) => entry.msg).filter(Boolean);
 		if (messages.length) return messages.join("; ");
 	}
 	return undefined;
