@@ -20,6 +20,9 @@ type:
 test:
     uv run pytest -q
 
+test-model:
+    RUN_MODEL_SMOKE=1 uv run pytest -q --tb=short --show-capture=no model_smoke
+
 cov:
     uv run pytest --cov=src --cov-report=term-missing -q
 

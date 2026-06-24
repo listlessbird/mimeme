@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import gc
 import threading
 import time
 from typing import TYPE_CHECKING, Protocol, cast
 
 import structlog
+import torch
 from PIL.Image import Image
 from transformers import AutoModelForCausalLM
 
@@ -95,6 +97,17 @@ class Moondream2:
         # double checked locking ensures this
         assert cls._instance is not None
         return cls._instance
+
+    @classmethod
+    def release_instance(cls) -> None:
+        with cls._lock:
+            if cls._instance is None:
+                return
+            cls._log.info("vision_step", step="singleton_instance_released")
+            cls._instance = None
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
     @property
     def model_version(self) -> str:
