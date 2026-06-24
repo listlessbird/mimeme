@@ -1,11 +1,31 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, JsonValue
 
 from shared.models import JobStatus, JobType
+
+
+class IngestJobResult(BaseModel):
+    processed: int
+    failed: int
+    duplicates: int
+
+
+class RebuildJobResult(BaseModel):
+    version: str
+    num_vectors: int
+    dimension: int
+    removed_versions: list[str]
+    text_num_vectors: int | None
+
+
+class RawJobResult(BaseModel):
+    raw: str
+
+
+type JobResult = IngestJobResult | RebuildJobResult | RawJobResult | dict[str, JsonValue]
 
 
 class JobResponse(BaseModel):
@@ -21,7 +41,7 @@ class JobResponse(BaseModel):
     started_at: datetime | None = None
     completed_at: datetime | None = None
 
-    result: dict[str, Any] | None = Field(default=None, description="Job result data")
+    result: JobResult | None = Field(default=None, description="Job result data")
 
     model_config = {"from_attributes": True}
 

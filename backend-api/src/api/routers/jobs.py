@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from api.auth import AdminRequired
 from api.deps import DbSession, TemporalClientDep
+from api.models.errors import error_responses
 from api.models.health import IndexVersionResponse, IndexVersionsResponse
 from api.models.jobs import JobListResponse, JobResponse, RebuildIndexRequest
 from domain.job_lifecycle import (
@@ -17,10 +18,10 @@ from shared.config import settings
 from shared.models import IndexBuild, JobStatus, JobType
 from workflows import RebuildIndexWorkflow, RebuildIndexWorkflowInput
 
-router = APIRouter(prefix="/jobs", tags=["Jobs"])
+router = APIRouter(prefix="/jobs", tags=["Jobs"], responses=error_responses(403, 429, 500))
 
 
-@router.get("/{job_id}", response_model=JobResponse)
+@router.get("/{job_id}", response_model=JobResponse, responses=error_responses(404))
 async def get_job(_auth: AdminRequired, job_id: str, db: DbSession) -> JobResponse:
     try:
         job = JobLifecycle(db).get_job(job_id)
@@ -68,7 +69,7 @@ async def trigger_rebuild_index(
     )
 
 
-@router.delete("/{job_id}", status_code=204)
+@router.delete("/{job_id}", status_code=204, responses=error_responses(400, 404))
 async def cancel_job(
     _auth: AdminRequired, job_id: str, db: DbSession, temporal: TemporalClientDep
 ) -> None:

@@ -6,12 +6,13 @@ from sqlalchemy import text
 from temporalio.client import Client
 from temporalio.contrib.pydantic import pydantic_data_converter
 
+from api.models.errors import error_responses
 from api.models.health import HealthResponse
 from shared.config import settings
 from shared.db import get_engine
 from shared.services.storage import get_storage_service
 
-router = APIRouter(tags=["Health"])
+router = APIRouter(tags=["Health"], responses=error_responses(429, 500))
 log = structlog.get_logger()
 
 
@@ -49,7 +50,11 @@ async def _check_temporal() -> bool:
         return False
 
 
-@router.get("/live", response_model=HealthResponse)
+@router.get(
+    "/live",
+    response_model=HealthResponse,
+    responses={503: {"model": HealthResponse, "description": "Dependency unavailable"}},
+)
 async def healthcheck(response: Response) -> HealthResponse:
     pg_ok = _check_postgres()
     s3_ok = _check_s3()

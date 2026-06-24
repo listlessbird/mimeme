@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 from api.auth import AdminRequired
 from api.deps import DbSession, StorageDep, TemporalClientDep
+from api.models.errors import error_responses
 from api.models.images import (
     ImageIngestRequest,
     ImageIngestResponse,
@@ -17,7 +18,7 @@ from domain.job_lifecycle import JobLifecycle
 from shared.config import settings
 from workflows import IngestWorkflow, IngestWorkflowInput
 
-router = APIRouter(prefix="/images", tags=["Images"])
+router = APIRouter(prefix="/images", tags=["Images"], responses=error_responses(403, 429, 500))
 
 
 @router.post("", response_model=ImageIngestResponse, status_code=202)
@@ -95,7 +96,7 @@ async def list_images(
     )
 
 
-@router.get("/{image_id}", response_model=ImageResponse)
+@router.get("/{image_id}", response_model=ImageResponse, responses=error_responses(404))
 async def get_image(
     _auth: AdminRequired,
     image_id: int,
@@ -111,7 +112,7 @@ async def get_image(
     return ImageResponse.model_construct(**payload)
 
 
-@router.delete("/{image_id}", status_code=204)
+@router.delete("/{image_id}", status_code=204, responses=error_responses(404))
 async def delete_image(
     _auth: AdminRequired,
     image_id: int,

@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException, Query, Request
 
 from api.auth import ReadonlyRequired
 from api.deps import IndexManagerDep
+from api.models.errors import error_responses
 from api.models.search import SearchResponse
 from api.rate_limit import SEARCH_LIMIT, limiter
 from domain.search_index import (
@@ -17,10 +18,10 @@ from domain.search_index import (
     SearchQueryEncodingError,
 )
 
-router = APIRouter(prefix="/search", tags=["Search"])
+router = APIRouter(prefix="/search", tags=["Search"], responses=error_responses(403, 429, 500))
 
 
-@router.get("", response_model=SearchResponse)
+@router.get("", response_model=SearchResponse, responses=error_responses(400, 503))
 @limiter.limit(SEARCH_LIMIT)
 async def search(
     request: Request,
@@ -66,7 +67,11 @@ async def search(
         raise HTTPException(status_code=500, detail="Search failed")
 
 
-@router.get("/similar/{image_id}", response_model=SearchResponse)
+@router.get(
+    "/similar/{image_id}",
+    response_model=SearchResponse,
+    responses=error_responses(404, 503),
+)
 @limiter.limit(SEARCH_LIMIT)
 async def find_similar(
     request: Request,
