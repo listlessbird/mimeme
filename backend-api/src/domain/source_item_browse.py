@@ -30,6 +30,11 @@ def preview_from_metadata(raw_metadata: dict[str, Any] | None) -> str | None:
         return None
 
     preview = raw_metadata.get("preview")
+
+    if isinstance(preview, list):
+        urls = [url for url in preview if isinstance(url, str) and url]
+        return urls[-1] if urls else None
+
     return preview if isinstance(preview, str) and preview else None
 
 
