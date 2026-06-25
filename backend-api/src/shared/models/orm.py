@@ -51,6 +51,16 @@ class DuplicateReason(StrEnum):
     PHASH = "PHASH"
 
 
+class IngestStage(StrEnum):
+    QUEUED = "QUEUED"
+    DOWNLOADING = "DOWNLOADING"
+    PROCESSING = "PROCESSING"
+    ANNOTATING = "ANNOTATING"
+    EMBEDDING = "EMBEDDING"
+    COMPLETE = "COMPLETE"
+    DEDUPED = "DEDUPED"
+
+
 class SourceType(StrEnum):
     API = "api"
     # `html` (scraping) is reserved for a future Adapter and intentionally not wired.
@@ -110,6 +120,15 @@ class IngestURL(Base):
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     image_id: Mapped[int | None] = mapped_column(
         ForeignKey("images.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # Pipeline position of this attempt (orthogonal to `status`). The workflow
+    # advances it as it moves; on failure it stays frozen where it died.
+    stage: Mapped[IngestStage] = mapped_column(
+        SAEnum(IngestStage), default=IngestStage.QUEUED, nullable=False
+    )
+    stage_updated_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
 
     created_at: Mapped[datetime.datetime] = mapped_column(

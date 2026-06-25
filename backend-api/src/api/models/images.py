@@ -57,11 +57,17 @@ class ImageResponse(BaseModel):
     height: int | None = None
     format: str | None = None
     phash: str | None = None
+    file_size: int | None = None
 
     status: ImageStatus
     ocr_status: str | None = None
     caption_status: str | None = None
     embed_status: str | None = None
+    ocr_model: str | None = None
+    caption_model: str | None = None
+    embed_model: str | None = None
+    embed_dim: int | None = None
+    embed_s3_key: str | None = None
 
     caption: str | None = None
     ocr_text: str | None = None

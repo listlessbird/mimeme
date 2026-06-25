@@ -8,16 +8,24 @@ from typing import Any
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from shared.models import DuplicateReason, IngestURL, Job, JobStatus, JobType, ProcessingStatus
+from shared.models import (
+    DuplicateReason,
+    IngestStage,
+    IngestURL,
+    Job,
+    JobStatus,
+    JobType,
+    ProcessingStatus,
+)
 from shared.models import ORMImage as Image
 
 
 class JobLifecycleNotFoundError(Exception):
-    """Raised when a job lifecycle operation targets a missing job."""
+    pass
 
 
 class JobLifecycleInvalidStateError(Exception):
-    """Raised when a job lifecycle operation is not valid for the current state."""
+    pass
 
 
 class JobView(BaseModel, frozen=True):
@@ -56,8 +64,6 @@ class RebuildJobCreation(BaseModel, frozen=True):
 
 
 class SourceIngestItem(BaseModel, frozen=True):
-    """One new Source item to queue for ingest, carrying its provenance."""
-
     url: str
     source_id: int
     source_run_id: int
@@ -307,6 +313,15 @@ class JobLifecycle:
             }
         )
         self._db.flush()
+
+    def record_stage(self, ingest_url_id: int, stage: IngestStage) -> bool:
+        url = self._db.get(IngestURL, ingest_url_id)
+        if url is None:
+            return False
+        url.stage = stage
+        url.stage_updated_at = datetime.now(UTC)
+        self._db.flush()
+        return True
 
     def mark_ingest_url_failed(self, ingest_url_id: int, error: str) -> bool:
         url = self._db.get(IngestURL, ingest_url_id)
