@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from shared.config import settings
 from shared.models.orm import IngestURL, Job, JobType, ProcessingStatus
 from tests.factories import (
     create_annotation,
@@ -70,6 +72,61 @@ class TestIngestImages:
     def test_ingest_invalid_url_returns_422(self, client: TestClient) -> None:
         resp = client.post("/images", json={"urls": ["not-a-url"]})
         assert resp.status_code == 422
+
+
+class TestUploadImage:
+    def test_upload_stores_file_and_creates_ingest_job(
+        self, client: TestClient, db_session: Session, mock_storage: MagicMock
+    ) -> None:
+        resp = client.post(
+            "/images/upload",
+            files={"file": ("meme.jpg", b"fake-image-bytes", "image/jpeg")},
+            data={"dataset": "memes", "tags": ["funny", "cats"]},
+        )
+
+        assert resp.status_code == 202
+        data = resp.json()
+        assert data["queued"] == 1
+        assert data["duplicates"] == 0
+
+        # stored to a staging key
+        mock_storage.upload_bytes.assert_called_once()
+        stored_key = mock_storage.upload_bytes.call_args.args[1]
+        assert stored_key.startswith("uploads/staging/")
+
+        # converged on the URL-based ingest path: one ingest_url over the staged URL
+        urls = db_session.query(IngestURL).filter_by(job_id=data["job_id"]).all()
+        assert len(urls) == 1
+        assert urls[0].url == "https://mock-s3/presigned"
+
+    def test_upload_starts_workflow(self, client: TestClient, mock_temporal: MagicMock) -> None:
+        resp = client.post(
+            "/images/upload",
+            files={"file": ("meme.png", b"bytes", "image/png")},
+        )
+        assert resp.status_code == 202
+        mock_temporal.start_workflow.assert_called_once()
+
+    def test_upload_empty_file_returns_400(self, client: TestClient) -> None:
+        resp = client.post(
+            "/images/upload",
+            files={"file": ("empty.jpg", b"", "image/jpeg")},
+        )
+        assert resp.status_code == 400
+
+    def test_upload_rejects_non_admin(
+        self, client: TestClient, mock_storage: MagicMock, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(settings, "app_env", "production")
+        monkeypatch.setattr(settings, "api_key_admin", "secret-admin-key")
+
+        resp = client.post(
+            "/images/upload",
+            files={"file": ("meme.jpg", b"bytes", "image/jpeg")},
+        )
+
+        assert resp.status_code == 403
+        mock_storage.upload_bytes.assert_not_called()
 
 
 class TestListImages:

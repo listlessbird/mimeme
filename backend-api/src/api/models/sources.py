@@ -5,6 +5,7 @@ from typing import Annotated, NotRequired, TypedDict
 
 from pydantic import BaseModel, Field
 
+from domain.source_item_browse import SourceItemIngestState
 from shared.models import ProcessingStatus, SourceRunStatus, SourceRunTrigger
 from shared.models.orm import DuplicateReason
 
@@ -61,12 +62,15 @@ class SourceStatsResponse(BaseModel):
     run_count: int
     items_discovered: int
     duplicate_count: int
+    images_ingested: int
+    failed_count: int
 
 
 class SourceRunResponse(BaseModel):
     id: int
     trigger_mode: SourceRunTrigger
     status: SourceRunStatus
+    ingest_job_id: str | None
     error_message: str | None
     started_at: datetime | None
     completed_at: datetime | None
@@ -96,6 +100,13 @@ class TriggerRunResponse(BaseModel):
     message: str
 
 
+class RetryResponse(BaseModel):
+    job_id: str
+    workflow_id: str
+    queued: int
+    message: str
+
+
 class SourceItemResponse(BaseModel):
     id: int
     external_item_id: str
@@ -104,6 +115,14 @@ class SourceItemResponse(BaseModel):
     thumbnail_url: str | None
     first_seen_at: datetime
     last_seen_at: datetime
+    ingest_state: SourceItemIngestState
+    resolved_image_id: int | None
+    duplicate_reason: DuplicateReason | None
+    duplicate_of_image_id: int | None
+    attempt_status: ProcessingStatus | None
+    attempt_error_message: str | None
+    attempt_source_run_id: int | None
+    media_url: str | None
 
 
 class SourceItemListResponse(BaseModel):
@@ -111,14 +130,17 @@ class SourceItemListResponse(BaseModel):
     total: int
     limit: int
     offset: int
+    state_counts: dict[str, int]
 
 
 class RunItemResponse(BaseModel):
     id: int
     url: str
+    source_item_id: int | None
     external_item_id: str | None
     title: str | None
     status: ProcessingStatus
+    error_message: str | None
     duplicate_reason: DuplicateReason | None
     image_id: int | None
     thumbnail_url: str | None

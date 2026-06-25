@@ -66,6 +66,29 @@ class TestListSources:
     ) -> None:
         src = create_ingestion_source(session=db_session, name="visible")
         create_source_run(session=db_session, source=src)
+        job = create_job(session=db_session)
+        image = create_image(session=db_session)
+        create_ingest_url(
+            session=db_session,
+            job=job,
+            source_id=src.id,
+            status=ProcessingStatus.DONE,
+            image_id=image.id,
+        )
+        create_ingest_url(
+            session=db_session,
+            job=job,
+            source_id=src.id,
+            status=ProcessingStatus.DONE,
+            duplicate_reason=DuplicateReason.PHASH,
+            duplicate_of_image_id=image.id,
+        )
+        create_ingest_url(
+            session=db_session,
+            job=job,
+            source_id=src.id,
+            status=ProcessingStatus.FAILED,
+        )
         gone = create_ingestion_source(session=db_session, name="gone")
         client.delete(f"/sources/{gone.id}")
 
@@ -75,6 +98,9 @@ class TestListSources:
         assert names == {"visible"}
         assert data["total"] == 1
         assert data["sources"][0]["stats"]["run_count"] == 1
+        assert data["sources"][0]["stats"]["duplicate_count"] == 1
+        assert data["sources"][0]["stats"]["images_ingested"] == 1
+        assert data["sources"][0]["stats"]["failed_count"] == 1
 
 
 class TestGetSource:
@@ -82,14 +108,21 @@ class TestGetSource:
         self, client: TestClient, db_session: Session
     ) -> None:
         src = create_ingestion_source(session=db_session)
-        run = create_source_run(session=db_session, source=src, status=SourceRunStatus.RUNNING)
         job = create_job(session=db_session)
+        image = create_image(session=db_session)
+        run = create_source_run(
+            session=db_session,
+            source=src,
+            status=SourceRunStatus.RUNNING,
+            ingest_job_id=job.id,
+        )
         create_ingest_url(
             session=db_session,
             job=job,
             source_id=src.id,
             source_run_id=run.id,
             status=ProcessingStatus.DONE,
+            image_id=image.id,
         )
         create_ingest_url(
             session=db_session,
@@ -112,8 +145,10 @@ class TestGetSource:
         data = client.get(f"/sources/{src.id}").json()
 
         assert data["id"] == src.id
+        assert data["stats"]["images_ingested"] == 1
         run_view = data["recent_runs"][0]
         assert run_view["status"] == SourceRunStatus.RUNNING.value
+        assert run_view["ingest_job_id"] == job.id
         assert (run_view["discovered"], run_view["queued"]) == (4, 3)
         assert (run_view["duplicate"], run_view["failed"]) == (1, 1)
 
@@ -195,6 +230,122 @@ class TestTriggerSourceRun:
         mock_temporal.start_workflow.assert_not_called()
 
 
+def _failed_run_item(db_session: Session, src):
+    run = create_source_run(session=db_session, source=src, source_id=src.id)
+    item = create_source_item(session=db_session, source=src, source_id=src.id)
+    job = create_job(session=db_session)
+    url = create_ingest_url(
+        session=db_session,
+        job=job,
+        source_id=src.id,
+        source_run_id=run.id,
+        source_item_id=item.id,
+        status=ProcessingStatus.FAILED,
+        error_message="boom",
+    )
+    return run, item, url
+
+
+class TestRetryRun:
+    def test_retry_run_starts_workflow_and_resets_failed(
+        self, client: TestClient, db_session: Session, mock_temporal: MagicMock
+    ) -> None:
+        src = create_ingestion_source(session=db_session)
+        run, _item, url = _failed_run_item(db_session, src)
+
+        resp = client.post(f"/sources/{src.id}/runs/{run.id}/retry")
+
+        assert resp.status_code == 202
+        body = resp.json()
+        assert body["queued"] == 1
+        assert body["job_id"]
+        assert body["workflow_id"] == f"ingest-workflow-{body['job_id']}"
+        mock_temporal.start_workflow.assert_called_once()
+        db_session.refresh(url)
+        assert url.status == ProcessingStatus.PENDING
+
+    def test_retry_run_no_failures_returns_409(
+        self, client: TestClient, db_session: Session, mock_temporal: MagicMock
+    ) -> None:
+        src = create_ingestion_source(session=db_session)
+        run = create_source_run(session=db_session, source=src, source_id=src.id)
+
+        resp = client.post(f"/sources/{src.id}/runs/{run.id}/retry")
+
+        assert resp.status_code == 409
+        mock_temporal.start_workflow.assert_not_called()
+
+    def test_retry_run_unknown_run_returns_404(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        src = create_ingestion_source(session=db_session)
+
+        resp = client.post(f"/sources/{src.id}/runs/999999/retry")
+
+        assert resp.status_code == 404
+
+    def test_retry_run_unknown_source_returns_404(self, client: TestClient) -> None:
+        resp = client.post("/sources/999999/runs/1/retry")
+
+        assert resp.status_code == 404
+
+
+class TestRetrySource:
+    def test_retry_source_starts_workflow_and_resets_failed(
+        self, client: TestClient, db_session: Session, mock_temporal: MagicMock
+    ) -> None:
+        src = create_ingestion_source(session=db_session)
+        _run, _item, url = _failed_run_item(db_session, src)
+
+        resp = client.post(f"/sources/{src.id}/retry")
+
+        assert resp.status_code == 202
+        body = resp.json()
+        assert body["queued"] == 1
+        mock_temporal.start_workflow.assert_called_once()
+        db_session.refresh(url)
+        assert url.status == ProcessingStatus.PENDING
+
+    def test_retry_source_no_failures_returns_409(
+        self, client: TestClient, db_session: Session, mock_temporal: MagicMock
+    ) -> None:
+        src = create_ingestion_source(session=db_session)
+
+        resp = client.post(f"/sources/{src.id}/retry")
+
+        assert resp.status_code == 409
+        mock_temporal.start_workflow.assert_not_called()
+
+    def test_retry_source_unknown_source_returns_404(self, client: TestClient) -> None:
+        assert client.post("/sources/999999/retry").status_code == 404
+
+
+class TestRetryItem:
+    def test_retry_item_starts_workflow_and_resets_failed(
+        self, client: TestClient, db_session: Session, mock_temporal: MagicMock
+    ) -> None:
+        src = create_ingestion_source(session=db_session)
+        _run, item, url = _failed_run_item(db_session, src)
+
+        resp = client.post(f"/sources/{src.id}/items/{item.id}/retry")
+
+        assert resp.status_code == 202
+        body = resp.json()
+        assert body["queued"] == 1
+        mock_temporal.start_workflow.assert_called_once()
+        db_session.refresh(url)
+        assert url.status == ProcessingStatus.PENDING
+
+    def test_retry_item_unknown_item_returns_404(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        src = create_ingestion_source(session=db_session)
+
+        resp = client.post(f"/sources/{src.id}/items/999999/retry")
+
+        assert resp.status_code == 404
+
+
 class TestListSourceItems:
     def test_returns_items_with_metadata_and_preview(
         self, client: TestClient, db_session: Session
@@ -239,6 +390,119 @@ class TestListSourceItems:
 
     def test_missing_source_returns_404(self, client: TestClient) -> None:
         assert client.get("/sources/999999/items").status_code == 404
+
+    def test_items_carry_ingest_outcome_and_filter_server_side(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        src = create_ingestion_source(session=db_session)
+        run = create_source_run(session=db_session, source=src)
+        job = create_job(session=db_session)
+
+        ingested_image = create_image(session=db_session)
+        ingested_item = create_source_item(
+            session=db_session, source=src, raw_metadata={"preview": "https://prev/ingested.jpg"}
+        )
+        create_ingest_url(
+            session=db_session,
+            job=job,
+            source_id=src.id,
+            source_run_id=run.id,
+            source_item_id=ingested_item.id,
+            url="https://media/ingested.jpg",
+            status=ProcessingStatus.DONE,
+            image_id=ingested_image.id,
+        )
+
+        dedup_image = create_image(session=db_session)
+        dedup_item = create_source_item(
+            session=db_session, source=src, raw_metadata={"preview": "https://prev/dedup.jpg"}
+        )
+        create_ingest_url(
+            session=db_session,
+            job=job,
+            source_id=src.id,
+            source_run_id=run.id,
+            source_item_id=dedup_item.id,
+            url="https://media/dedup.jpg",
+            status=ProcessingStatus.DONE,
+            duplicate_reason=DuplicateReason.PHASH,
+            duplicate_of_image_id=dedup_image.id,
+        )
+
+        failed_item = create_source_item(
+            session=db_session, source=src, raw_metadata={"preview": "https://prev/failed.jpg"}
+        )
+        create_ingest_url(
+            session=db_session,
+            job=job,
+            source_id=src.id,
+            source_run_id=run.id,
+            source_item_id=failed_item.id,
+            url="https://media/failed.jpg",
+            status=ProcessingStatus.FAILED,
+            error_message="download failed",
+        )
+
+        running_item = create_source_item(session=db_session, source=src)
+        create_ingest_url(
+            session=db_session,
+            job=job,
+            source_id=src.id,
+            source_run_id=run.id,
+            source_item_id=running_item.id,
+            status=ProcessingStatus.RUNNING,
+        )
+        unknown_item = create_source_item(session=db_session, source=src)
+
+        data = client.get(f"/sources/{src.id}/items?limit=10").json()
+
+        assert data["total"] == 5
+        assert data["state_counts"] == {
+            "ingested": 1,
+            "deduped": 1,
+            "failed": 1,
+            "in_flight": 1,
+            "unknown": 1,
+        }
+        by_id = {item["id"]: item for item in data["items"]}
+
+        assert by_id[ingested_item.id]["ingest_state"] == "ingested"
+        assert by_id[ingested_item.id]["resolved_image_id"] == ingested_image.id
+        assert by_id[ingested_item.id]["duplicate_reason"] is None
+        assert by_id[ingested_item.id]["duplicate_of_image_id"] is None
+        assert by_id[ingested_item.id]["attempt_status"] == ProcessingStatus.DONE.value
+        assert by_id[ingested_item.id]["attempt_source_run_id"] == run.id
+        assert by_id[ingested_item.id]["media_url"] == "https://media/ingested.jpg"
+        assert by_id[ingested_item.id]["thumbnail_url"] == "https://mock-s3/presigned"
+
+        assert by_id[dedup_item.id]["ingest_state"] == "deduped"
+        assert by_id[dedup_item.id]["resolved_image_id"] == dedup_image.id
+        assert by_id[dedup_item.id]["duplicate_reason"] == DuplicateReason.PHASH.value
+        assert by_id[dedup_item.id]["duplicate_of_image_id"] == dedup_image.id
+        assert by_id[dedup_item.id]["thumbnail_url"] == "https://mock-s3/presigned"
+
+        assert by_id[failed_item.id]["ingest_state"] == "failed"
+        assert by_id[failed_item.id]["resolved_image_id"] is None
+        assert by_id[failed_item.id]["attempt_error_message"] == "download failed"
+        assert by_id[failed_item.id]["thumbnail_url"] == "https://prev/failed.jpg"
+
+        assert by_id[running_item.id]["ingest_state"] == "in_flight"
+        assert by_id[unknown_item.id]["ingest_state"] == "unknown"
+
+        failed = client.get(f"/sources/{src.id}/items?status=failed&limit=10").json()
+        assert failed["total"] == 1
+        assert [item["id"] for item in failed["items"]] == [failed_item.id]
+        assert failed["state_counts"] == data["state_counts"]
+
+        in_flight = client.get(f"/sources/{src.id}/items?status=in_flight&limit=1").json()
+        assert in_flight["total"] == 1
+        assert [item["id"] for item in in_flight["items"]] == [running_item.id]
+
+        second_dedup_page = client.get(
+            f"/sources/{src.id}/items?status=deduped&limit=1&offset=1"
+        ).json()
+        assert second_dedup_page["total"] == 1
+        assert second_dedup_page["items"] == []
 
 
 class TestListRunItems:
@@ -301,6 +565,7 @@ class TestListRunItems:
             source_run_id=run.id,
             source_item_id=failed_item.id,
             status=ProcessingStatus.FAILED,
+            error_message="download timed out",
         )
 
         data = client.get(f"/sources/{src.id}/runs/{run.id}/items").json()
@@ -320,6 +585,8 @@ class TestListRunItems:
         assert phash["image_id"] == phash_img.id
 
         assert failed["status"] == ProcessingStatus.FAILED.value
+        assert failed["error_message"] == "download timed out"
+        assert failed["source_item_id"] == failed_item.id
         assert failed["image_id"] is None
         # no resolved image -> falls back to the upstream preview
         assert failed["thumbnail_url"] == "https://prev/failed.jpg"
@@ -329,9 +596,7 @@ class TestListRunItems:
         run = create_source_run(session=db_session, source=src)
         job = create_job(session=db_session)
         for _ in range(3):
-            create_ingest_url(
-                session=db_session, job=job, source_id=src.id, source_run_id=run.id
-            )
+            create_ingest_url(session=db_session, job=job, source_id=src.id, source_run_id=run.id)
 
         first = client.get(f"/sources/{src.id}/runs/{run.id}/items?limit=2&offset=0").json()
         second = client.get(f"/sources/{src.id}/runs/{run.id}/items?limit=2&offset=2").json()

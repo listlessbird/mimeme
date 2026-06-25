@@ -22,6 +22,7 @@ import datetime
 import pytest
 from sqlalchemy.orm import Session
 from tests.factories import (
+    create_image,
     create_ingest_url,
     create_ingestion_source,
     create_job,
@@ -165,19 +166,29 @@ def test_list_derives_stats_by_query(db_session: Session) -> None:
         create_source_item(session=db_session, source=src)
     # Two deduped urls + one genuinely-new url attributed to this source.
     job = create_job(session=db_session)
+    image = create_image(session=db_session)
     create_ingest_url(
         session=db_session, job=job, source_id=src.id, duplicate_reason=DuplicateReason.SHA256
     )
     create_ingest_url(
         session=db_session, job=job, source_id=src.id, duplicate_reason=DuplicateReason.PHASH
     )
-    create_ingest_url(session=db_session, job=job, source_id=src.id, duplicate_reason=None)
+    create_ingest_url(
+        session=db_session,
+        job=job,
+        source_id=src.id,
+        status=ProcessingStatus.DONE,
+        image_id=image.id,
+        duplicate_reason=None,
+    )
+    create_ingest_url(session=db_session, job=job, source_id=src.id, status=ProcessingStatus.FAILED)
 
     item = next(i for i in SourceRegistry(db_session).list_sources() if i.name == "stats-src")
 
     assert item.stats.run_count == 2
     assert item.stats.items_discovered == 3
     assert item.stats.duplicate_count == 2
+    assert item.stats.images_ingested == 1
 
 
 def test_list_stats_are_zero_for_a_fresh_source(db_session: Session) -> None:
@@ -185,7 +196,13 @@ def test_list_stats_are_zero_for_a_fresh_source(db_session: Session) -> None:
 
     item = next(i for i in SourceRegistry(db_session).list_sources() if i.name == "fresh")
 
-    assert (item.stats.run_count, item.stats.items_discovered, item.stats.duplicate_count) == (
+    assert (
+        item.stats.run_count,
+        item.stats.items_discovered,
+        item.stats.duplicate_count,
+        item.stats.images_ingested,
+    ) == (
+        0,
         0,
         0,
         0,

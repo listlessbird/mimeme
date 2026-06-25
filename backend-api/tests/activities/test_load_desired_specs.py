@@ -3,10 +3,10 @@ from __future__ import annotations
 import datetime
 
 from sqlalchemy.orm import Session
-from tests.factories import create_ingestion_source
 
 from activities.scheduling.desired_specs import load_desired_specs
 from domain.source_schedule_spec import DesiredScheduleState
+from tests.factories import create_ingestion_source
 
 
 def _by_id(specs):
@@ -14,10 +14,6 @@ def _by_id(specs):
 
 
 def test_load_desired_specs_maps_each_non_deleted_source(db_session: Session) -> None:
-    # The bridge from Postgres to the domain: every live Source becomes its
-    # desired spec (active/paused/absent), keyed by deterministic id. A
-    # soft-deleted Source is excluded entirely -- its Schedule is left to the
-    # planner's orphan rule, not represented as a desired spec.
     enabled = create_ingestion_source(
         session=db_session, name="enabled", enabled=True, schedule_cron="0 * * * *"
     )

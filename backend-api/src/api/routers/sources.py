@@ -13,6 +13,7 @@ from api.deps import DbSession, StorageDep, TemporalClientDep
 from api.models.errors import error_responses
 from api.models.sources import (
     CreateSourceRequest,
+    RetryResponse,
     RunItemListResponse,
     RunItemResponse,
     SourceDetailResponse,
@@ -24,16 +25,27 @@ from api.models.sources import (
     TriggerRunResponse,
     UpdateSourceRequest,
 )
-from domain.source_item_browse import RunNotFoundError, SourceItemBrowser
+from domain.source_item_browse import RunNotFoundError, SourceItemBrowser, SourceItemIngestState
 from domain.source_registry import (
     DuplicateSourceNameError,
     SourceNotFoundError,
     SourceRegistry,
     UnknownAdapterKeyError,
 )
+from domain.source_retry import (
+    NothingToRetryError,
+    RetryPlan,
+    SourceItemNotFoundError,
+    SourceRetry,
+)
 from shared.config import settings
 from shared.models import SourceRunTrigger
-from workflows import SourceSyncWorkflow, SourceSyncWorkflowInput
+from workflows import (
+    SourceRetryWorkflow,
+    SourceRetryWorkflowInput,
+    SourceSyncWorkflow,
+    SourceSyncWorkflowInput,
+)
 
 router = APIRouter(prefix="/sources", tags=["Sources"], responses=error_responses(403, 429, 500))
 log = structlog.get_logger()
@@ -147,6 +159,97 @@ async def trigger_source_run(
     return TriggerRunResponse(workflow_id=workflow_id, message="Source run started")
 
 
+async def _start_retry(temporal: TemporalClientDep, plan: RetryPlan) -> RetryResponse:
+    await temporal.start_workflow(
+        SourceRetryWorkflow.run,
+        SourceRetryWorkflowInput(
+            job_id=plan.job_id,
+            source_run_ids=plan.source_run_ids,
+            dataset=plan.dataset,
+        ),
+        id=plan.workflow_id,
+        task_queue=settings.temporal_task_queue,
+    )
+    return RetryResponse(
+        job_id=plan.job_id,
+        workflow_id=plan.workflow_id,
+        queued=plan.count,
+        message=f"Re-queued {plan.count} failed item(s)",
+    )
+
+
+@router.post(
+    "/{source_id}/retry",
+    response_model=RetryResponse,
+    status_code=202,
+    responses=error_responses(404, 409),
+)
+async def retry_source(
+    _auth: AdminRequired,
+    source_id: int,
+    db: DbSession,
+    temporal: TemporalClientDep,
+) -> RetryResponse:
+    try:
+        plan = SourceRetry(db).retry_source(source_id)
+    except SourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Source not found")
+    except NothingToRetryError:
+        raise HTTPException(status_code=409, detail="No failed items to retry")
+
+    return await _start_retry(temporal, plan)
+
+
+@router.post(
+    "/{source_id}/runs/{run_id}/retry",
+    response_model=RetryResponse,
+    status_code=202,
+    responses=error_responses(404, 409),
+)
+async def retry_source_run(
+    _auth: AdminRequired,
+    source_id: int,
+    run_id: int,
+    db: DbSession,
+    temporal: TemporalClientDep,
+) -> RetryResponse:
+    try:
+        plan = SourceRetry(db).retry_run(source_id, run_id)
+    except SourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Source not found")
+    except RunNotFoundError:
+        raise HTTPException(status_code=404, detail="Run not found")
+    except NothingToRetryError:
+        raise HTTPException(status_code=409, detail="No failed items to retry")
+
+    return await _start_retry(temporal, plan)
+
+
+@router.post(
+    "/{source_id}/items/{item_id}/retry",
+    response_model=RetryResponse,
+    status_code=202,
+    responses=error_responses(404, 409),
+)
+async def retry_source_item(
+    _auth: AdminRequired,
+    source_id: int,
+    item_id: int,
+    db: DbSession,
+    temporal: TemporalClientDep,
+) -> RetryResponse:
+    try:
+        plan = SourceRetry(db).retry_item(source_id, item_id)
+    except SourceNotFoundError:
+        raise HTTPException(status_code=404, detail="Source not found")
+    except SourceItemNotFoundError:
+        raise HTTPException(status_code=404, detail="Source item not found")
+    except NothingToRetryError:
+        raise HTTPException(status_code=409, detail="No failed attempt to retry")
+
+    return await _start_retry(temporal, plan)
+
+
 @router.get(
     "/{source_id}/items",
     response_model=SourceItemListResponse,
@@ -159,9 +262,12 @@ async def list_source_items(
     storage: StorageDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
+    status: SourceItemIngestState | None = None,
 ) -> SourceItemListResponse:
     try:
-        page = SourceItemBrowser(db, storage).list_items(source_id, limit=limit, offset=offset)
+        page = SourceItemBrowser(db, storage).list_items(
+            source_id, limit=limit, offset=offset, status=status
+        )
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
 
@@ -170,6 +276,7 @@ async def list_source_items(
         total=page.total,
         limit=page.limit,
         offset=page.offset,
+        state_counts=page.state_counts,
     )
 
 
