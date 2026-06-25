@@ -33,9 +33,7 @@ function UnlockPage() {
 			<Card className="w-full max-w-sm">
 				<CardHeader>
 					<CardTitle>admin access</CardTitle>
-					<CardDescription>
-						enter the shared secret to reach the acquisition admin area.
-					</CardDescription>
+					<CardDescription>enter the shared secret to reach the mimeme admin area.</CardDescription>
 				</CardHeader>
 				<CardContent>
 					<form

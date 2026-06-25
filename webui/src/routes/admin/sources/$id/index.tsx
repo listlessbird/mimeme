@@ -1,4 +1,5 @@
 import { EnabledBadge } from "@/components/admin/badges";
+import { IdChip, RawJsonDrawer } from "@/components/admin/dev-toolkit";
 import { RunsTable } from "@/components/admin/runs-table";
 import { SourceActions } from "@/components/admin/source-actions";
 import { SourceItemsGallery } from "@/components/admin/source-items-gallery";
@@ -39,9 +40,11 @@ function SourceDetailPage() {
 		<div className="flex flex-col gap-6">
 			<div className="flex flex-col gap-2">
 				<BackLink />
-				<div className="flex items-center gap-3">
+				<div className="flex flex-wrap items-center gap-3">
 					<h1 className="text-lg font-semibold">{source.name}</h1>
 					<EnabledBadge enabled={source.enabled} />
+					<IdChip label="source_id" value={source.id} />
+					<RawJsonDrawer data={source} title={`source #${source.id}`} />
 				</div>
 			</div>
 

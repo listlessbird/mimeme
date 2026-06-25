@@ -38,6 +38,7 @@ import {
 	type UpdateSourceRequest,
 	updateSource,
 } from "@/lib/admin/api";
+import { shouldNeverHappen } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { X } from "lucide-react";
@@ -134,7 +135,7 @@ export function SourceFormSheet({ mode, source, open, onOpenChange }: SourceForm
 				};
 				return createSource({ data: body });
 			}
-			if (!source) throw new Error("missing source for edit");
+			if (!source) shouldNeverHappen("edit mode requires a source");
 			const body: UpdateSourceRequest = {
 				adapter_config: { subreddits: values.subreddits },
 				dataset: toNullable(values.dataset),

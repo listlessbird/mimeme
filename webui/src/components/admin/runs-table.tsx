@@ -12,6 +12,8 @@ import { relativeTime } from "@/lib/admin/format";
 import { Link } from "@tanstack/react-router";
 
 import { RunStatusBadge, TriggerBadge } from "./badges";
+import { RawJsonDrawer } from "./dev-toolkit";
+import { JobIdChip } from "./job-detail";
 
 export function RunsTable({ sourceId, runs }: { sourceId: number; runs: SourceRun[] }) {
 	if (runs.length === 0) {
@@ -59,13 +61,17 @@ export function RunsTable({ sourceId, runs }: { sourceId: number; runs: SourceRu
 							<TableCell className="text-right tabular-nums">{run.duplicate}</TableCell>
 							<TableCell className="text-right tabular-nums">{run.failed}</TableCell>
 							<TableCell className="text-right">
-								<Link
-									to="/admin/sources/$id/runs/$runId"
-									params={{ id: String(sourceId), runId: String(run.id) }}
-									className="text-sm hover:underline"
-								>
-									view
-								</Link>
+								<div className="flex items-center justify-end gap-2">
+									{run.ingest_job_id ? <JobIdChip jobId={run.ingest_job_id} /> : null}
+									<RawJsonDrawer data={run} title={`run #${run.id}`} />
+									<Link
+										to="/admin/sources/$id/runs/$runId"
+										params={{ id: String(sourceId), runId: String(run.id) }}
+										className="text-sm hover:underline"
+									>
+										view
+									</Link>
+								</div>
 							</TableCell>
 						</TableRow>
 					))}

@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import {
 	Table,
 	TableBody,
@@ -9,8 +10,10 @@ import {
 import type { SourceListItem } from "@/lib/admin/api";
 import { scheduleLabel } from "@/lib/admin/format";
 import { Link } from "@tanstack/react-router";
+import { Braces } from "lucide-react";
 
 import { EnabledBadge } from "./badges";
+import { RawJsonDrawer } from "./dev-toolkit";
 
 export function SourcesTable({ sources }: { sources: SourceListItem[] }) {
 	return (
@@ -24,7 +27,9 @@ export function SourcesTable({ sources }: { sources: SourceListItem[] }) {
 						<TableHead>schedule</TableHead>
 						<TableHead className="text-right">runs</TableHead>
 						<TableHead className="text-right">items</TableHead>
+						<TableHead className="text-right">ingested</TableHead>
 						<TableHead className="text-right">duplicates</TableHead>
+						<TableHead className="w-0" />
 					</TableRow>
 				</TableHeader>
 				<TableBody>
@@ -51,7 +56,21 @@ export function SourcesTable({ sources }: { sources: SourceListItem[] }) {
 								{source.stats.items_discovered}
 							</TableCell>
 							<TableCell className="text-right tabular-nums">
+								{source.stats.images_ingested}
+							</TableCell>
+							<TableCell className="text-right tabular-nums">
 								{source.stats.duplicate_count}
+							</TableCell>
+							<TableCell className="text-right">
+								<RawJsonDrawer
+									data={source}
+									title={`source #${source.id}`}
+									trigger={
+										<Button variant="ghost" size="icon-xs" aria-label="view raw json">
+											<Braces />
+										</Button>
+									}
+								/>
 							</TableCell>
 						</TableRow>
 					))}

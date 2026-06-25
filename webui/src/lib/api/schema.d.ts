@@ -73,6 +73,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/images/upload": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Upload Image */
+        post: operations["upload_image_images_upload_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/images/{image_id}": {
         parameters: {
             query?: never;
@@ -214,6 +231,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/sources/{source_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Source */
+        post: operations["retry_source_sources__source_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sources/{source_id}/runs/{run_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Source Run */
+        post: operations["retry_source_run_sources__source_id__runs__run_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/sources/{source_id}/items/{item_id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Retry Source Item */
+        post: operations["retry_source_item_sources__source_id__items__item_id__retry_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/sources/{source_id}/items": {
         parameters: {
             query?: never;
@@ -259,6 +327,15 @@ export interface components {
              * @description Human-readable error detail
              */
             detail: string;
+        };
+        /** Body_upload_image_images_upload_post */
+        Body_upload_image_images_upload_post: {
+            /** File */
+            file: string;
+            /** Dataset */
+            dataset?: string | null;
+            /** Tags */
+            tags?: string[] | null;
         };
         /** CreateSourceRequest */
         CreateSourceRequest: {
@@ -580,6 +657,17 @@ export interface components {
             /** Text Num Vectors */
             text_num_vectors: number | null;
         };
+        /** RetryResponse */
+        RetryResponse: {
+            /** Job Id */
+            job_id: string;
+            /** Workflow Id */
+            workflow_id: string;
+            /** Queued */
+            queued: number;
+            /** Message */
+            message: string;
+        };
         /** RunItemListResponse */
         RunItemListResponse: {
             /** Items */
@@ -597,11 +685,15 @@ export interface components {
             id: number;
             /** Url */
             url: string;
+            /** Source Item Id */
+            source_item_id: number | null;
             /** External Item Id */
             external_item_id: string | null;
             /** Title */
             title: string | null;
             status: components["schemas"]["ProcessingStatus"];
+            /** Error Message */
+            error_message: string | null;
             duplicate_reason: components["schemas"]["DuplicateReason"] | null;
             /** Image Id */
             image_id: number | null;
@@ -716,6 +808,11 @@ export interface components {
             /** Recent Runs */
             recent_runs: components["schemas"]["SourceRunResponse"][];
         };
+        /**
+         * SourceItemIngestState
+         * @enum {string}
+         */
+        SourceItemIngestState: "ingested" | "deduped" | "failed" | "in_flight" | "unknown";
         /** SourceItemListResponse */
         SourceItemListResponse: {
             /** Items */
@@ -726,6 +823,10 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+            /** State Counts */
+            state_counts: {
+                [key: string]: number;
+            };
         };
         /** SourceItemResponse */
         SourceItemResponse: {
@@ -748,6 +849,19 @@ export interface components {
              * Format: date-time
              */
             last_seen_at: string;
+            ingest_state: components["schemas"]["SourceItemIngestState"];
+            /** Resolved Image Id */
+            resolved_image_id: number | null;
+            duplicate_reason: components["schemas"]["DuplicateReason"] | null;
+            /** Duplicate Of Image Id */
+            duplicate_of_image_id: number | null;
+            attempt_status: components["schemas"]["ProcessingStatus"] | null;
+            /** Attempt Error Message */
+            attempt_error_message: string | null;
+            /** Attempt Source Run Id */
+            attempt_source_run_id: number | null;
+            /** Media Url */
+            media_url: string | null;
         };
         /** SourceListItemResponse */
         SourceListItemResponse: {
@@ -823,6 +937,8 @@ export interface components {
             id: number;
             trigger_mode: components["schemas"]["SourceRunTrigger"];
             status: components["schemas"]["SourceRunStatus"];
+            /** Ingest Job Id */
+            ingest_job_id: string | null;
             /** Error Message */
             error_message: string | null;
             /** Started At */
@@ -861,6 +977,10 @@ export interface components {
             items_discovered: number;
             /** Duplicate Count */
             duplicate_count: number;
+            /** Images Ingested */
+            images_ingested: number;
+            /** Failed Count */
+            failed_count: number;
         };
         /** TriggerRunResponse */
         TriggerRunResponse: {
@@ -1189,6 +1309,66 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ImageIngestRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ImageIngestResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    upload_image_images_upload_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["Body_upload_image_images_upload_post"];
             };
         };
         responses: {
@@ -2085,11 +2265,242 @@ export interface operations {
             };
         };
     };
+    retry_source_sources__source_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetryResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    retry_source_run_sources__source_id__runs__run_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: number;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetryResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    retry_source_item_sources__source_id__items__item_id__retry_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                source_id: number;
+                item_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetryResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
     list_source_items_sources__source_id__items_get: {
         parameters: {
             query?: {
                 limit?: number;
                 offset?: number;
+                status?: components["schemas"]["SourceItemIngestState"] | null;
             };
             header?: never;
             path: {

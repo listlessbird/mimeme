@@ -12,6 +12,13 @@ const errorBodySchema = z.object({
 	detail: z.union([z.string(), z.array(z.object({ msg: z.string().optional() }))]).optional(),
 });
 
+const imageIngestResponseSchema = z.object({
+	job_id: z.string(),
+	queued: z.number(),
+	duplicates: z.number(),
+	message: z.string(),
+});
+
 export type Source = Schemas["SourceResponse"];
 export type SourceListItem = Schemas["SourceListItemResponse"];
 export type SourceListResponse = Schemas["SourceListResponse"];
@@ -20,16 +27,61 @@ export type SourceRun = Schemas["SourceRunResponse"];
 export type SourceStats = Schemas["SourceStatsResponse"];
 export type SourceItem = Schemas["SourceItemResponse"];
 export type SourceItemListResponse = Schemas["SourceItemListResponse"];
+export type SourceItemIngestState = Schemas["SourceItemIngestState"];
 export type RunItem = Schemas["RunItemResponse"];
 export type RunItemListResponse = Schemas["RunItemListResponse"];
 export type CreateSourceRequest = Schemas["CreateSourceRequest"];
 export type UpdateSourceRequest = Schemas["UpdateSourceRequest"];
 export type TriggerRunResponse = Schemas["TriggerRunResponse"];
+export type RetryResponse = Schemas["RetryResponse"];
 export type MemeApiRawMetadata = Schemas["MemeApiRawMetadata"];
 export type ProcessingStatus = Schemas["ProcessingStatus"];
 export type SourceRunStatus = Schemas["SourceRunStatus"];
 export type SourceRunTrigger = Schemas["SourceRunTrigger"];
 export type DuplicateReason = Schemas["DuplicateReason"];
+export type Image = Schemas["ImageResponse"];
+export type ImageListResponse = Schemas["ImageListResponse"];
+export type ImageIngestResponse = Schemas["ImageIngestResponse"];
+export type ImageStatus = Schemas["ImageStatus"];
+export type JobStatus = Schemas["JobStatus"];
+export type JobType = Schemas["JobType"];
+export type JobResult =
+	| Schemas["IngestJobResult"]
+	| Schemas["RebuildJobResult"]
+	| Schemas["RawJobResult"];
+export type Job = Omit<Schemas["JobResponse"], "result"> & {
+	result?: JobResult | null;
+};
+
+export const IMAGE_STATUSES: ImageStatus[] = [
+	"pending",
+	"downloading",
+	"scanning",
+	"annotating",
+	"embedding",
+	"done",
+	"failed",
+];
+
+export function isImageStatus(value: string): value is ImageStatus {
+	return IMAGE_STATUSES.some((status) => status === value);
+}
+
+export type ImageSort = "newest" | "oldest";
+
+export const IMAGE_SORTS: ImageSort[] = ["newest", "oldest"];
+
+export function isImageSort(value: string): value is ImageSort {
+	return IMAGE_SORTS.some((sort) => sort === value);
+}
+
+export interface ImageListParams {
+	limit?: number;
+	offset?: number;
+	status?: ImageStatus | null;
+	dataset?: string | null;
+	sort?: ImageSort;
+}
 
 export class AdminApiError extends Error {
 	readonly statusCode?: number;
@@ -44,6 +96,10 @@ export class AdminApiError extends Error {
 		this.statusCode = options?.statusCode;
 		this.detail = options?.detail;
 	}
+}
+
+export function adminErrorMessage(error: unknown, fallback: string): string {
+	return error instanceof AdminApiError && error.detail ? error.detail : fallback;
 }
 
 function adminClient() {
@@ -154,14 +210,45 @@ export const triggerRun = createServerFn({ method: "POST" })
 		),
 	);
 
+export const retrySource = createServerFn({ method: "POST" })
+	.inputValidator((input: { id: number }) => input)
+	.handler(({ data }) =>
+		callAdmin<RetryResponse>("retry_source", (c) =>
+			c.POST("/sources/{source_id}/retry", { params: { path: { source_id: data.id } } }),
+		),
+	);
+
+export const retrySourceRun = createServerFn({ method: "POST" })
+	.inputValidator((input: { id: number; runId: number }) => input)
+	.handler(({ data }) =>
+		callAdmin<RetryResponse>("retry_source_run", (c) =>
+			c.POST("/sources/{source_id}/runs/{run_id}/retry", {
+				params: { path: { source_id: data.id, run_id: data.runId } },
+			}),
+		),
+	);
+
+export const retrySourceItem = createServerFn({ method: "POST" })
+	.inputValidator((input: { id: number; itemId: number }) => input)
+	.handler(({ data }) =>
+		callAdmin<RetryResponse>("retry_source_item", (c) =>
+			c.POST("/sources/{source_id}/items/{item_id}/retry", {
+				params: { path: { source_id: data.id, item_id: data.itemId } },
+			}),
+		),
+	);
+
 export const listSourceItems = createServerFn({ method: "GET" })
-	.inputValidator((input: { id: number; limit?: number; offset?: number }) => input)
+	.inputValidator(
+		(input: { id: number; limit?: number; offset?: number; status?: SourceItemIngestState }) =>
+			input,
+	)
 	.handler(({ data }) =>
 		callAdmin<SourceItemListResponse>("list_source_items", (c) =>
 			c.GET("/sources/{source_id}/items", {
 				params: {
 					path: { source_id: data.id },
-					query: { limit: data.limit, offset: data.offset },
+					query: { limit: data.limit, offset: data.offset, status: data.status },
 				},
 			}),
 		),
@@ -180,16 +267,102 @@ export const listRunItems = createServerFn({ method: "GET" })
 		),
 	);
 
+export const listImages = createServerFn({ method: "GET" })
+	.inputValidator((input: ImageListParams) => input)
+	.handler(({ data }) =>
+		callAdmin<ImageListResponse>("list_images", (c) =>
+			c.GET("/images", {
+				params: {
+					query: {
+						limit: data.limit,
+						offset: data.offset,
+						status: data.status ?? undefined,
+						dataset: data.dataset || undefined,
+						sort: data.sort,
+					},
+				},
+			}),
+		),
+	);
+
+export const ingestImageUrls = createServerFn({ method: "POST" })
+	.inputValidator((input: { urls: string[]; dataset?: string | null; tags?: string[] }) => input)
+	.handler(({ data }) =>
+		callAdmin<ImageIngestResponse>("ingest_images", (c) =>
+			c.POST("/images", {
+				body: { urls: data.urls, dataset: data.dataset || undefined, tags: data.tags ?? [] },
+			}),
+		),
+	);
+
+export const uploadImageFile = createServerFn({ method: "POST" })
+	.inputValidator((data: FormData) => data)
+	.handler(async ({ data }) => {
+		const start = Date.now();
+		const event: Record<string, unknown> = { operation: "upload_image" };
+		try {
+			const res = await fetch(new URL("/images/upload", env.API_BASE_URL), {
+				method: "POST",
+				headers: { "X-API-Key": env.API_KEY_ADMIN ?? "" },
+				body: data,
+			});
+			event.status_code = res.status;
+			if (!res.ok) {
+				event.outcome = "error";
+				throw new AdminApiError(`upload_image failed`, { statusCode: res.status });
+			}
+			event.outcome = "success";
+			return imageIngestResponseSchema.parse(await res.json());
+		} catch (error) {
+			event.outcome ??= "error";
+			event.error = serializeError(error);
+			if (error instanceof AdminApiError) throw error;
+			throw new AdminApiError("upload_image request failed", { cause: error });
+		} finally {
+			event.duration_ms = Date.now() - start;
+			logInfo("admin_api.upload_image", event);
+		}
+	});
+
+export const getImage = createServerFn({ method: "GET" })
+	.inputValidator((input: { id: number }) => input)
+	.handler(({ data }) =>
+		callAdmin<Image>("get_image", (c) =>
+			c.GET("/images/{image_id}", { params: { path: { image_id: data.id } } }),
+		),
+	);
+
+export const getJob = createServerFn({ method: "GET" })
+	.inputValidator((input: { id: string }) => input)
+	.handler(async ({ data }) => {
+		const job = await callAdmin<Schemas["JobResponse"]>("get_job", (c) =>
+			c.GET("/jobs/{job_id}", { params: { path: { job_id: data.id } } }),
+		);
+		// SAFETY: narrow the generated open `JobResult` union (which includes a
+		// `{ [key: string]: JsonValue }` catch-all that cannot round-trip through
+		// the server-fn boundary) to the three concrete result shapes. `result`
+		// is display-only (stringified), so narrowing is sound here.
+		return job as Job;
+	});
+
 export const SOURCE_DETAIL_POLL_MS = 10_000;
 export const ITEMS_PAGE_SIZE = 24;
+export const IMAGES_PAGE_SIZE = 24;
+export const JOB_POLL_MS = 2_000;
 
 export const adminQueryKeys = {
 	sources: ["admin", "sources"] as const,
 	source: (id: number) => ["admin", "source", id] as const,
-	sourceItems: (id: number, offset: number) =>
-		["admin", "source", id, "items", { offset }] as const,
+	sourceItems: (id: number, offset: number, status?: SourceItemIngestState) =>
+		["admin", "source", id, "items", { offset, status }] as const,
+	sourceItemsAll: (id: number) => ["admin", "source", id, "items"] as const,
 	runItems: (id: number, runId: number, offset: number) =>
 		["admin", "source", id, "runs", runId, "items", { offset }] as const,
+	runItemsAll: (id: number, runId: number) =>
+		["admin", "source", id, "runs", runId, "items"] as const,
+	images: (params: ImageListParams) => ["admin", "images", params] as const,
+	image: (id: number) => ["admin", "image", id] as const,
+	job: (id: string) => ["admin", "job", id] as const,
 };
 
 export const sourcesQueryOptions = () =>
@@ -207,14 +380,36 @@ export const sourceQueryOptions = (id: number) =>
 		refetchInterval: SOURCE_DETAIL_POLL_MS,
 	});
 
-export const sourceItemsQueryOptions = (id: number, offset: number) =>
+export const sourceItemsQueryOptions = (
+	id: number,
+	offset: number,
+	status?: SourceItemIngestState,
+) =>
 	queryOptions({
-		queryKey: adminQueryKeys.sourceItems(id, offset),
-		queryFn: () => listSourceItems({ data: { id, limit: ITEMS_PAGE_SIZE, offset } }),
+		queryKey: adminQueryKeys.sourceItems(id, offset, status),
+		queryFn: () => listSourceItems({ data: { id, limit: ITEMS_PAGE_SIZE, offset, status } }),
 	});
 
 export const runItemsQueryOptions = (id: number, runId: number, offset: number) =>
 	queryOptions({
 		queryKey: adminQueryKeys.runItems(id, runId, offset),
 		queryFn: () => listRunItems({ data: { id, runId, limit: ITEMS_PAGE_SIZE, offset } }),
+	});
+
+export const imagesQueryOptions = (params: ImageListParams) =>
+	queryOptions({
+		queryKey: adminQueryKeys.images(params),
+		queryFn: () => listImages({ data: params }),
+	});
+
+export const imageQueryOptions = (id: number) =>
+	queryOptions({
+		queryKey: adminQueryKeys.image(id),
+		queryFn: () => getImage({ data: { id } }),
+	});
+
+export const jobQueryOptions = (id: string) =>
+	queryOptions({
+		queryKey: adminQueryKeys.job(id),
+		queryFn: () => getJob({ data: { id } }),
 	});

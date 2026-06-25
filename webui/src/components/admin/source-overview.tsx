@@ -30,9 +30,10 @@ export function SourceOverview({ source }: { source: SourceDetail }) {
 
 	return (
 		<div className="flex flex-col gap-6">
-			<div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+			<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
 				<Stat label="runs" value={source.stats.run_count} />
 				<Stat label="items discovered" value={source.stats.items_discovered} />
+				<Stat label="images ingested" value={source.stats.images_ingested} />
 				<Stat label="duplicates" value={source.stats.duplicate_count} />
 			</div>
 

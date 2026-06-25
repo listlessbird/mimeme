@@ -14,12 +14,13 @@ import {
 	SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Link, useLocation } from "@tanstack/react-router";
-import { Boxes, ShieldAlert } from "lucide-react";
+import { Boxes, ImageIcon, ShieldAlert } from "lucide-react";
 import type { ReactNode } from "react";
 
 export function AdminShell({ children }: { children: ReactNode }) {
 	const location = useLocation();
 	const onSources = location.pathname.startsWith("/admin/sources");
+	const onImages = location.pathname.startsWith("/admin/images");
 
 	return (
 		<SidebarProvider>
@@ -27,7 +28,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
 				<SidebarHeader>
 					<div className="flex items-center gap-2 px-2 py-1.5">
 						<Boxes className="size-5" />
-						<span className="font-semibold">acquisition admin</span>
+						<span className="font-semibold">mimeme admin</span>
 					</div>
 				</SidebarHeader>
 				<SidebarContent>
@@ -40,6 +41,14 @@ export function AdminShell({ children }: { children: ReactNode }) {
 										<Link to="/admin/sources">
 											<Boxes />
 											<span>sources</span>
+										</Link>
+									</SidebarMenuButton>
+								</SidebarMenuItem>
+								<SidebarMenuItem>
+									<SidebarMenuButton asChild isActive={onImages}>
+										<Link to="/admin/images">
+											<ImageIcon />
+											<span>images</span>
 										</Link>
 									</SidebarMenuButton>
 								</SidebarMenuItem>

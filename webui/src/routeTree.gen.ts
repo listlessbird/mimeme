@@ -15,7 +15,9 @@ import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminSourcesIndexRouteImport } from './routes/admin/sources/index'
+import { Route as AdminImagesIndexRouteImport } from './routes/admin/images/index'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as AdminImagesImageIdRouteImport } from './routes/admin/images/$imageId'
 import { Route as AdminSourcesIdIndexRouteImport } from './routes/admin/sources/$id/index'
 import { Route as AdminSourcesIdRunsRunIdRouteImport } from './routes/admin/sources/$id/runs/$runId'
 
@@ -49,10 +51,20 @@ const AdminSourcesIndexRoute = AdminSourcesIndexRouteImport.update({
   path: '/sources/',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminImagesIndexRoute = AdminImagesIndexRouteImport.update({
+  id: '/images/',
+  path: '/images/',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AdminImagesImageIdRoute = AdminImagesImageIdRouteImport.update({
+  id: '/images/$imageId',
+  path: '/images/$imageId',
+  getParentRoute: () => AdminRouteRoute,
 } as any)
 const AdminSourcesIdIndexRoute = AdminSourcesIdIndexRouteImport.update({
   id: '/sources/$id/',
@@ -71,7 +83,9 @@ export interface FileRoutesByFullPath {
   '/admin-unlock': typeof AdminUnlockRoute
   '/results': typeof ResultsRoute
   '/admin/': typeof AdminIndexRoute
+  '/admin/images/$imageId': typeof AdminImagesImageIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/admin/images/': typeof AdminImagesIndexRoute
   '/admin/sources/': typeof AdminSourcesIndexRoute
   '/admin/sources/$id/': typeof AdminSourcesIdIndexRoute
   '/admin/sources/$id/runs/$runId': typeof AdminSourcesIdRunsRunIdRoute
@@ -81,7 +95,9 @@ export interface FileRoutesByTo {
   '/admin-unlock': typeof AdminUnlockRoute
   '/results': typeof ResultsRoute
   '/admin': typeof AdminIndexRoute
+  '/admin/images/$imageId': typeof AdminImagesImageIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/admin/images': typeof AdminImagesIndexRoute
   '/admin/sources': typeof AdminSourcesIndexRoute
   '/admin/sources/$id': typeof AdminSourcesIdIndexRoute
   '/admin/sources/$id/runs/$runId': typeof AdminSourcesIdRunsRunIdRoute
@@ -93,7 +109,9 @@ export interface FileRoutesById {
   '/admin-unlock': typeof AdminUnlockRoute
   '/results': typeof ResultsRoute
   '/admin/': typeof AdminIndexRoute
+  '/admin/images/$imageId': typeof AdminImagesImageIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/admin/images/': typeof AdminImagesIndexRoute
   '/admin/sources/': typeof AdminSourcesIndexRoute
   '/admin/sources/$id/': typeof AdminSourcesIdIndexRoute
   '/admin/sources/$id/runs/$runId': typeof AdminSourcesIdRunsRunIdRoute
@@ -106,7 +124,9 @@ export interface FileRouteTypes {
     | '/admin-unlock'
     | '/results'
     | '/admin/'
+    | '/admin/images/$imageId'
     | '/api/auth/$'
+    | '/admin/images/'
     | '/admin/sources/'
     | '/admin/sources/$id/'
     | '/admin/sources/$id/runs/$runId'
@@ -116,7 +136,9 @@ export interface FileRouteTypes {
     | '/admin-unlock'
     | '/results'
     | '/admin'
+    | '/admin/images/$imageId'
     | '/api/auth/$'
+    | '/admin/images'
     | '/admin/sources'
     | '/admin/sources/$id'
     | '/admin/sources/$id/runs/$runId'
@@ -127,7 +149,9 @@ export interface FileRouteTypes {
     | '/admin-unlock'
     | '/results'
     | '/admin/'
+    | '/admin/images/$imageId'
     | '/api/auth/$'
+    | '/admin/images/'
     | '/admin/sources/'
     | '/admin/sources/$id/'
     | '/admin/sources/$id/runs/$runId'
@@ -185,12 +209,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSourcesIndexRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/admin/images/': {
+      id: '/admin/images/'
+      path: '/images'
+      fullPath: '/admin/images/'
+      preLoaderRoute: typeof AdminImagesIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
       fullPath: '/api/auth/$'
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/admin/images/$imageId': {
+      id: '/admin/images/$imageId'
+      path: '/images/$imageId'
+      fullPath: '/admin/images/$imageId'
+      preLoaderRoute: typeof AdminImagesImageIdRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     '/admin/sources/$id/': {
       id: '/admin/sources/$id/'
@@ -211,6 +249,8 @@ declare module '@tanstack/react-router' {
 
 interface AdminRouteRouteChildren {
   AdminIndexRoute: typeof AdminIndexRoute
+  AdminImagesImageIdRoute: typeof AdminImagesImageIdRoute
+  AdminImagesIndexRoute: typeof AdminImagesIndexRoute
   AdminSourcesIndexRoute: typeof AdminSourcesIndexRoute
   AdminSourcesIdIndexRoute: typeof AdminSourcesIdIndexRoute
   AdminSourcesIdRunsRunIdRoute: typeof AdminSourcesIdRunsRunIdRoute
@@ -218,6 +258,8 @@ interface AdminRouteRouteChildren {
 
 const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminIndexRoute: AdminIndexRoute,
+  AdminImagesImageIdRoute: AdminImagesImageIdRoute,
+  AdminImagesIndexRoute: AdminImagesIndexRoute,
   AdminSourcesIndexRoute: AdminSourcesIndexRoute,
   AdminSourcesIdIndexRoute: AdminSourcesIdIndexRoute,
   AdminSourcesIdRunsRunIdRoute: AdminSourcesIdRunsRunIdRoute,

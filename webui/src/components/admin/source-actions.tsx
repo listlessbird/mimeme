@@ -11,8 +11,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Spinner } from "@/components/ui/spinner";
 import {
+	adminErrorMessage as errorMessage,
 	adminQueryKeys,
-	AdminApiError,
 	deleteSource,
 	type SourceDetail,
 	triggerRun,
@@ -20,15 +20,12 @@ import {
 } from "@/lib/admin/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Pencil, Play, Power, Trash2 } from "lucide-react";
+import { Pencil, Play, Power, RotateCcw, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
 import { SourceFormSheet } from "./source-form-sheet";
-
-function errorMessage(error: unknown, fallback: string): string {
-	return error instanceof AdminApiError && error.detail ? error.detail : fallback;
-}
+import { useRetrySource } from "./use-source-retry";
 
 export function SourceActions({ source }: { source: SourceDetail }) {
 	const queryClient = useQueryClient();
@@ -52,6 +49,9 @@ export function SourceActions({ source }: { source: SourceDetail }) {
 		},
 		onError: (error) => toast.error(errorMessage(error, "could not start a run")),
 	});
+
+	const retry = useRetrySource(source.id);
+	const failedCount = source.stats.failed_count;
 
 	const toggle = useMutation({
 		mutationFn: () =>
@@ -93,6 +93,17 @@ export function SourceActions({ source }: { source: SourceDetail }) {
 				{run.isPending ? <Spinner data-icon="inline-start" /> : <Play data-icon="inline-start" />}
 				run now
 			</Button>
+
+			{failedCount > 0 ? (
+				<Button variant="outline" onClick={() => retry.mutate()} disabled={retry.isPending}>
+					{retry.isPending ? (
+						<Spinner data-icon="inline-start" />
+					) : (
+						<RotateCcw data-icon="inline-start" />
+					)}
+					retry {failedCount} failed
+				</Button>
+			) : null}
 
 			<Button variant="outline" onClick={() => toggle.mutate()} disabled={toggle.isPending}>
 				<Power data-icon="inline-start" />
