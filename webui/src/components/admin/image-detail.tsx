@@ -2,11 +2,10 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Image } from "@/lib/admin/api";
 import { absoluteTime } from "@/lib/admin/format";
-import { ImageOff } from "lucide-react";
-import { useState } from "react";
 
 import { ProcessingStatusBadge } from "./badges";
 import { IdChip, RawJsonDrawer } from "./dev-toolkit";
+import { ZoomableImage } from "./zoomable-image";
 
 export function ImageDetail({ image }: { image: Image }) {
 	return (
@@ -99,23 +98,13 @@ export function ImageDetail({ image }: { image: Image }) {
 }
 
 function Preview({ url, alt }: { url: string | null; alt: string }) {
-	const [failed, setFailed] = useState(false);
-
-	if (!url || failed) {
-		return (
-			<div className="flex aspect-video w-full items-center justify-center rounded-md border bg-muted text-muted-foreground">
-				<ImageOff className="size-6" />
-			</div>
-		);
-	}
-
 	return (
 		<div className="flex items-center justify-center rounded-md border bg-muted">
-			<img
+			<ZoomableImage
 				src={url}
 				alt={alt}
-				onError={() => setFailed(true)}
 				className="max-h-[70vh] w-auto max-w-full rounded-md object-contain"
+				fallbackClassName="aspect-video w-full"
 			/>
 		</div>
 	);

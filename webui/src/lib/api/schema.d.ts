@@ -316,6 +316,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/ingestion": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Ingestion */
+        get: operations["list_ingestion_ingestion_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ingestion/{ingest_url_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ingestion Attempt */
+        get: operations["get_ingestion_attempt_ingestion__ingest_url_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/ingestion/{ingest_url_id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Ingestion Logs */
+        get: operations["get_ingestion_logs_ingestion__ingest_url_id__logs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -478,6 +529,8 @@ export interface components {
             format?: string | null;
             /** Phash */
             phash?: string | null;
+            /** File Size */
+            file_size?: number | null;
             status: components["schemas"]["ImageStatus"];
             /** Ocr Status */
             ocr_status?: string | null;
@@ -485,6 +538,16 @@ export interface components {
             caption_status?: string | null;
             /** Embed Status */
             embed_status?: string | null;
+            /** Ocr Model */
+            ocr_model?: string | null;
+            /** Caption Model */
+            caption_model?: string | null;
+            /** Embed Model */
+            embed_model?: string | null;
+            /** Embed Dim */
+            embed_dim?: number | null;
+            /** Embed S3 Key */
+            embed_s3_key?: string | null;
             /** Caption */
             caption?: string | null;
             /** Ocr Text */
@@ -530,6 +593,140 @@ export interface components {
             /** Duplicates */
             duplicates: number;
         };
+        /**
+         * IngestOutcome
+         * @enum {string}
+         */
+        IngestOutcome: "ingested" | "deduped" | "failed" | "in_flight";
+        /**
+         * IngestStage
+         * @enum {string}
+         */
+        IngestStage: "QUEUED" | "DOWNLOADING" | "PROCESSING" | "ANNOTATING" | "EMBEDDING" | "COMPLETE" | "DEDUPED";
+        /** IngestionDetailResponse */
+        IngestionDetailResponse: {
+            /** Ingest Url Id */
+            ingest_url_id: number;
+            /** Url */
+            url: string;
+            /** Job Id */
+            job_id: string;
+            /** Source Run Id */
+            source_run_id: number | null;
+            /** Source Id */
+            source_id: number | null;
+            /** Source Name */
+            source_name: string | null;
+            trigger: components["schemas"]["SourceRunTrigger"];
+            stage: components["schemas"]["IngestStage"];
+            status: components["schemas"]["ProcessingStatus"];
+            outcome: components["schemas"]["IngestOutcome"];
+            duplicate_reason: components["schemas"]["DuplicateReason"] | null;
+            /** Duplicate Of Image Id */
+            duplicate_of_image_id: number | null;
+            /** Resolved Image Id */
+            resolved_image_id: number | null;
+            /** Dataset */
+            dataset: string | null;
+            /** Thumbnail Url */
+            thumbnail_url: string | null;
+            /** Error Message */
+            error_message: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Stage Updated At */
+            stage_updated_at: string | null;
+            /** Image Id */
+            image_id: number | null;
+        };
+        /** IngestionListResponse */
+        IngestionListResponse: {
+            /** Rows */
+            rows: components["schemas"]["IngestionRowResponse"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** IngestionLogEntryResponse */
+        IngestionLogEntryResponse: {
+            /** Time */
+            time: string;
+            /** Level */
+            level?: string | null;
+            /** Event */
+            event?: string | null;
+            /** Activity Name */
+            activity_name?: string | null;
+            /** Step */
+            step?: string | null;
+            /** Outcome */
+            outcome?: string | null;
+            /** Duration Ms */
+            duration_ms?: number | null;
+            /** Error */
+            error?: string | null;
+            /** Attempt */
+            attempt?: number | null;
+            /** Workflow Id */
+            workflow_id?: string | null;
+        };
+        /** IngestionLogsResponse */
+        IngestionLogsResponse: {
+            /** Available */
+            available: boolean;
+            /** Workflow Id */
+            workflow_id?: string | null;
+            /** Entries */
+            entries: components["schemas"]["IngestionLogEntryResponse"][];
+        };
+        /** IngestionRowResponse */
+        IngestionRowResponse: {
+            /** Ingest Url Id */
+            ingest_url_id: number;
+            /** Url */
+            url: string;
+            /** Job Id */
+            job_id: string;
+            /** Source Run Id */
+            source_run_id: number | null;
+            /** Source Id */
+            source_id: number | null;
+            /** Source Name */
+            source_name: string | null;
+            trigger: components["schemas"]["SourceRunTrigger"];
+            stage: components["schemas"]["IngestStage"];
+            status: components["schemas"]["ProcessingStatus"];
+            outcome: components["schemas"]["IngestOutcome"];
+            duplicate_reason: components["schemas"]["DuplicateReason"] | null;
+            /** Duplicate Of Image Id */
+            duplicate_of_image_id: number | null;
+            /** Resolved Image Id */
+            resolved_image_id: number | null;
+            /** Dataset */
+            dataset: string | null;
+            /** Thumbnail Url */
+            thumbnail_url: string | null;
+            /** Error Message */
+            error_message: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Stage Updated At */
+            stage_updated_at: string | null;
+        };
+        /**
+         * IngestionView
+         * @enum {string}
+         */
+        IngestionView: "live" | "completed" | "failed" | "all";
         /** JobListResponse */
         JobListResponse: {
             /** Jobs */
@@ -2588,6 +2785,209 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunItemListResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    list_ingestion_ingestion_get: {
+        parameters: {
+            query?: {
+                view?: components["schemas"]["IngestionView"];
+                stage?: components["schemas"]["IngestStage"] | null;
+                trigger?: components["schemas"]["SourceRunTrigger"] | null;
+                source_id?: number | null;
+                dataset?: string | null;
+                outcome?: components["schemas"]["IngestOutcome"] | null;
+                created_from?: string | null;
+                created_to?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionListResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    get_ingestion_attempt_ingestion__ingest_url_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                ingest_url_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionDetailResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    get_ingestion_logs_ingestion__ingest_url_id__logs_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                ingest_url_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IngestionLogsResponse"];
                 };
             };
             /** @description Forbidden */

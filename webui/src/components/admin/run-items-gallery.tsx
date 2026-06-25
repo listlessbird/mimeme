@@ -9,10 +9,10 @@ import { useState } from "react";
 
 import { DedupReasonBadge, IngestStatusBadge } from "./badges";
 import { RawJsonDrawer } from "./dev-toolkit";
-import { ItemThumbnail } from "./item-thumbnail";
 import { PaginationBar } from "./pagination-bar";
 import { ImageIdChip } from "./provenance-chips";
 import { useRetryItem, useRetryRun } from "./use-source-retry";
+import { ZoomableImage } from "./zoomable-image";
 
 export function RunItemsGallery({ sourceId, runId }: { sourceId: number; runId: number }) {
 	const [offset, setOffset] = useState(0);
@@ -96,10 +96,11 @@ function AttemptCard({
 }) {
 	return (
 		<div className="flex gap-3 rounded-md border p-3">
-			<ItemThumbnail
+			<ZoomableImage
 				src={item.thumbnail_url}
 				alt={item.title ?? item.external_item_id ?? item.url}
-				className="size-20 shrink-0"
+				className="size-20 shrink-0 rounded-md border bg-muted object-cover"
+				fallbackClassName="size-20 shrink-0"
 			/>
 			<div className="flex min-w-0 flex-col gap-1.5">
 				<p className="truncate text-sm font-medium" title={item.title ?? undefined}>

@@ -211,7 +211,7 @@ export function ImageIngestDialog() {
 								key={result.response.job_id}
 								className="flex flex-wrap items-center gap-2 text-sm"
 							>
-								<span className="truncate text-muted-foreground">{result.label}</span>
+								<span className="min-w-0 truncate text-muted-foreground">{result.label}</span>
 								<span className="tabular-nums">
 									{result.response.queued} queued · {result.response.duplicates} deduped
 								</span>

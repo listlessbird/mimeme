@@ -15,8 +15,10 @@ import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
 import { Route as AdminSourcesIndexRouteImport } from './routes/admin/sources/index'
+import { Route as AdminIngestionIndexRouteImport } from './routes/admin/ingestion/index'
 import { Route as AdminImagesIndexRouteImport } from './routes/admin/images/index'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as AdminIngestionIngestUrlIdRouteImport } from './routes/admin/ingestion/$ingestUrlId'
 import { Route as AdminImagesImageIdRouteImport } from './routes/admin/images/$imageId'
 import { Route as AdminSourcesIdIndexRouteImport } from './routes/admin/sources/$id/index'
 import { Route as AdminSourcesIdRunsRunIdRouteImport } from './routes/admin/sources/$id/runs/$runId'
@@ -51,6 +53,11 @@ const AdminSourcesIndexRoute = AdminSourcesIndexRouteImport.update({
   path: '/sources/',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminIngestionIndexRoute = AdminIngestionIndexRouteImport.update({
+  id: '/ingestion/',
+  path: '/ingestion/',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const AdminImagesIndexRoute = AdminImagesIndexRouteImport.update({
   id: '/images/',
   path: '/images/',
@@ -61,6 +68,12 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminIngestionIngestUrlIdRoute =
+  AdminIngestionIngestUrlIdRouteImport.update({
+    id: '/ingestion/$ingestUrlId',
+    path: '/ingestion/$ingestUrlId',
+    getParentRoute: () => AdminRouteRoute,
+  } as any)
 const AdminImagesImageIdRoute = AdminImagesImageIdRouteImport.update({
   id: '/images/$imageId',
   path: '/images/$imageId',
@@ -84,8 +97,10 @@ export interface FileRoutesByFullPath {
   '/results': typeof ResultsRoute
   '/admin/': typeof AdminIndexRoute
   '/admin/images/$imageId': typeof AdminImagesImageIdRoute
+  '/admin/ingestion/$ingestUrlId': typeof AdminIngestionIngestUrlIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/admin/images/': typeof AdminImagesIndexRoute
+  '/admin/ingestion/': typeof AdminIngestionIndexRoute
   '/admin/sources/': typeof AdminSourcesIndexRoute
   '/admin/sources/$id/': typeof AdminSourcesIdIndexRoute
   '/admin/sources/$id/runs/$runId': typeof AdminSourcesIdRunsRunIdRoute
@@ -96,8 +111,10 @@ export interface FileRoutesByTo {
   '/results': typeof ResultsRoute
   '/admin': typeof AdminIndexRoute
   '/admin/images/$imageId': typeof AdminImagesImageIdRoute
+  '/admin/ingestion/$ingestUrlId': typeof AdminIngestionIngestUrlIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/admin/images': typeof AdminImagesIndexRoute
+  '/admin/ingestion': typeof AdminIngestionIndexRoute
   '/admin/sources': typeof AdminSourcesIndexRoute
   '/admin/sources/$id': typeof AdminSourcesIdIndexRoute
   '/admin/sources/$id/runs/$runId': typeof AdminSourcesIdRunsRunIdRoute
@@ -110,8 +127,10 @@ export interface FileRoutesById {
   '/results': typeof ResultsRoute
   '/admin/': typeof AdminIndexRoute
   '/admin/images/$imageId': typeof AdminImagesImageIdRoute
+  '/admin/ingestion/$ingestUrlId': typeof AdminIngestionIngestUrlIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/admin/images/': typeof AdminImagesIndexRoute
+  '/admin/ingestion/': typeof AdminIngestionIndexRoute
   '/admin/sources/': typeof AdminSourcesIndexRoute
   '/admin/sources/$id/': typeof AdminSourcesIdIndexRoute
   '/admin/sources/$id/runs/$runId': typeof AdminSourcesIdRunsRunIdRoute
@@ -125,8 +144,10 @@ export interface FileRouteTypes {
     | '/results'
     | '/admin/'
     | '/admin/images/$imageId'
+    | '/admin/ingestion/$ingestUrlId'
     | '/api/auth/$'
     | '/admin/images/'
+    | '/admin/ingestion/'
     | '/admin/sources/'
     | '/admin/sources/$id/'
     | '/admin/sources/$id/runs/$runId'
@@ -137,8 +158,10 @@ export interface FileRouteTypes {
     | '/results'
     | '/admin'
     | '/admin/images/$imageId'
+    | '/admin/ingestion/$ingestUrlId'
     | '/api/auth/$'
     | '/admin/images'
+    | '/admin/ingestion'
     | '/admin/sources'
     | '/admin/sources/$id'
     | '/admin/sources/$id/runs/$runId'
@@ -150,8 +173,10 @@ export interface FileRouteTypes {
     | '/results'
     | '/admin/'
     | '/admin/images/$imageId'
+    | '/admin/ingestion/$ingestUrlId'
     | '/api/auth/$'
     | '/admin/images/'
+    | '/admin/ingestion/'
     | '/admin/sources/'
     | '/admin/sources/$id/'
     | '/admin/sources/$id/runs/$runId'
@@ -209,6 +234,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminSourcesIndexRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/admin/ingestion/': {
+      id: '/admin/ingestion/'
+      path: '/ingestion'
+      fullPath: '/admin/ingestion/'
+      preLoaderRoute: typeof AdminIngestionIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     '/admin/images/': {
       id: '/admin/images/'
       path: '/images'
@@ -222,6 +254,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/api/auth/$'
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/admin/ingestion/$ingestUrlId': {
+      id: '/admin/ingestion/$ingestUrlId'
+      path: '/ingestion/$ingestUrlId'
+      fullPath: '/admin/ingestion/$ingestUrlId'
+      preLoaderRoute: typeof AdminIngestionIngestUrlIdRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     '/admin/images/$imageId': {
       id: '/admin/images/$imageId'
@@ -250,7 +289,9 @@ declare module '@tanstack/react-router' {
 interface AdminRouteRouteChildren {
   AdminIndexRoute: typeof AdminIndexRoute
   AdminImagesImageIdRoute: typeof AdminImagesImageIdRoute
+  AdminIngestionIngestUrlIdRoute: typeof AdminIngestionIngestUrlIdRoute
   AdminImagesIndexRoute: typeof AdminImagesIndexRoute
+  AdminIngestionIndexRoute: typeof AdminIngestionIndexRoute
   AdminSourcesIndexRoute: typeof AdminSourcesIndexRoute
   AdminSourcesIdIndexRoute: typeof AdminSourcesIdIndexRoute
   AdminSourcesIdRunsRunIdRoute: typeof AdminSourcesIdRunsRunIdRoute
@@ -259,7 +300,9 @@ interface AdminRouteRouteChildren {
 const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminIndexRoute: AdminIndexRoute,
   AdminImagesImageIdRoute: AdminImagesImageIdRoute,
+  AdminIngestionIngestUrlIdRoute: AdminIngestionIngestUrlIdRoute,
   AdminImagesIndexRoute: AdminImagesIndexRoute,
+  AdminIngestionIndexRoute: AdminIngestionIndexRoute,
   AdminSourcesIndexRoute: AdminSourcesIndexRoute,
   AdminSourcesIdIndexRoute: AdminSourcesIdIndexRoute,
   AdminSourcesIdRunsRunIdRoute: AdminSourcesIdRunsRunIdRoute,

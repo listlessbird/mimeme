@@ -52,6 +52,14 @@ export type JobResult =
 export type Job = Omit<Schemas["JobResponse"], "result"> & {
 	result?: JobResult | null;
 };
+export type IngestionRow = Schemas["IngestionRowResponse"];
+export type IngestionListResponse = Schemas["IngestionListResponse"];
+export type IngestionDetail = Schemas["IngestionDetailResponse"];
+export type IngestionView = Schemas["IngestionView"];
+export type IngestStage = Schemas["IngestStage"];
+export type IngestOutcome = Schemas["IngestOutcome"];
+export type IngestionLogs = Schemas["IngestionLogsResponse"];
+export type IngestionLogEntry = Schemas["IngestionLogEntryResponse"];
 
 export const IMAGE_STATUSES: ImageStatus[] = [
 	"pending",
@@ -324,6 +332,65 @@ export const uploadImageFile = createServerFn({ method: "POST" })
 		}
 	});
 
+export interface IngestionListParams {
+	view: IngestionView;
+	stage?: IngestStage | null;
+	trigger?: SourceRunTrigger | null;
+	source_id?: number | null;
+	dataset?: string | null;
+	outcome?: IngestOutcome | null;
+	created_from?: string | null;
+	created_to?: string | null;
+	limit?: number;
+	offset?: number;
+}
+
+export const listIngestion = createServerFn({ method: "GET" })
+	.inputValidator((input: IngestionListParams) => input)
+	.handler(({ data }) =>
+		callAdmin<IngestionListResponse>("list_ingestion", (c) =>
+			c.GET("/ingestion", {
+				params: {
+					query: {
+						view: data.view,
+						stage: data.stage ?? undefined,
+						trigger: data.trigger ?? undefined,
+						source_id: data.source_id ?? undefined,
+						dataset: data.dataset || undefined,
+						outcome: data.outcome ?? undefined,
+						created_from: data.created_from ?? undefined,
+						created_to: data.created_to ?? undefined,
+						limit: data.limit,
+						offset: data.offset,
+					},
+				},
+			}),
+		),
+	);
+
+export const getIngestionAttempt = createServerFn({ method: "GET" })
+	.inputValidator((input: { id: number }) => input)
+	.handler(({ data }) =>
+		callAdmin<IngestionDetail>("get_ingestion_attempt", (c) =>
+			c.GET("/ingestion/{ingest_url_id}", {
+				params: { path: { ingest_url_id: data.id } },
+			}),
+		),
+	);
+
+export const getIngestionLogs = createServerFn({ method: "GET" })
+	.inputValidator((input: { id: number; limit?: number }) => input)
+	.handler(({ data }) =>
+		callAdmin<IngestionLogs>("get_ingestion_logs", (c) =>
+			c.GET("/ingestion/{ingest_url_id}/logs", {
+				params: {
+					path: { ingest_url_id: data.id },
+					query: { limit: data.limit },
+				},
+			}),
+		),
+	);
+
 export const getImage = createServerFn({ method: "GET" })
 	.inputValidator((input: { id: number }) => input)
 	.handler(({ data }) =>
@@ -349,6 +416,7 @@ export const SOURCE_DETAIL_POLL_MS = 10_000;
 export const ITEMS_PAGE_SIZE = 24;
 export const IMAGES_PAGE_SIZE = 24;
 export const JOB_POLL_MS = 2_000;
+export const INGESTION_POLL_MS = 2_000;
 
 export const adminQueryKeys = {
 	sources: ["admin", "sources"] as const,
@@ -363,6 +431,9 @@ export const adminQueryKeys = {
 	images: (params: ImageListParams) => ["admin", "images", params] as const,
 	image: (id: number) => ["admin", "image", id] as const,
 	job: (id: string) => ["admin", "job", id] as const,
+	ingestion: (params: IngestionListParams) => ["admin", "ingestion", params] as const,
+	ingestionAttempt: (id: number) => ["admin", "ingestion", "attempt", id] as const,
+	ingestionLogs: (id: number) => ["admin", "ingestion", "attempt", id, "logs"] as const,
 };
 
 export const sourcesQueryOptions = () =>
@@ -412,4 +483,24 @@ export const jobQueryOptions = (id: string) =>
 	queryOptions({
 		queryKey: adminQueryKeys.job(id),
 		queryFn: () => getJob({ data: { id } }),
+	});
+
+export const ingestionQueryOptions = (params: IngestionListParams, { poll }: { poll: boolean }) =>
+	queryOptions({
+		queryKey: adminQueryKeys.ingestion(params),
+		queryFn: () => listIngestion({ data: params }),
+		refetchInterval: poll ? INGESTION_POLL_MS : false,
+	});
+
+export const ingestionAttemptQueryOptions = (id: number) =>
+	queryOptions({
+		queryKey: adminQueryKeys.ingestionAttempt(id),
+		queryFn: () => getIngestionAttempt({ data: { id } }),
+	});
+
+export const ingestionLogsQueryOptions = (id: number, { poll }: { poll: boolean }) =>
+	queryOptions({
+		queryKey: adminQueryKeys.ingestionLogs(id),
+		queryFn: () => getIngestionLogs({ data: { id } }),
+		refetchInterval: poll ? INGESTION_POLL_MS : false,
 	});

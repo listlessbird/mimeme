@@ -2,12 +2,15 @@ import { Badge } from "@/components/ui/badge";
 import type {
 	DuplicateReason,
 	ImageStatus,
+	IngestOutcome,
+	IngestStage,
 	JobStatus,
 	ProcessingStatus,
 	SourceItemIngestState,
 	SourceRunStatus,
 	SourceRunTrigger,
 } from "@/lib/admin/api";
+import { cn } from "@/lib/utils";
 
 type BadgeVariant = "default" | "secondary" | "destructive" | "outline";
 
@@ -95,5 +98,38 @@ const INGEST_STATE_META: Record<SourceItemIngestState, { variant: BadgeVariant; 
 
 export function IngestStateBadge({ state }: { state: SourceItemIngestState }) {
 	const meta = INGEST_STATE_META[state];
+	return <Badge variant={meta.variant}>{meta.label}</Badge>;
+}
+
+const STAGE_VARIANT: Record<IngestStage, BadgeVariant> = {
+	QUEUED: "outline",
+	DOWNLOADING: "secondary",
+	PROCESSING: "secondary",
+	ANNOTATING: "secondary",
+	EMBEDDING: "secondary",
+	COMPLETE: "default",
+	DEDUPED: "secondary",
+};
+
+export function StageBadge({ stage, frozen }: { stage: IngestStage; frozen?: boolean }) {
+	return (
+		<Badge
+			variant={frozen ? "outline" : STAGE_VARIANT[stage]}
+			className={cn("font-mono", frozen && "border-destructive/40 text-destructive")}
+		>
+			{stage.toLowerCase()}
+		</Badge>
+	);
+}
+
+const OUTCOME_META: Record<IngestOutcome, { variant: BadgeVariant; label: string }> = {
+	ingested: { variant: "default", label: "ingested" },
+	deduped: { variant: "secondary", label: "deduped" },
+	failed: { variant: "destructive", label: "failed" },
+	in_flight: { variant: "secondary", label: "in-flight" },
+};
+
+export function IngestOutcomeBadge({ outcome }: { outcome: IngestOutcome }) {
+	const meta = OUTCOME_META[outcome];
 	return <Badge variant={meta.variant}>{meta.label}</Badge>;
 }

@@ -14,13 +14,14 @@ import {
 	SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Link, useLocation } from "@tanstack/react-router";
-import { Boxes, ImageIcon, ShieldAlert } from "lucide-react";
+import { Activity, Boxes, ImageIcon, ShieldAlert } from "lucide-react";
 import type { ReactNode } from "react";
 
 export function AdminShell({ children }: { children: ReactNode }) {
 	const location = useLocation();
 	const onSources = location.pathname.startsWith("/admin/sources");
 	const onImages = location.pathname.startsWith("/admin/images");
+	const onIngestion = location.pathname.startsWith("/admin/ingestion");
 
 	return (
 		<SidebarProvider>
@@ -49,6 +50,14 @@ export function AdminShell({ children }: { children: ReactNode }) {
 										<Link to="/admin/images">
 											<ImageIcon />
 											<span>images</span>
+										</Link>
+									</SidebarMenuButton>
+								</SidebarMenuItem>
+								<SidebarMenuItem>
+									<SidebarMenuButton asChild isActive={onIngestion}>
+										<Link to="/admin/ingestion">
+											<Activity />
+											<span>ingestion</span>
 										</Link>
 									</SidebarMenuButton>
 								</SidebarMenuItem>
