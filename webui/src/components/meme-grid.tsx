@@ -1,58 +1,64 @@
-
-import { useState } from "react"
-import { motion, AnimatePresence, useReducedMotion } from "motion/react"
-import { MemeCard } from "@/components/meme-card"
-import { MemeModal } from "@/components/meme-modal"
-import type { SearchResponse, SearchResult } from "@/lib/api"
+import { MemeCard } from "@/components/meme-card";
+import { MemeModal } from "@/components/meme-modal";
+import type { SearchResponse, SearchResult } from "@/lib/api";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
+import { useCallback, useState } from "react";
 
 interface MemeGridProps {
-    data: SearchResponse
+	data: SearchResponse;
 }
 
+const easeOutQuint = [0.23, 1, 0.32, 1] as const;
+const emptyInitial = { opacity: 0, y: 8 };
+const emptyAnimate = { opacity: 1, y: 0 };
+const emptyTransition = { duration: 0.25, ease: easeOutQuint };
+const gridVariants = {
+	hidden: {},
+	show: { transition: { staggerChildren: 0.04 } },
+};
+const gridVariantsReduced = {
+	hidden: {},
+	show: { transition: { staggerChildren: 0 } },
+};
+
 export function MemeGrid({ data }: MemeGridProps) {
-    const [selectedMeme, setSelectedMeme] = useState<SearchResult | null>(null)
-    const shouldReduceMotion = useReducedMotion()
+	const [selectedMeme, setSelectedMeme] = useState<SearchResult | null>(null);
+	const shouldReduceMotion = useReducedMotion();
 
-    if (data.results.length === 0) {
-        return (
-            <motion.div
-                className="text-center py-20 text-muted-foreground text-sm"
-                initial={shouldReduceMotion ? false : { opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.25, ease: [0.23, 1, 0.32, 1] }}
-            >
-                <p>no results for "{data.query}"</p>
-                <p className="mt-2 text-xs">try shorter phrases or different keywords</p>
-            </motion.div>
-        )
-    }
+	const handleSelect = useCallback((meme: SearchResult) => setSelectedMeme(meme), []);
+	const handleClose = useCallback(() => setSelectedMeme(null), []);
 
-    return (
-        <>
-            <motion.div
-                className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"
-                key={data.query}
-                initial="hidden"
-                animate="show"
-                variants={{
-                    hidden: {},
-                    show: {
-                        transition: {
-                            staggerChildren: shouldReduceMotion ? 0 : 0.04,
-                        },
-                    },
-                }}
-            >
-                {data.results.map((meme) => (
-                    <MemeCard key={meme.id} meme={meme} onClick={() => setSelectedMeme(meme)} />
-                ))}
-            </motion.div>
+	if (data.results.length === 0) {
+		return (
+			<motion.div
+				className="py-20 text-center text-sm text-muted-foreground"
+				initial={shouldReduceMotion ? false : emptyInitial}
+				animate={emptyAnimate}
+				transition={emptyTransition}
+			>
+				<p>no results for "{data.query}"</p>
+				<p className="mt-2 text-xs">try shorter phrases or different keywords</p>
+			</motion.div>
+		);
+	}
 
-            <AnimatePresence>
-                {selectedMeme && (
-                    <MemeModal meme={selectedMeme} onClose={() => setSelectedMeme(null)} />
-                )}
-            </AnimatePresence>
-        </>
-    )
+	return (
+		<>
+			<motion.div
+				className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4"
+				key={data.query}
+				initial="hidden"
+				animate="show"
+				variants={shouldReduceMotion ? gridVariantsReduced : gridVariants}
+			>
+				{data.results.map((meme) => (
+					<MemeCard key={meme.id} meme={meme} onSelect={handleSelect} />
+				))}
+			</motion.div>
+
+			<AnimatePresence>
+				{selectedMeme && <MemeModal meme={selectedMeme} onClose={handleClose} />}
+			</AnimatePresence>
+		</>
+	);
 }

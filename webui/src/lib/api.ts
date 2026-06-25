@@ -1,29 +1,33 @@
-import { infiniteQueryOptions } from "@tanstack/react-query";
-import { createServerFn } from "@tanstack/react-start";
 import { env } from "@/env";
 import { logInfo, serializeError } from "@/lib/observability";
+import { infiniteQueryOptions } from "@tanstack/react-query";
+import { createServerFn } from "@tanstack/react-start";
+import { z } from "zod";
 
 export const SEARCH_RESULT_LIMIT = 40;
 
-export interface SearchResult {
-	id: number;
-	sha256: string;
-	score: number;
-	url: string;
-	caption: string;
-	ocr_text: string;
-	width: number;
-	height: number;
-}
+const searchResultSchema = z.object({
+	id: z.number(),
+	sha256: z.string(),
+	score: z.number(),
+	url: z.string(),
+	caption: z.string(),
+	ocr_text: z.string(),
+	width: z.number(),
+	height: z.number(),
+});
 
-export interface SearchResponse {
-	query: string;
-	results: SearchResult[];
-	total: number;
-	limit: number;
-	offset: number;
-	search_time_ms: number;
-}
+const searchResponseSchema = z.object({
+	query: z.string(),
+	results: z.array(searchResultSchema),
+	total: z.number(),
+	limit: z.number(),
+	offset: z.number(),
+	search_time_ms: z.number(),
+});
+
+export type SearchResult = z.infer<typeof searchResultSchema>;
+export type SearchResponse = z.infer<typeof searchResponseSchema>;
 
 export const searchMemesInfiniteQueryOptions = (q: string) =>
 	infiniteQueryOptions({
@@ -59,9 +63,7 @@ class SearchApiError extends Error {
 }
 
 export const searchMemes = createServerFn({ method: "GET" })
-	.inputValidator(
-		(input: { q: string; limit?: number; offset?: number }) => input,
-	)
+	.inputValidator((input: { q: string; limit?: number; offset?: number }) => input)
 	.handler(async ({ data }) => {
 		const start = Date.now();
 		const requestId = crypto.randomUUID();
@@ -103,7 +105,7 @@ export const searchMemes = createServerFn({ method: "GET" })
 				});
 			}
 
-			const payload = (await res.json()) as SearchResponse;
+			const payload = searchResponseSchema.parse(await res.json());
 			wideEvent.outcome = "success";
 			wideEvent.result_count = payload.results.length;
 			wideEvent.search_time_ms = payload.search_time_ms;

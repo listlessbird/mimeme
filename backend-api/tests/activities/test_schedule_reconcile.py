@@ -83,7 +83,9 @@ async def test_reconcile_converges_a_divergent_store_and_is_idempotent() -> None
             ExistingSchedule(schedule_id="source-sync-2", cron="0 * * * *", paused=False),
             ExistingSchedule(schedule_id="source-sync-3", cron="0 * * * *", paused=False),
             ExistingSchedule(schedule_id="source-sync-4", cron="0 * * * *", paused=False),
-            ExistingSchedule(schedule_id="source-sync-99", cron="0 * * * *", paused=False),  # orphan
+            ExistingSchedule(
+                schedule_id="source-sync-99", cron="0 * * * *", paused=False
+            ),  # orphan
         ]
     )
 
@@ -91,10 +93,18 @@ async def test_reconcile_converges_a_divergent_store_and_is_idempotent() -> None
 
     converged = _by_id(await store.list_existing())
     assert converged == {
-        "source-sync-1": ExistingSchedule(schedule_id="source-sync-1", cron="0 * * * *", paused=False),
-        "source-sync-2": ExistingSchedule(schedule_id="source-sync-2", cron="*/30 * * * *", paused=False),
-        "source-sync-3": ExistingSchedule(schedule_id="source-sync-3", cron="0 * * * *", paused=True),
-        "source-sync-4": ExistingSchedule(schedule_id="source-sync-4", cron="0 * * * *", paused=False),
+        "source-sync-1": ExistingSchedule(
+            schedule_id="source-sync-1", cron="0 * * * *", paused=False
+        ),
+        "source-sync-2": ExistingSchedule(
+            schedule_id="source-sync-2", cron="*/30 * * * *", paused=False
+        ),
+        "source-sync-3": ExistingSchedule(
+            schedule_id="source-sync-3", cron="0 * * * *", paused=True
+        ),
+        "source-sync-4": ExistingSchedule(
+            schedule_id="source-sync-4", cron="0 * * * *", paused=False
+        ),
     }
 
     # Idempotency: the second pass plans nothing, so the state is unchanged.

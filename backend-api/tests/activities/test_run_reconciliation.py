@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
-from tests.activities.test_schedule_reconcile import FakeScheduleStore, _by_id
-from tests.factories import create_ingestion_source
 
 from activities.scheduling.reconcile import run_reconciliation
 from domain.source_schedule_reconcile import ExistingSchedule
+from tests.activities.test_schedule_reconcile import FakeScheduleStore, _by_id
+from tests.factories import create_ingestion_source
 
 
 async def test_run_reconciliation_converges_temporal_to_the_live_sources(

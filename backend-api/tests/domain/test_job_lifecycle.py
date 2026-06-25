@@ -11,7 +11,14 @@ from domain.job_lifecycle import (
     JobLifecycleInvalidStateError,
     JobLifecycleNotFoundError,
 )
-from shared.models.orm import DuplicateReason, IngestURL, JobStatus, JobType, ProcessingStatus
+from shared.models.orm import (
+    DuplicateReason,
+    IngestStage,
+    IngestURL,
+    JobStatus,
+    JobType,
+    ProcessingStatus,
+)
 
 
 def test_create_ingest_job_deduplicates_urls_and_preserves_order(db_session: Session) -> None:
@@ -272,3 +279,77 @@ def test_mark_ingest_url_done_leaves_provenance_null_for_new_image(db_session: S
     db_session.refresh(url)
     assert url.duplicate_reason is None
     assert url.duplicate_of_image_id is None
+
+
+def test_new_ingest_url_defaults_to_queued_stage(db_session: Session) -> None:
+    job = create_job(session=db_session)
+    url = create_ingest_url(session=db_session, job=job)
+    db_session.flush()
+
+    db_session.refresh(url)
+    assert url.stage == IngestStage.QUEUED
+    assert url.stage_updated_at is None
+
+
+def test_record_stage_sets_stage_and_timestamp(db_session: Session) -> None:
+    job = create_job(session=db_session)
+    url = create_ingest_url(session=db_session, job=job)
+    db_session.flush()
+
+    found = JobLifecycle(db_session).record_stage(url.id, IngestStage.DOWNLOADING)
+
+    db_session.refresh(url)
+    assert found is True
+    assert url.stage == IngestStage.DOWNLOADING
+    assert url.stage_updated_at is not None
+
+
+def test_record_stage_missing_url_returns_false(db_session: Session) -> None:
+    assert JobLifecycle(db_session).record_stage(999999, IngestStage.DOWNLOADING) is False
+
+
+def test_record_stage_advances_through_happy_path(db_session: Session) -> None:
+    job = create_job(session=db_session)
+    url = create_ingest_url(session=db_session, job=job)
+    db_session.flush()
+    lifecycle = JobLifecycle(db_session)
+
+    for stage in (
+        IngestStage.DOWNLOADING,
+        IngestStage.PROCESSING,
+        IngestStage.ANNOTATING,
+        IngestStage.EMBEDDING,
+        IngestStage.COMPLETE,
+    ):
+        lifecycle.record_stage(url.id, stage)
+        db_session.refresh(url)
+        assert url.stage == stage
+
+
+def test_record_stage_deduped_is_terminal(db_session: Session) -> None:
+    job = create_job(session=db_session)
+    url = create_ingest_url(session=db_session, job=job)
+    db_session.flush()
+    lifecycle = JobLifecycle(db_session)
+
+    lifecycle.record_stage(url.id, IngestStage.PROCESSING)
+    lifecycle.record_stage(url.id, IngestStage.DEDUPED)
+
+    db_session.refresh(url)
+    assert url.stage == IngestStage.DEDUPED
+
+
+def test_failure_freezes_stage_and_never_sets_failed(db_session: Session) -> None:
+    """A failed attempt leaves `stage` frozen; failure lives in status/error."""
+    job = create_job(session=db_session)
+    url = create_ingest_url(session=db_session, job=job)
+    db_session.flush()
+    lifecycle = JobLifecycle(db_session)
+
+    lifecycle.record_stage(url.id, IngestStage.ANNOTATING)
+    lifecycle.mark_ingest_url_failed(url.id, "boom")
+
+    db_session.refresh(url)
+    assert url.stage == IngestStage.ANNOTATING
+    assert url.status == ProcessingStatus.FAILED
+    assert url.error_message == "boom"

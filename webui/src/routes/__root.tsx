@@ -1,18 +1,16 @@
-import { useEffect } from "react";
-import { TanStackDevtools } from "@tanstack/react-devtools";
-import type { QueryClient } from "@tanstack/react-query";
-import {
-	createRootRouteWithContext,
-	HeadContent,
-	Scripts,
-} from "@tanstack/react-router";
-import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
-import { NuqsAdapter } from "nuqs/adapters/tanstack-router";
-
 import { ErrorState } from "@/components/error-state";
 import { logError, logInfo, serializeError } from "@/lib/observability";
-import appCss from "@/styles.css?url";
+import { TanStackDevtools } from "@tanstack/react-devtools";
+import type { QueryClient } from "@tanstack/react-query";
+import { createRootRouteWithContext, HeadContent, Scripts } from "@tanstack/react-router";
+import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
+import { Agentation } from "agentation";
+import { NuqsAdapter } from "nuqs/adapters/tanstack-router";
+import { useEffect } from "react";
+
 import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
+
+import appCss from "@/styles.css?url";
 
 interface MyRouterContext {
 	queryClient: QueryClient;
@@ -69,13 +67,12 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 });
 
 function RootDocument({ children }: { children: React.ReactNode }) {
-  useEffect(() => {
-    if (import.meta.env.DEV) {
-      void import("react-grab");
-      void import("@react-grab/mcp/client");
-    }
-  }, []);
-
+	useEffect(() => {
+		if (import.meta.env.DEV) {
+			void import("react-grab");
+			void import("@react-grab/mcp/client");
+		}
+	}, []);
 
 	return (
 		<html lang="en">
@@ -86,7 +83,7 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 				<NuqsAdapter>{children}</NuqsAdapter>
 				<TanStackDevtools
 					config={{
-						position: "bottom-right",
+						position: "bottom-left",
 					}}
 					plugins={[
 						{
@@ -96,19 +93,14 @@ function RootDocument({ children }: { children: React.ReactNode }) {
 						TanStackQueryDevtools,
 					]}
 				/>
+				{import.meta.env.DEV && <Agentation />}
 				<Scripts />
 			</body>
 		</html>
 	);
 }
 
-function RootErrorComponent({
-	error,
-	reset,
-}: {
-	error: unknown;
-	reset: () => void;
-}) {
+function RootErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
 	logError("route.root.error", {
 		route: "root",
 		outcome: "error",
@@ -134,10 +126,7 @@ function RootNotFoundComponent() {
 
 	return (
 		<RootDocument>
-			<ErrorState
-				title="page not found"
-				detail="the route you requested does not exist."
-			/>
+			<ErrorState title="page not found" detail="the route you requested does not exist." />
 		</RootDocument>
 	);
 }

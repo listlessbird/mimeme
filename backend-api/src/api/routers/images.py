@@ -1,9 +1,10 @@
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 
 from api.auth import AdminRequired
 from api.deps import DbSession, StorageDep, TemporalClientDep
+from api.models.errors import error_responses
 from api.models.images import (
     ImageIngestRequest,
     ImageIngestResponse,
@@ -13,29 +14,26 @@ from api.models.images import (
 )
 from api.rate_limit import ADMIN_LIMIT, limiter
 from domain.image_catalog import ImageCatalog, ImageCatalogNotFoundError
+from domain.image_upload import ImageUploadStager
 from domain.job_lifecycle import JobLifecycle
 from shared.config import settings
 from workflows import IngestWorkflow, IngestWorkflowInput
 
-router = APIRouter(prefix="/images", tags=["Images"])
+router = APIRouter(prefix="/images", tags=["Images"], responses=error_responses(403, 429, 500))
 
 
-@router.post("", response_model=ImageIngestResponse, status_code=202)
-@limiter.limit(ADMIN_LIMIT)
-async def ingest_images(
-    request: Request,
-    _auth: AdminRequired,
-    ingest_request: ImageIngestRequest,
+async def _launch_ingest(
     db: DbSession,
     temporal: TemporalClientDep,
+    *,
+    urls: list[str],
+    dataset: str | None,
+    tags: list[str],
+    callback_url: str | None,
 ) -> ImageIngestResponse:
-    urls = [str(url) for url in ingest_request.urls]
     lifecycle = JobLifecycle(db)
     job = lifecycle.create_ingest_job(
-        urls=urls,
-        dataset=ingest_request.dataset,
-        tags=ingest_request.tags,
-        callback_url=str(ingest_request.callback_url) if ingest_request.callback_url else None,
+        urls=urls, dataset=dataset, tags=tags, callback_url=callback_url
     )
 
     await temporal.start_workflow(
@@ -56,6 +54,55 @@ async def ingest_images(
         queued=job.queued,
         duplicates=job.duplicates,
         message=f"Queued {job.queued} images for processing",
+    )
+
+
+@router.post("", response_model=ImageIngestResponse, status_code=202)
+@limiter.limit(ADMIN_LIMIT)
+async def ingest_images(
+    request: Request,
+    _auth: AdminRequired,
+    ingest_request: ImageIngestRequest,
+    db: DbSession,
+    temporal: TemporalClientDep,
+) -> ImageIngestResponse:
+    return await _launch_ingest(
+        db,
+        temporal,
+        urls=[str(url) for url in ingest_request.urls],
+        dataset=ingest_request.dataset,
+        tags=ingest_request.tags,
+        callback_url=str(ingest_request.callback_url) if ingest_request.callback_url else None,
+    )
+
+
+@router.post("/upload", response_model=ImageIngestResponse, status_code=202)
+@limiter.limit(ADMIN_LIMIT)
+async def upload_image(
+    request: Request,
+    _auth: AdminRequired,
+    db: DbSession,
+    storage: StorageDep,
+    temporal: TemporalClientDep,
+    file: Annotated[UploadFile, File()],
+    dataset: Annotated[str | None, Form()] = None,
+    tags: Annotated[list[str] | None, Form()] = None,
+) -> ImageIngestResponse:
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+
+    staged = ImageUploadStager(storage).stage(
+        content=content, filename=file.filename, content_type=file.content_type
+    )
+
+    return await _launch_ingest(
+        db,
+        temporal,
+        urls=[staged.url],
+        dataset=dataset,
+        tags=tags or [],
+        callback_url=None,
     )
 
 
@@ -95,7 +142,7 @@ async def list_images(
     )
 
 
-@router.get("/{image_id}", response_model=ImageResponse)
+@router.get("/{image_id}", response_model=ImageResponse, responses=error_responses(404))
 async def get_image(
     _auth: AdminRequired,
     image_id: int,
@@ -111,7 +158,7 @@ async def get_image(
     return ImageResponse.model_construct(**payload)
 
 
-@router.delete("/{image_id}", status_code=204)
+@router.delete("/{image_id}", status_code=204, responses=error_responses(404))
 async def delete_image(
     _auth: AdminRequired,
     image_id: int,

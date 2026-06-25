@@ -49,3 +49,15 @@ class SourceSyncWorkflowOutput(BaseModel):
     duplicate: int
     failed: int
     ingest_job_id: str | None = None
+
+
+class SourceRetryWorkflowInput(BaseModel):
+    job_id: str
+    source_run_ids: list[int]
+    dataset: str | None = None
+
+
+class SourceRetryWorkflowOutput(BaseModel):
+    job_id: str
+    source_run_ids: list[int]
+    statuses: list[SourceRunStatus]

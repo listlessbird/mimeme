@@ -22,6 +22,7 @@ from .models import (
     IngestUrlItem,
     MarkIngestUrlDoneInput,
     MarkIngestUrlFailedInput,
+    RecordIngestStageInput,
     SaveAnnotationsInput,
     SaveEmbeddingInfoInput,
     StartRebuildJobInput,
@@ -56,6 +57,34 @@ def ingest_initialize_activity(job_id: str) -> IngestInitOutput:
             started_at=started,
             outcome="error",
             job_id=job_id,
+            error=str(exc),
+        )
+        raise
+
+
+@activity.defn
+def record_ingest_stage_activity(input: RecordIngestStageInput) -> None:
+    started = time.monotonic()
+    try:
+        with session_scope() as session:
+            found = JobLifecycle(session).record_stage(input.ingest_url_id, input.stage)
+        emit_activity_event(
+            log=log,
+            activity_name="record_ingest_stage_activity",
+            started_at=started,
+            outcome="success",
+            ingest_url_id=input.ingest_url_id,
+            stage=input.stage.value,
+            found=found,
+        )
+    except Exception as exc:
+        emit_activity_event(
+            log=log,
+            activity_name="record_ingest_stage_activity",
+            started_at=started,
+            outcome="error",
+            ingest_url_id=input.ingest_url_id,
+            stage=input.stage.value,
             error=str(exc),
         )
         raise

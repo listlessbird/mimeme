@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from shared.models import DuplicateReason
+from shared.models import DuplicateReason, IngestStage
 
 
 class IngestUrlItem(BaseModel):
     id: int
     url: str
+
+
+class RecordIngestStageInput(BaseModel):
+    ingest_url_id: int
+    stage: IngestStage
 
 
 class IngestInitOutput(BaseModel):

@@ -10,12 +10,32 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as ResultsRouteImport } from './routes/results'
+import { Route as AdminUnlockRouteImport } from './routes/admin-unlock'
+import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AdminIndexRouteImport } from './routes/admin/index'
+import { Route as AdminSourcesIndexRouteImport } from './routes/admin/sources/index'
+import { Route as AdminIngestionIndexRouteImport } from './routes/admin/ingestion/index'
+import { Route as AdminImagesIndexRouteImport } from './routes/admin/images/index'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as AdminIngestionIngestUrlIdRouteImport } from './routes/admin/ingestion/$ingestUrlId'
+import { Route as AdminImagesImageIdRouteImport } from './routes/admin/images/$imageId'
+import { Route as AdminSourcesIdIndexRouteImport } from './routes/admin/sources/$id/index'
+import { Route as AdminSourcesIdRunsRunIdRouteImport } from './routes/admin/sources/$id/runs/$runId'
 
 const ResultsRoute = ResultsRouteImport.update({
   id: '/results',
   path: '/results',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminUnlockRoute = AdminUnlockRouteImport.update({
+  id: '/admin-unlock',
+  path: '/admin-unlock',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AdminRouteRoute = AdminRouteRouteImport.update({
+  id: '/admin',
+  path: '/admin',
   getParentRoute: () => rootRouteImport,
 } as any)
 const IndexRoute = IndexRouteImport.update({
@@ -23,38 +43,149 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminIndexRoute = AdminIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminSourcesIndexRoute = AdminSourcesIndexRouteImport.update({
+  id: '/sources/',
+  path: '/sources/',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminIngestionIndexRoute = AdminIngestionIndexRouteImport.update({
+  id: '/ingestion/',
+  path: '/ingestion/',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminImagesIndexRoute = AdminImagesIndexRouteImport.update({
+  id: '/images/',
+  path: '/images/',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AdminIngestionIngestUrlIdRoute =
+  AdminIngestionIngestUrlIdRouteImport.update({
+    id: '/ingestion/$ingestUrlId',
+    path: '/ingestion/$ingestUrlId',
+    getParentRoute: () => AdminRouteRoute,
+  } as any)
+const AdminImagesImageIdRoute = AdminImagesImageIdRouteImport.update({
+  id: '/images/$imageId',
+  path: '/images/$imageId',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminSourcesIdIndexRoute = AdminSourcesIdIndexRouteImport.update({
+  id: '/sources/$id/',
+  path: '/sources/$id/',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminSourcesIdRunsRunIdRoute = AdminSourcesIdRunsRunIdRouteImport.update({
+  id: '/sources/$id/runs/$runId',
+  path: '/sources/$id/runs/$runId',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/admin': typeof AdminRouteRouteWithChildren
+  '/admin-unlock': typeof AdminUnlockRoute
   '/results': typeof ResultsRoute
+  '/admin/': typeof AdminIndexRoute
+  '/admin/images/$imageId': typeof AdminImagesImageIdRoute
+  '/admin/ingestion/$ingestUrlId': typeof AdminIngestionIngestUrlIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/admin/images/': typeof AdminImagesIndexRoute
+  '/admin/ingestion/': typeof AdminIngestionIndexRoute
+  '/admin/sources/': typeof AdminSourcesIndexRoute
+  '/admin/sources/$id/': typeof AdminSourcesIdIndexRoute
+  '/admin/sources/$id/runs/$runId': typeof AdminSourcesIdRunsRunIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/admin-unlock': typeof AdminUnlockRoute
   '/results': typeof ResultsRoute
+  '/admin': typeof AdminIndexRoute
+  '/admin/images/$imageId': typeof AdminImagesImageIdRoute
+  '/admin/ingestion/$ingestUrlId': typeof AdminIngestionIngestUrlIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/admin/images': typeof AdminImagesIndexRoute
+  '/admin/ingestion': typeof AdminIngestionIndexRoute
+  '/admin/sources': typeof AdminSourcesIndexRoute
+  '/admin/sources/$id': typeof AdminSourcesIdIndexRoute
+  '/admin/sources/$id/runs/$runId': typeof AdminSourcesIdRunsRunIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/admin': typeof AdminRouteRouteWithChildren
+  '/admin-unlock': typeof AdminUnlockRoute
   '/results': typeof ResultsRoute
+  '/admin/': typeof AdminIndexRoute
+  '/admin/images/$imageId': typeof AdminImagesImageIdRoute
+  '/admin/ingestion/$ingestUrlId': typeof AdminIngestionIngestUrlIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/admin/images/': typeof AdminImagesIndexRoute
+  '/admin/ingestion/': typeof AdminIngestionIndexRoute
+  '/admin/sources/': typeof AdminSourcesIndexRoute
+  '/admin/sources/$id/': typeof AdminSourcesIdIndexRoute
+  '/admin/sources/$id/runs/$runId': typeof AdminSourcesIdRunsRunIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/results' | '/api/auth/$'
+  fullPaths:
+    | '/'
+    | '/admin'
+    | '/admin-unlock'
+    | '/results'
+    | '/admin/'
+    | '/admin/images/$imageId'
+    | '/admin/ingestion/$ingestUrlId'
+    | '/api/auth/$'
+    | '/admin/images/'
+    | '/admin/ingestion/'
+    | '/admin/sources/'
+    | '/admin/sources/$id/'
+    | '/admin/sources/$id/runs/$runId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/results' | '/api/auth/$'
-  id: '__root__' | '/' | '/results' | '/api/auth/$'
+  to:
+    | '/'
+    | '/admin-unlock'
+    | '/results'
+    | '/admin'
+    | '/admin/images/$imageId'
+    | '/admin/ingestion/$ingestUrlId'
+    | '/api/auth/$'
+    | '/admin/images'
+    | '/admin/ingestion'
+    | '/admin/sources'
+    | '/admin/sources/$id'
+    | '/admin/sources/$id/runs/$runId'
+  id:
+    | '__root__'
+    | '/'
+    | '/admin'
+    | '/admin-unlock'
+    | '/results'
+    | '/admin/'
+    | '/admin/images/$imageId'
+    | '/admin/ingestion/$ingestUrlId'
+    | '/api/auth/$'
+    | '/admin/images/'
+    | '/admin/ingestion/'
+    | '/admin/sources/'
+    | '/admin/sources/$id/'
+    | '/admin/sources/$id/runs/$runId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AdminRouteRoute: typeof AdminRouteRouteWithChildren
+  AdminUnlockRoute: typeof AdminUnlockRoute
   ResultsRoute: typeof ResultsRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
@@ -68,12 +199,54 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ResultsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin-unlock': {
+      id: '/admin-unlock'
+      path: '/admin-unlock'
+      fullPath: '/admin-unlock'
+      preLoaderRoute: typeof AdminUnlockRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/admin': {
+      id: '/admin'
+      path: '/admin'
+      fullPath: '/admin'
+      preLoaderRoute: typeof AdminRouteRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/admin/': {
+      id: '/admin/'
+      path: '/'
+      fullPath: '/admin/'
+      preLoaderRoute: typeof AdminIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/sources/': {
+      id: '/admin/sources/'
+      path: '/sources'
+      fullPath: '/admin/sources/'
+      preLoaderRoute: typeof AdminSourcesIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/ingestion/': {
+      id: '/admin/ingestion/'
+      path: '/ingestion'
+      fullPath: '/admin/ingestion/'
+      preLoaderRoute: typeof AdminIngestionIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/images/': {
+      id: '/admin/images/'
+      path: '/images'
+      fullPath: '/admin/images/'
+      preLoaderRoute: typeof AdminImagesIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
     }
     '/api/auth/$': {
       id: '/api/auth/$'
@@ -82,11 +255,67 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/admin/ingestion/$ingestUrlId': {
+      id: '/admin/ingestion/$ingestUrlId'
+      path: '/ingestion/$ingestUrlId'
+      fullPath: '/admin/ingestion/$ingestUrlId'
+      preLoaderRoute: typeof AdminIngestionIngestUrlIdRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/images/$imageId': {
+      id: '/admin/images/$imageId'
+      path: '/images/$imageId'
+      fullPath: '/admin/images/$imageId'
+      preLoaderRoute: typeof AdminImagesImageIdRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/sources/$id/': {
+      id: '/admin/sources/$id/'
+      path: '/sources/$id'
+      fullPath: '/admin/sources/$id/'
+      preLoaderRoute: typeof AdminSourcesIdIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
+    '/admin/sources/$id/runs/$runId': {
+      id: '/admin/sources/$id/runs/$runId'
+      path: '/sources/$id/runs/$runId'
+      fullPath: '/admin/sources/$id/runs/$runId'
+      preLoaderRoute: typeof AdminSourcesIdRunsRunIdRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
   }
 }
 
+interface AdminRouteRouteChildren {
+  AdminIndexRoute: typeof AdminIndexRoute
+  AdminImagesImageIdRoute: typeof AdminImagesImageIdRoute
+  AdminIngestionIngestUrlIdRoute: typeof AdminIngestionIngestUrlIdRoute
+  AdminImagesIndexRoute: typeof AdminImagesIndexRoute
+  AdminIngestionIndexRoute: typeof AdminIngestionIndexRoute
+  AdminSourcesIndexRoute: typeof AdminSourcesIndexRoute
+  AdminSourcesIdIndexRoute: typeof AdminSourcesIdIndexRoute
+  AdminSourcesIdRunsRunIdRoute: typeof AdminSourcesIdRunsRunIdRoute
+}
+
+const AdminRouteRouteChildren: AdminRouteRouteChildren = {
+  AdminIndexRoute: AdminIndexRoute,
+  AdminImagesImageIdRoute: AdminImagesImageIdRoute,
+  AdminIngestionIngestUrlIdRoute: AdminIngestionIngestUrlIdRoute,
+  AdminImagesIndexRoute: AdminImagesIndexRoute,
+  AdminIngestionIndexRoute: AdminIngestionIndexRoute,
+  AdminSourcesIndexRoute: AdminSourcesIndexRoute,
+  AdminSourcesIdIndexRoute: AdminSourcesIdIndexRoute,
+  AdminSourcesIdRunsRunIdRoute: AdminSourcesIdRunsRunIdRoute,
+}
+
+const AdminRouteRouteWithChildren = AdminRouteRoute._addFileChildren(
+  AdminRouteRouteChildren,
+)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AdminRouteRoute: AdminRouteRouteWithChildren,
+  AdminUnlockRoute: AdminUnlockRoute,
   ResultsRoute: ResultsRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
 }

@@ -22,6 +22,7 @@ with workflow.unsafe.imports_passed_through():
         ingest_initialize_activity,
         mark_ingest_url_done_activity,
         mark_ingest_url_failed_activity,
+        record_ingest_stage_activity,
         save_annotations_activity,
         save_embedding_info_activity,
         update_job_progress_activity,
@@ -31,11 +32,13 @@ with workflow.unsafe.imports_passed_through():
         IngestInitOutput,
         MarkIngestUrlDoneInput,
         MarkIngestUrlFailedInput,
+        RecordIngestStageInput,
         SaveAnnotationsInput,
         SaveEmbeddingInfoInput,
         UpdateJobProgressInput,
     )
     from domain.ingest_policy import IngestPolicy
+    from shared.models import IngestStage
     from workflows.models import IngestWorkflowInput, IngestWorkflowOutput
 
 RETRY_GPU = RetryPolicy(
@@ -89,6 +92,14 @@ class IngestWorkflow:
             policy = IngestPolicy(total=len(url_data))
             total = policy.total
 
+            async def record_stage(ingest_url_id: int, stage: IngestStage) -> None:
+                await workflow.execute_activity(
+                    record_ingest_stage_activity,
+                    RecordIngestStageInput(ingest_url_id=ingest_url_id, stage=stage),
+                    start_to_close_timeout=timedelta(minutes=1),
+                    retry_policy=RETRY_DB,
+                )
+
             for ingest_url_id, url in url_data:
                 try:
                     last_step = "download"
@@ -101,6 +112,7 @@ class IngestWorkflow:
                             "step": "download_image",
                         },
                     )
+                    await record_stage(ingest_url_id, IngestStage.DOWNLOADING)
                     download_result: DownloadImageOutput = await workflow.execute_activity(
                         download_image_activity,
                         DownloadImageInput(
@@ -135,6 +147,7 @@ class IngestWorkflow:
                                 "step": "process_image",
                             },
                         )
+                        await record_stage(ingest_url_id, IngestStage.PROCESSING)
                         process_result: ProcessImageOutput = await workflow.execute_activity(
                             process_image_activity,
                             ProcessImageInput(
@@ -150,6 +163,7 @@ class IngestWorkflow:
                         if process_result.is_duplicate:
                             duplicate = policy.record_duplicate(process_result.image_id)
                             last_step = "mark_duplicate_done"
+                            await record_stage(ingest_url_id, IngestStage.DEDUPED)
                             await workflow.execute_activity(
                                 mark_ingest_url_done_activity,
                                 MarkIngestUrlDoneInput(
@@ -172,6 +186,7 @@ class IngestWorkflow:
                                     "step": "annotate_image",
                                 },
                             )
+                            await record_stage(ingest_url_id, IngestStage.ANNOTATING)
                             annotation_result: AnnotateImageOutput = (
                                 await workflow.execute_activity(
                                     annotate_image_activity,
@@ -222,6 +237,7 @@ class IngestWorkflow:
                                     "step": "embed_image",
                                 },
                             )
+                            await record_stage(ingest_url_id, IngestStage.EMBEDDING)
                             embed_result: EmbedBatchOutput = await workflow.execute_activity(
                                 embed_batch_activity,
                                 EmbedBatchInput(
@@ -284,6 +300,7 @@ class IngestWorkflow:
                                 start_to_close_timeout=timedelta(minutes=1),
                                 retry_policy=RETRY_DB,
                             )
+                            await record_stage(ingest_url_id, IngestStage.COMPLETE)
                             policy.record_success(process_result.image_id)
 
                 except Exception as e:
