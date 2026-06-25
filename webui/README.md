@@ -32,13 +32,15 @@ This project uses [Tailwind CSS](https://tailwindcss.com/) for styling.
 
 ## Linting & Formatting
 
-This project uses [Biome](https://biomejs.dev/) for linting and formatting. The following scripts are available:
+This project uses [oxlint](https://oxc.rs/docs/guide/usage/linter) (with type-aware linting via `oxlint-tsgolint`) and [oxfmt](https://oxc.rs/docs/guide/usage/formatter) for formatting (import sorting + Tailwind class sorting). The following scripts are available:
 
 
 ```bash
-bun --bun run lint
-bun --bun run format
-bun --bun run check
+pnpm run lint          # oxlint --type-aware
+pnpm run lint:fix      # oxlint --type-aware --fix
+pnpm run format        # oxfmt (writes in place)
+pnpm run format:check  # oxfmt --check
+pnpm run check         # format check + lint
 ```
 
 

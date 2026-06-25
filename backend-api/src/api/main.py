@@ -13,7 +13,7 @@ from starlette.types import ExceptionHandler
 from api.lifespan import lifespan
 from api.middleware import register_middleware
 from api.rate_limit import limiter, rate_limit_exceeded_handler
-from api.routers import health, images, jobs, search, sources
+from api.routers import health, images, ingestion, jobs, search, sources
 from shared.config import settings
 
 
@@ -50,6 +50,7 @@ def create_app() -> FastAPI:
     app.include_router(images.router)
     app.include_router(jobs.router)
     app.include_router(sources.router)
+    app.include_router(ingestion.router)
 
     return app
 

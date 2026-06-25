@@ -10,6 +10,7 @@ from domain.source_run_accounting import UrlOutcome, derive_run_accounting
 from shared.models.orm import (
     IngestionSource,
     IngestURL,
+    ProcessingStatus,
     SourceItem,
     SourceRun,
     SourceRunStatus,
@@ -50,12 +51,15 @@ class SourceStats(BaseModel, frozen=True):
     run_count: int
     items_discovered: int
     duplicate_count: int
+    images_ingested: int
+    failed_count: int
 
 
 class SourceRunView(BaseModel, frozen=True):
     id: int
     trigger_mode: SourceRunTrigger
     status: SourceRunStatus
+    ingest_job_id: str | None
     error_message: str | None
     started_at: datetime.datetime | None
     completed_at: datetime.datetime | None
@@ -213,7 +217,13 @@ class SourceRegistry:
 
     def _stats_by_source_id(self, source_ids: list[int]) -> dict[int, SourceStats]:
         stats = {
-            source_id: {"run_count": 0, "items_discovered": 0, "duplicate_count": 0}
+            source_id: {
+                "run_count": 0,
+                "items_discovered": 0,
+                "duplicate_count": 0,
+                "images_ingested": 0,
+                "failed_count": 0,
+            }
             for source_id in source_ids
         }
 
@@ -241,6 +251,26 @@ class SourceRegistry:
             .group_by(IngestURL.source_id)
         ).all()
 
+        ingested_rows = self.db.execute(
+            select(IngestURL.source_id, func.count(IngestURL.id))
+            .where(
+                IngestURL.source_id.in_(source_ids),
+                IngestURL.status == ProcessingStatus.DONE,
+                IngestURL.image_id.is_not(None),
+                IngestURL.duplicate_reason.is_(None),
+            )
+            .group_by(IngestURL.source_id)
+        ).all()
+
+        failed_rows = self.db.execute(
+            select(IngestURL.source_id, func.count(IngestURL.id))
+            .where(
+                IngestURL.source_id.in_(source_ids),
+                IngestURL.status == ProcessingStatus.FAILED,
+            )
+            .group_by(IngestURL.source_id)
+        ).all()
+
         for source_id, count in run_rows:
             stats[source_id]["run_count"] = count
 
@@ -249,6 +279,12 @@ class SourceRegistry:
 
         for source_id, count in duplicate_rows:
             stats[source_id]["duplicate_count"] = count
+
+        for source_id, count in ingested_rows:
+            stats[source_id]["images_ingested"] = count
+
+        for source_id, count in failed_rows:
+            stats[source_id]["failed_count"] = count
 
         return {source_id: SourceStats(**values) for source_id, values in stats.items()}
 
@@ -274,6 +310,7 @@ class SourceRegistry:
                     id=run.id,
                     trigger_mode=run.trigger_mode,
                     status=run.status,  # stored status, do not use accounting.status
+                    ingest_job_id=run.ingest_job_id,
                     error_message=run.error_message,
                     started_at=run.started_at,
                     completed_at=run.completed_at,

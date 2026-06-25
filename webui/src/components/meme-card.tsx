@@ -1,52 +1,59 @@
-
-import { useState } from "react"
-import { motion, useReducedMotion } from "motion/react"
-import type { SearchResult } from "@/lib/api"
+import type { SearchResult } from "@/lib/api";
+import { motion, useReducedMotion } from "motion/react";
+import { memo, useCallback, useState } from "react";
 
 interface MemeCardProps {
-    meme: SearchResult
-    onClick: () => void
+	meme: SearchResult;
+	onSelect: (meme: SearchResult) => void;
 }
 
-const easeOutQuint = [0.23, 1, 0.32, 1] as const
+const easeOutQuint = [0.23, 1, 0.32, 1] as const;
+const cardTransition = { duration: 0.2, ease: easeOutQuint };
+const hoverScale = { scale: 1.02 };
+const tapScale = { scale: 0.97 };
+const cardVariants = {
+	hidden: { opacity: 0, y: 12 },
+	show: { opacity: 1, y: 0 },
+};
+const cardVariantsReduced = {
+	hidden: { opacity: 1, y: 0 },
+	show: { opacity: 1, y: 0 },
+};
+const reducedImgStyle = { opacity: 1, transform: "none", transition: "none" } as const;
 
-export function MemeCard({ meme, onClick }: MemeCardProps) {
-    const [loaded, setLoaded] = useState(false)
-    const shouldReduceMotion = useReducedMotion()
+export const MemeCard = memo(function MemeCard({ meme, onSelect }: MemeCardProps) {
+	const [loaded, setLoaded] = useState(false);
+	const shouldReduceMotion = useReducedMotion();
 
-    return (
-        <motion.button
-            onClick={onClick}
-            className="group relative w-full text-left overflow-hidden rounded-md bg-card border border-border hover:border-foreground/30 transition-colors will-change-transform"
-            variants={{
-                hidden: shouldReduceMotion
-                    ? { opacity: 1, y: 0 }
-                    : { opacity: 0, y: 12 },
-                show: { opacity: 1, y: 0 },
-            }}
-            transition={{ duration: 0.2, ease: easeOutQuint }}
-            whileHover={shouldReduceMotion ? undefined : { scale: 1.02 }}
-            whileTap={shouldReduceMotion ? undefined : { scale: 0.97 }}
-        >
-            <div className="aspect-square overflow-hidden relative">
-                {!loaded && (
-                    <div className="absolute inset-0 shimmer rounded-sm" />
-                )}
-                <img
-                    src={meme.url}
-                    alt={meme.caption || "meme"}
-                    loading="lazy"
-                    onLoad={() => setLoaded(true)}
-                    className={`w-full h-full object-cover transition-all duration-500 ease-out ${
-                        loaded ? "opacity-100 scale-100" : "opacity-0 scale-[1.03]"
-                    }`}
-                    style={shouldReduceMotion ? { opacity: 1, transform: "none", transition: "none" } : undefined}
-                />
-            </div>
+	const handleClick = useCallback(() => onSelect(meme), [onSelect, meme]);
+	const handleLoad = useCallback(() => setLoaded(true), []);
 
-            <div className="absolute inset-0 bg-background/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-3">
-                <span className="text-xs text-foreground line-clamp-2">{meme.caption}</span>
-            </div>
-        </motion.button>
-    )
-}
+	return (
+		<motion.button
+			onClick={handleClick}
+			className="group relative w-full overflow-hidden rounded-md border border-border bg-card text-left transition-colors will-change-transform hover:border-foreground/30"
+			variants={shouldReduceMotion ? cardVariantsReduced : cardVariants}
+			transition={cardTransition}
+			whileHover={shouldReduceMotion ? undefined : hoverScale}
+			whileTap={shouldReduceMotion ? undefined : tapScale}
+		>
+			<div className="relative aspect-square overflow-hidden">
+				{!loaded && <div className="shimmer absolute inset-0 rounded-sm" />}
+				<img
+					src={meme.url}
+					alt={meme.caption || "meme"}
+					loading="lazy"
+					onLoad={handleLoad}
+					className={`h-full w-full object-cover transition-all duration-500 ease-out ${
+						loaded ? "scale-100 opacity-100" : "scale-[1.03] opacity-0"
+					}`}
+					style={shouldReduceMotion ? reducedImgStyle : undefined}
+				/>
+			</div>
+
+			<div className="absolute inset-0 flex items-end bg-background/80 p-3 opacity-0 transition-opacity group-hover:opacity-100">
+				<span className="line-clamp-2 text-xs text-foreground">{meme.caption}</span>
+			</div>
+		</motion.button>
+	);
+});

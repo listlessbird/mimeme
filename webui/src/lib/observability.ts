@@ -4,9 +4,7 @@ import { initLogger, log, parseError } from "evlog";
 
 const isServer = typeof window === "undefined";
 const runtimeNodeEnv =
-	isServer && typeof process !== "undefined"
-		? process.env.NODE_ENV
-		: import.meta.env.MODE;
+	isServer && typeof process !== "undefined" ? process.env.NODE_ENV : import.meta.env.MODE;
 let loggerInitialized = false;
 
 function isPrettyLoggingEnabled(): boolean {
@@ -14,9 +12,7 @@ function isPrettyLoggingEnabled(): boolean {
 		return process.env.LOG_PRETTY === "1" || runtimeNodeEnv !== "production";
 	}
 
-	return (
-		import.meta.env.VITE_LOG_PRETTY === "1" || runtimeNodeEnv !== "production"
-	);
+	return import.meta.env.VITE_LOG_PRETTY === "1" || runtimeNodeEnv !== "production";
 }
 
 function environmentContext(): {
@@ -51,11 +47,7 @@ function initializeLogger(): void {
 	loggerInitialized = true;
 }
 
-function emit(
-	level: LogLevel,
-	event: string,
-	data: Record<string, unknown>,
-): void {
+function emit(level: LogLevel, event: string, data: Record<string, unknown>): void {
 	initializeLogger();
 
 	const payload = {

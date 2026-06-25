@@ -1,0 +1,25 @@
+{
+	"useTabs": true,
+	"singleQuote": false,
+	"jsxSingleQuote": false,
+	"sortImports": {
+		"newlinesBetween": true,
+		"internalPattern": ["^@/"]
+	},
+	"sortTailwindcss": {
+		"stylesheet": "./src/styles.css",
+		"functions": ["cn", "cva", "clsx", "twMerge"]
+	},
+	"ignorePatterns": [
+		"**/*.md",
+		"src/routeTree.gen.ts",
+		"src/styles.css",
+		"src/lib/api/schema.d.ts",
+		"dist/**",
+		"dist-ssr/**",
+		".output/**",
+		".nitro/**",
+		".tanstack/**",
+		".wrangler/**"
+	]
+}

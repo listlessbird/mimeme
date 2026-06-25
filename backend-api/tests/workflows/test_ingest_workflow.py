@@ -29,6 +29,7 @@ from activities.workflow_state.models import (
     IngestUrlItem,
     MarkIngestUrlDoneInput,
     MarkIngestUrlFailedInput,
+    RecordIngestStageInput,
     SaveAnnotationsInput,
     SaveEmbeddingInfoInput,
     UpdateJobProgressInput,
@@ -128,6 +129,11 @@ async def mock_mark_failed(input: MarkIngestUrlFailedInput) -> None:
     _activity_calls.append("mark_ingest_url_failed_activity")
 
 
+@activity.defn(name="record_ingest_stage_activity")
+async def mock_record_stage(input: RecordIngestStageInput) -> None:
+    _activity_calls.append(f"record_ingest_stage_activity:{input.stage.value}")
+
+
 @activity.defn(name="update_job_progress_activity")
 async def mock_update_progress(input: UpdateJobProgressInput) -> None:
     _activity_calls.append("update_job_progress_activity")
@@ -148,6 +154,7 @@ ALL_MOCK_ACTIVITIES = [
     mock_save_embedding_info,
     mock_mark_done,
     mock_mark_failed,
+    mock_record_stage,
     mock_update_progress,
     mock_complete_job,
 ]
@@ -192,6 +199,9 @@ class TestIngestWorkflowHappyPath:
         assert "complete_ingest_job_activity" in _activity_calls
         assert _activity_calls.count("download_image_activity") == 2
         assert _activity_calls.count("mark_ingest_url_done_activity") == 2
+
+        for stage in ("DOWNLOADING", "PROCESSING", "ANNOTATING", "EMBEDDING", "COMPLETE"):
+            assert f"record_ingest_stage_activity:{stage}" in _activity_calls
 
 
 class TestIngestWorkflowPartialFailure:
@@ -288,6 +298,10 @@ class TestIngestWorkflowDuplicateHandling:
         # Annotation/embed should NOT be called for duplicates
         assert "annotate_image_activity" not in _activity_calls
         assert "embed_batch_activity" not in _activity_calls
+        # A duplicate lands DEDUPED and never advances to ANNOTATING/EMBEDDING/COMPLETE
+        assert "record_ingest_stage_activity:DEDUPED" in _activity_calls
+        assert "record_ingest_stage_activity:ANNOTATING" not in _activity_calls
+        assert "record_ingest_stage_activity:COMPLETE" not in _activity_calls
 
 
 class TestIngestWorkflowEmptyUrls:
