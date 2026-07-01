@@ -15,6 +15,13 @@ interface MyRouterContext {
 	queryClient: QueryClient;
 }
 
+const siteTitle = "mìmeme";
+const siteDescription = "Find that meme.";
+const siteUrl = import.meta.env.VITE_SITE_URL?.replace(/\/$/, "") ?? "";
+const canonicalUrl = siteUrl || "/";
+const ogImageUrl = siteUrl ? `${siteUrl}/og-image.jpg` : "/og-image.jpg";
+const ogImageAlt = "mimeme jester logo with find that meme text";
+
 export const Route = createRootRouteWithContext<MyRouterContext>()({
 	head: () => ({
 		meta: [
@@ -26,7 +33,71 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 				content: "width=device-width, initial-scale=1",
 			},
 			{
-				title: "mìmeme (觅meme)",
+				title: siteTitle,
+			},
+			{
+				name: "description",
+				content: siteDescription,
+			},
+			{
+				property: "og:title",
+				content: siteTitle,
+			},
+			{
+				property: "og:description",
+				content: siteDescription,
+			},
+			{
+				property: "og:type",
+				content: "website",
+			},
+			{
+				property: "og:url",
+				content: canonicalUrl,
+			},
+			{
+				property: "og:site_name",
+				content: siteTitle,
+			},
+			{
+				property: "og:image",
+				content: ogImageUrl,
+			},
+			{
+				property: "og:image:type",
+				content: "image/jpeg",
+			},
+			{
+				property: "og:image:width",
+				content: "1200",
+			},
+			{
+				property: "og:image:height",
+				content: "630",
+			},
+			{
+				property: "og:image:alt",
+				content: ogImageAlt,
+			},
+			{
+				name: "twitter:card",
+				content: "summary_large_image",
+			},
+			{
+				name: "twitter:title",
+				content: siteTitle,
+			},
+			{
+				name: "twitter:description",
+				content: siteDescription,
+			},
+			{
+				name: "twitter:image",
+				content: ogImageUrl,
+			},
+			{
+				name: "twitter:image:alt",
+				content: ogImageAlt,
 			},
 		],
 		links: [
