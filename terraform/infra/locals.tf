@@ -14,4 +14,7 @@ locals {
   modal_s3_secret    = var.modal_s3_secret_name
   neon_project_name  = var.neon_project_name
   r2_bucket_name     = var.r2_bucket_name
+
+  r2_bucket_item_read_pg  = "6a018a9f2fc74eb6b293b0c548f38b39"
+  r2_bucket_item_write_pg = "2efd5506f9c8494dacb1fa10a3e7d5b6"
 }

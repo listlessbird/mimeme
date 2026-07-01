@@ -1,13 +1,3 @@
-data "cloudflare_account_permission_groups" "r2_read" {
-  account_id = var.cloudflare_account_id
-  name       = "Workers R2 Storage Read"
-}
-
-data "cloudflare_account_permission_groups" "r2_write" {
-  account_id = var.cloudflare_account_id
-  name       = "Workers R2 Storage Write"
-}
-
 resource "cloudflare_r2_bucket" "storage" {
   account_id   = var.cloudflare_account_id
   name         = local.r2_bucket_name
@@ -24,10 +14,10 @@ resource "cloudflare_account_token" "app_r2" {
 
     permission_groups = [
       {
-        id = data.cloudflare_account_permission_groups.r2_read.result[0].id
+        id = local.r2_bucket_item_read_pg
       },
       {
-        id = data.cloudflare_account_permission_groups.r2_write.result[0].id
+        id = local.r2_bucket_item_write_pg
       },
     ]
 

@@ -12,10 +12,7 @@ services:
     restart: unless-stopped
 
   api:
-    build:
-      context: .
-      dockerfile: Dockerfile.cpu
-      target: api
+    image: ghcr.io/listlessbird/mimeme-api:latest
     env_file: .env
     environment:
       - TEMPORAL_HOST=temporal:7233
@@ -40,11 +37,22 @@ services:
       retries: 3
       start_period: 10s
 
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      api:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+    restart: unless-stopped
+
   worker:
-    build:
-      context: .
-      dockerfile: Dockerfile.cpu
-      target: worker
+    image: ghcr.io/listlessbird/mimeme-worker:latest
     env_file: .env
     environment:
       - TEMPORAL_HOST=temporal:7233
