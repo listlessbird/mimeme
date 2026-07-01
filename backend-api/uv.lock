@@ -14,7 +14,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-06-17T17:00:11.082158193Z"
+exclude-newer = "2026-06-24T09:08:12.46217964Z"
 exclude-newer-span = "P7D"
 
 [[package]]
@@ -1619,12 +1619,9 @@ name = "mimeme-backend-api"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "accelerate" },
     { name = "alembic" },
     { name = "axiom-py" },
-    { name = "bitsandbytes" },
     { name = "boto3" },
-    { name = "einops" },
     { name = "faiss-cpu" },
     { name = "fastapi", extra = ["standard"] },
     { name = "httpx" },
@@ -1635,15 +1632,22 @@ dependencies = [
     { name = "psycopg2-binary" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
-    { name = "pyvips" },
     { name = "slowapi" },
     { name = "sqlalchemy" },
     { name = "structlog" },
     { name = "temporalio" },
     { name = "torch" },
-    { name = "torchvision" },
     { name = "transformers" },
     { name = "uvicorn", extra = ["standard"] },
+]
+
+[package.optional-dependencies]
+local-gpu = [
+    { name = "accelerate" },
+    { name = "bitsandbytes" },
+    { name = "einops" },
+    { name = "pyvips" },
+    { name = "torchvision" },
 ]
 
 [package.dev-dependencies]
@@ -1690,12 +1694,12 @@ typecheck = [
 
 [package.metadata]
 requires-dist = [
-    { name = "accelerate", specifier = "==1.12.0" },
+    { name = "accelerate", marker = "extra == 'local-gpu'", specifier = "==1.12.0" },
     { name = "alembic", specifier = "==1.18.4" },
     { name = "axiom-py", specifier = "==0.10.0" },
-    { name = "bitsandbytes", specifier = "==0.48.2" },
+    { name = "bitsandbytes", marker = "extra == 'local-gpu'", specifier = "==0.48.2" },
     { name = "boto3", specifier = "==1.42.55" },
-    { name = "einops", specifier = "==0.8.2" },
+    { name = "einops", marker = "extra == 'local-gpu'", specifier = "==0.8.2" },
     { name = "faiss-cpu", specifier = "==1.13.2" },
     { name = "fastapi", extras = ["standard"], specifier = "==0.133.1" },
     { name = "httpx", specifier = "==0.28.1" },
@@ -1706,16 +1710,17 @@ requires-dist = [
     { name = "psycopg2-binary", specifier = "==2.9.11" },
     { name = "pydantic", specifier = "==2.12.5" },
     { name = "pydantic-settings", specifier = "==2.13.1" },
-    { name = "pyvips", specifier = "==3.1.1" },
+    { name = "pyvips", marker = "extra == 'local-gpu'", specifier = "==3.1.1" },
     { name = "slowapi", specifier = "==0.1.9" },
     { name = "sqlalchemy", specifier = "==2.0.46" },
     { name = "structlog", specifier = "==25.5.0" },
     { name = "temporalio", specifier = "==1.23.0" },
     { name = "torch", specifier = "==2.9.0" },
-    { name = "torchvision", specifier = "==0.24.0" },
+    { name = "torchvision", marker = "extra == 'local-gpu'", specifier = "==0.24.0" },
     { name = "transformers", specifier = "==4.52.4" },
     { name = "uvicorn", extras = ["standard"], specifier = "==0.41.0" },
 ]
+provides-extras = ["local-gpu"]
 
 [package.metadata.requires-dev]
 dev = [

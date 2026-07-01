@@ -31,7 +31,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1024M
+          memory: 2048M
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/live" ]
@@ -62,21 +62,6 @@ services:
           memory: 1024M
     restart: unless-stopped
 
-  portainer:
-    image: portainer/portainer-ce:latest
-    platform: linux/arm64
-    ports:
-      - "9443:9443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - portainer_data:/data
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-    restart: unless-stopped
-
 volumes:
-  portainer_data:
   faiss_data:
   huggingface_cache:
