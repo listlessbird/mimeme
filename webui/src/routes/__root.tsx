@@ -6,7 +6,6 @@ import { createRootRouteWithContext, HeadContent, Scripts } from "@tanstack/reac
 import { TanStackRouterDevtoolsPanel } from "@tanstack/react-router-devtools";
 import { Agentation } from "agentation";
 import { NuqsAdapter } from "nuqs/adapters/tanstack-router";
-import { useEffect } from "react";
 
 import TanStackQueryDevtools from "../integrations/tanstack-query/devtools";
 
@@ -42,11 +41,6 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 				sizes: "96x96",
 			},
 			{
-				rel: "icon",
-				type: "image/svg+xml",
-				href: "/favicon.svg",
-			},
-			{
 				rel: "shortcut icon",
 				href: "/favicon.ico",
 			},
@@ -67,13 +61,6 @@ export const Route = createRootRouteWithContext<MyRouterContext>()({
 });
 
 function RootDocument({ children }: { children: React.ReactNode }) {
-	useEffect(() => {
-		if (import.meta.env.DEV) {
-			void import("react-grab");
-			void import("@react-grab/mcp/client");
-		}
-	}, []);
-
 	return (
 		<html lang="en">
 			<head>
