@@ -1,0 +1,24 @@
+axiom_api_token       = "your-axiom-api-token"
+cloudflare_api_token  = "your-cloudflare-api-token"
+cloudflare_account_id = "your-cloudflare-account-id"
+cloudflare_zone_name  = "mimeme.dev"
+api_hostname          = "api.mimeme.dev"
+neon_api_key          = "your-neon-api-key"
+neon_org_id           = "your-neon-org-id"
+neon_region           = "aws-ap-southeast-1"
+
+# cloudflared on the Raspberry Pi forwards api.mimeme.dev to this local service.
+api_origin_service = "http://localhost:8000"
+
+# Existing provisioned resource names from the old Terraform root. Keep these
+# values while adopting state; rename later with explicit resource migrations.
+app_r2_token_name          = "mimeme-prod-r2-app"
+axiom_dataset_name         = "findmeme-prod-api"
+axiom_token_name           = "mimeme-prod-api-ingest"
+database_name              = "findmeme"
+database_role_name         = "findmeme_app"
+modal_app_name             = "findmeme-gpu"
+modal_hf_cache_volume_name = "findmeme-hf-cache"
+modal_s3_secret_name       = "findmeme-s3"
+neon_project_name          = "findmeme-prod-db"
+r2_bucket_name             = "findmeme-prod-storage"

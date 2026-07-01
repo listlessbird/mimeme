@@ -1,0 +1,6 @@
+cloudflare_api_token  = "your-cloudflare-api-token"
+cloudflare_account_id = "your-cloudflare-account-id"
+
+# Existing provisioned state bucket name.
+state_bucket_name = "findmeme-terraform-state"
+state_token_name  = "mimeme-prod-terraform-state"

@@ -1,0 +1,22 @@
+# Copy to backend.tfvars and keep it uncommitted.
+# Fill these from terraform/tf-state outputs:
+#   terraform -chdir=terraform/tf-state output -raw state_s3_access_key_id
+#   terraform -chdir=terraform/tf-state output -raw state_s3_secret_access_key
+
+access_key = ""
+secret_key = ""
+
+bucket = "findmeme-terraform-state"
+key    = "prod/terraform.tfstate"
+region = "auto"
+
+skip_credentials_validation = true
+skip_metadata_api_check     = true
+skip_region_validation      = true
+skip_requesting_account_id  = true
+skip_s3_checksum            = true
+use_path_style              = true
+
+endpoints = {
+  s3 = "https://<CLOUDFLARE_ACCOUNT_ID>.r2.cloudflarestorage.com"
+}

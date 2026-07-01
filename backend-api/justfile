@@ -4,7 +4,7 @@ default:
     @just --list
 
 sync:
-    uv sync --all-groups
+    uv sync --all-groups --all-extras
 
 fmt:
     uv run ruff check --select I --fix src tests
@@ -52,3 +52,6 @@ makemigration name:
 # Roll back one revision.
 migrate-down:
     uv run alembic downgrade -1
+
+prod-env:
+    ./scripts/print-prod-env.sh

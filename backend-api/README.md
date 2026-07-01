@@ -283,5 +283,5 @@ uv run alembic upgrade head
 Apply migrations against the production database:
 
 ```bash
-DB_URL=$(terraform -chdir=../infra output -raw neon_connection_uri | sed 's|^postgres://|postgresql://|') uv run alembic upgrade head
+DB_URL=$(terraform -chdir=../terraform/infra output -raw db_url | sed 's|^postgres://|postgresql://|') uv run alembic upgrade head
 ```

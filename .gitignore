@@ -20,6 +20,18 @@ infra/*.tfplan.json
 infra/crash.log
 infra/override.tf
 infra/override.tf.json
+terraform/**/.terraform/
+terraform/**/terraform.tfvars
+terraform/**/backend.tfvars
+terraform/**/*.tfstate
+terraform/**/*.tfstate.backup
+terraform/**/*.tfstate.*.backup
+terraform/**/*.tfplan
+terraform/**/*.tfplan.json
+terraform/**/crash.log
+terraform/**/override.tf
+terraform/**/override.tf.json
+terraform/**/.terraform.lock.hcl.backup
 backend-api/data/
 
 docs/
