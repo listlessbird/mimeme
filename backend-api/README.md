@@ -191,13 +191,7 @@ Temporal UI is available at `http://localhost:8088` in this mode.
 
 ```bash
 uv run modal setup
-uv run modal secret create findmeme-s3 \
-  S3_ENDPOINT_URL=https://your-s3-endpoint \
-  S3_REGION=auto \
-  S3_ACCESS_KEY_ID=your-key \
-  S3_SECRET_ACCESS_KEY=your-secret \
-  S3_BUCKET=findmeme-prod-storage \
-  S3_FORCE_PATH_STYLE=true
+just modal-deploy
 ```
 
 ## Development Commands

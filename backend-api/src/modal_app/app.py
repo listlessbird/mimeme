@@ -31,18 +31,19 @@ gpu_image = (
     modal.Image.debian_slim(python_version="3.12")
     .apt_install("libgl1", "libglib2.0-0", "libvips42", "libjpeg-dev", "libtiff-dev")
     .pip_install(
-        "torch>=2.3",
-        "torchvision>=0.24",
-        "transformers>=4.45",
-        "accelerate>=0.34",
-        "einops>=0.8.1",
-        "pillow>=12.0",
-        "numpy>=2.0",
-        "boto3>=1.40",
-        "bitsandbytes>=0.48",
-        "pyvips>=3.1",
-        "structlog>=25.5",
+        "torch==2.9.0",
+        "torchvision==0.24.0",
+        "transformers==4.52.4",
+        "accelerate==1.12.0",
+        "einops==0.8.2",
+        "pillow==12.1.1",
+        "numpy==2.4.2",
+        "boto3==1.42.55",
+        "bitsandbytes==0.48.2",
+        "pyvips==3.1.1",
+        "structlog==25.5.0",
     )
+    .add_local_python_source("domain")
 )
 
 hf_cache = modal.Volume.from_name(MODAL_HF_CACHE_VOLUME_NAME, create_if_missing=True)
@@ -173,9 +174,6 @@ class VisionService:
                 trust_remote_code=True,
                 device_map={"": "cuda"},
             )
-            inner = getattr(self._model, "model", None)
-            if inner and hasattr(inner, "compile"):
-                inner.compile()
         except Exception as exc:
             outcome = "error"
             error_message = str(exc)

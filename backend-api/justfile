@@ -56,6 +56,9 @@ migrate-down:
 prod-env:
     ./scripts/print-prod-env.sh
 
+modal-deploy:
+    ./scripts/deploy-modal.sh
+
 deploy:
     docker compose -f docker.compose.prod.yml pull api worker
     docker compose -f docker.compose.prod.yml up -d
