@@ -206,6 +206,8 @@ def test_active_index_catalog_garbage_collection_retains_newest_and_skips_active
 
 
 def test_hnsw_index_gets_configured_ef_search(tmp_path: Path) -> None:
+    import faiss  # type: ignore[import-untyped]
+
     from activities.indexing.faiss_vectors import FaissVectorIndex
     from shared.config import settings
 
@@ -217,6 +219,7 @@ def test_hnsw_index_gets_configured_ef_search(tmp_path: Path) -> None:
         index_type="hnsw",
     )
 
+    assert isinstance(vector_index.index, faiss.IndexHNSW)
     assert vector_index.index.hnsw.efSearch == settings.faiss_hnsw_ef_search
 
     index_file = tmp_path / "i.faiss"
@@ -224,6 +227,7 @@ def test_hnsw_index_gets_configured_ef_search(tmp_path: Path) -> None:
     vector_index.write(index_file)
     reloaded = FaissVectorIndex.read(index_file=index_file, id_mapping=vector_index.id_mapping)
 
+    assert isinstance(reloaded.index, faiss.IndexHNSW)
     assert reloaded.index.hnsw.efSearch == settings.faiss_hnsw_ef_search
 
 

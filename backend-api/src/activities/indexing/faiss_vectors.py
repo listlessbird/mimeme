@@ -9,7 +9,7 @@ from shared.config import settings
 
 
 def apply_search_params(index: faiss.Index) -> faiss.Index:
-    if hasattr(index, "hnsw"):
+    if isinstance(index, faiss.IndexHNSW):
         index.hnsw.efSearch = settings.faiss_hnsw_ef_search
     return index
 
