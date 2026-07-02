@@ -1,7 +1,7 @@
 import tempfile
 import time
 from pathlib import Path
-from typing import cast
+from typing import TypedDict, cast
 from urllib.parse import urlparse
 
 import httpx
@@ -27,7 +27,14 @@ log = structlog.get_logger()
 IMAGE_ACCEPT_HEADER = "image/avif,image/webp,image/apng,image/png,image/jpeg,image/*,*/*;q=0.8"
 
 
-def _duplicate_processing_fields(session: Session, image: ORMImage) -> dict[str, object]:
+class DuplicateProcessingFields(TypedDict):
+    needs_annotation: bool
+    needs_embedding: bool
+    existing_caption: str | None
+    existing_ocr_text: str | None
+
+
+def _duplicate_processing_fields(session: Session, image: ORMImage) -> DuplicateProcessingFields:
     proc = image.processing
     if proc is None:
         proc = Processing(image_id=image.id)
