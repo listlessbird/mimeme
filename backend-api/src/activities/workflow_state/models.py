@@ -59,6 +59,18 @@ class CompleteIngestJobInput(BaseModel):
     duplicates: int
 
 
+class CreateRebuildJobInput(BaseModel):
+    force: bool = False
+
+
+class CreateRebuildJobOutput(BaseModel):
+    job_id: str
+    workflow_id: str
+    force: bool
+    model_name: str
+    index_type: str
+
+
 class StartRebuildJobInput(BaseModel):
     job_id: str
 

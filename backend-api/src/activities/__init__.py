@@ -20,6 +20,7 @@ from activities.vision import annotate_image_activity
 from activities.workflow_state import (
     complete_ingest_job_activity,
     complete_rebuild_job_activity,
+    create_rebuild_job_activity,
     fail_rebuild_job_activity,
     ingest_initialize_activity,
     mark_ingest_url_done_activity,
@@ -53,6 +54,7 @@ ACTIVITIES = [
     save_embedding_info_activity,
     update_job_progress_activity,
     complete_ingest_job_activity,
+    create_rebuild_job_activity,
     start_rebuild_job_activity,
     fail_rebuild_job_activity,
     complete_rebuild_job_activity,
@@ -82,6 +84,7 @@ __all__ = [
     "save_embedding_info_activity",
     "update_job_progress_activity",
     "complete_ingest_job_activity",
+    "create_rebuild_job_activity",
     "start_rebuild_job_activity",
     "fail_rebuild_job_activity",
     "complete_rebuild_job_activity",

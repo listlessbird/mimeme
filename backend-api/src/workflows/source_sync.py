@@ -22,13 +22,26 @@ with workflow.unsafe.imports_passed_through():
         StartSourceRunInput,
         StartSourceRunOutput,
     )
+    from activities.workflow_state.activities import (
+        create_rebuild_job_activity,
+        fail_rebuild_job_activity,
+    )
+    from activities.workflow_state.models import (
+        CreateRebuildJobInput,
+        CreateRebuildJobOutput,
+        FailRebuildJobInput,
+    )
     from domain.adapters.registry import get_adapter
+    from shared.models import SourceRunTrigger
     from workflows.ingest import IngestWorkflow
     from workflows.models import (
         IngestWorkflowInput,
+        IngestWorkflowOutput,
+        RebuildIndexWorkflowInput,
         SourceSyncWorkflowInput,
         SourceSyncWorkflowOutput,
     )
+    from workflows.rebuild_index import RebuildIndexWorkflow
 
 RETRY_NETWORK = RetryPolicy(
     maximum_attempts=3,
@@ -87,8 +100,9 @@ class SourceSyncWorkflow:
             )
 
             # Reuse the existing ingest pipeline as an awaited child workflow.
+            ingest_result: IngestWorkflowOutput | None = None
             if discovered.ingest_job_id is not None:
-                await workflow.execute_child_workflow(
+                ingest_result = await workflow.execute_child_workflow(
                     IngestWorkflow.run,
                     IngestWorkflowInput(job_id=discovered.ingest_job_id, dataset=start.dataset),
                     id=f"ingest-workflow-{discovered.ingest_job_id}",
@@ -100,6 +114,71 @@ class SourceSyncWorkflow:
                 start_to_close_timeout=timedelta(minutes=1),
                 retry_policy=RETRY_DB,
             )
+
+            if input.trigger == SourceRunTrigger.SCHEDULED and (
+                discovered.discovered > 0
+                or (
+                    ingest_result is not None
+                    and ingest_result.processed + ingest_result.duplicates > 0
+                )
+            ):
+                rebuild: CreateRebuildJobOutput | None = None
+                try:
+                    rebuild = await workflow.execute_activity(
+                        create_rebuild_job_activity,
+                        CreateRebuildJobInput(force=False),
+                        start_to_close_timeout=timedelta(minutes=1),
+                        retry_policy=RETRY_DB,
+                    )
+                    await workflow.start_child_workflow(
+                        RebuildIndexWorkflow.run,
+                        RebuildIndexWorkflowInput(
+                            job_id=rebuild.job_id,
+                            force=rebuild.force,
+                            model_name=rebuild.model_name,
+                            index_type=rebuild.index_type,
+                        ),
+                        id=rebuild.workflow_id,
+                        parent_close_policy=workflow.ParentClosePolicy.ABANDON,
+                    )
+                    workflow.logger.info(
+                        "scheduled_rebuild_started",
+                        extra={
+                            "source_run_id": start.source_run_id,
+                            "ingest_job_id": discovered.ingest_job_id,
+                            "rebuild_job_id": rebuild.job_id,
+                            "rebuild_workflow_id": rebuild.workflow_id,
+                        },
+                    )
+                except Exception as exc:
+                    if rebuild is not None:
+                        try:
+                            await workflow.execute_activity(
+                                fail_rebuild_job_activity,
+                                FailRebuildJobInput(
+                                    job_id=rebuild.job_id,
+                                    error=f"Failed to start rebuild workflow: {exc}",
+                                ),
+                                start_to_close_timeout=timedelta(minutes=1),
+                                retry_policy=RETRY_DB,
+                            )
+                        except Exception as fail_exc:
+                            workflow.logger.warning(
+                                "scheduled_rebuild_mark_failed_error",
+                                extra={
+                                    "source_run_id": start.source_run_id,
+                                    "rebuild_job_id": rebuild.job_id,
+                                    "error": str(fail_exc),
+                                },
+                            )
+                    workflow.logger.warning(
+                        "scheduled_rebuild_start_failed",
+                        extra={
+                            "source_run_id": start.source_run_id,
+                            "ingest_job_id": discovered.ingest_job_id,
+                            "error": str(exc),
+                        },
+                    )
 
             return SourceSyncWorkflowOutput(
                 source_run_id=start.source_run_id,

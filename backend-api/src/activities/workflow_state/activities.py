@@ -6,6 +6,7 @@ import structlog
 from temporalio import activity
 
 from domain.job_lifecycle import JobLifecycle
+from shared.config import settings
 from shared.db import session_scope
 from shared.logging import emit_activity_event
 from shared.models import (
@@ -17,6 +18,8 @@ from shared.models import (
 from .models import (
     CompleteIngestJobInput,
     CompleteRebuildJobInput,
+    CreateRebuildJobInput,
+    CreateRebuildJobOutput,
     FailRebuildJobInput,
     IngestInitOutput,
     IngestUrlItem,
@@ -292,6 +295,48 @@ def complete_ingest_job_activity(input: CompleteIngestJobInput) -> None:
             started_at=started,
             outcome="error",
             job_id=input.job_id,
+            error=str(exc),
+        )
+        raise
+
+
+@activity.defn
+def create_rebuild_job_activity(input: CreateRebuildJobInput) -> CreateRebuildJobOutput:
+    started = time.monotonic()
+    try:
+        with session_scope() as session:
+            lifecycle = JobLifecycle(session)
+            rebuild = lifecycle.create_rebuild_job(
+                force=input.force,
+                model_name=settings.embed_model,
+                index_type=settings.index_type,
+            )
+            lifecycle.record_workflow_id(rebuild.job.id, rebuild.workflow_id)
+            output = CreateRebuildJobOutput(
+                job_id=rebuild.job.id,
+                workflow_id=rebuild.workflow_id,
+                force=rebuild.force,
+                model_name=rebuild.model_name,
+                index_type=rebuild.index_type,
+            )
+        emit_activity_event(
+            log=log,
+            activity_name="create_rebuild_job_activity",
+            started_at=started,
+            outcome="success",
+            job_id=output.job_id,
+            workflow_id=output.workflow_id,
+            force=output.force,
+            model_name=output.model_name,
+            index_type=output.index_type,
+        )
+        return output
+    except Exception as exc:
+        emit_activity_event(
+            log=log,
+            activity_name="create_rebuild_job_activity",
+            started_at=started,
+            outcome="error",
             error=str(exc),
         )
         raise

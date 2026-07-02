@@ -1,6 +1,7 @@
 from activities.workflow_state.activities import (
     complete_ingest_job_activity,
     complete_rebuild_job_activity,
+    create_rebuild_job_activity,
     fail_rebuild_job_activity,
     ingest_initialize_activity,
     mark_ingest_url_done_activity,
@@ -14,6 +15,8 @@ from activities.workflow_state.activities import (
 from activities.workflow_state.models import (
     CompleteIngestJobInput,
     CompleteRebuildJobInput,
+    CreateRebuildJobInput,
+    CreateRebuildJobOutput,
     FailRebuildJobInput,
     IngestInitOutput,
     IngestUrlItem,
@@ -36,6 +39,8 @@ __all__ = [
     "SaveEmbeddingInfoInput",
     "UpdateJobProgressInput",
     "CompleteIngestJobInput",
+    "CreateRebuildJobInput",
+    "CreateRebuildJobOutput",
     "StartRebuildJobInput",
     "FailRebuildJobInput",
     "CompleteRebuildJobInput",
@@ -47,6 +52,7 @@ __all__ = [
     "save_embedding_info_activity",
     "update_job_progress_activity",
     "complete_ingest_job_activity",
+    "create_rebuild_job_activity",
     "start_rebuild_job_activity",
     "fail_rebuild_job_activity",
     "complete_rebuild_job_activity",

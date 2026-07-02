@@ -19,6 +19,7 @@ from temporalio.testing import ActivityEnvironment
 from activities.workflow_state.activities import (
     complete_ingest_job_activity,
     complete_rebuild_job_activity,
+    create_rebuild_job_activity,
     fail_rebuild_job_activity,
     ingest_initialize_activity,
     mark_ingest_url_done_activity,
@@ -31,6 +32,7 @@ from activities.workflow_state.activities import (
 from activities.workflow_state.models import (
     CompleteIngestJobInput,
     CompleteRebuildJobInput,
+    CreateRebuildJobInput,
     FailRebuildJobInput,
     MarkIngestUrlDoneInput,
     MarkIngestUrlFailedInput,
@@ -467,6 +469,24 @@ class TestCompleteIngestJobActivity:
         activity_env.run(complete_ingest_job_activity, inp)
         db_session.refresh(job)
         assert job.status == JobStatus.COMPLETED
+
+
+@pytest.mark.usefixtures("_patch_session_scope")
+class TestCreateRebuildJobActivity:
+    async def test_creates_pending_rebuild_job_with_workflow_id(
+        self, db_session: Session, activity_env: ActivityEnvironment
+    ) -> None:
+        result = activity_env.run(create_rebuild_job_activity, CreateRebuildJobInput())
+
+        job = db_session.get(Job, result.job_id)
+        assert job is not None
+        assert job.type == JobType.REBUILD_INDEX
+        assert job.status == JobStatus.PENDING
+        assert job.workflow_id == result.workflow_id
+        assert result.workflow_id == f"rebuild-workflow-{result.job_id}"
+        assert result.force is False
+        assert result.model_name
+        assert result.index_type
 
 
 # ==========================================================================
