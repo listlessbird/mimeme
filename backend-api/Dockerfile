@@ -47,8 +47,7 @@ RUN mkdir -p /app/data /app/.cache/huggingface && \
 
 ENV PATH="/app/.venv/bin:$PATH" \
     HF_HOME="/app/.cache/huggingface" \
-    HUGGINGFACE_HUB_CACHE="/app/.cache/huggingface/hub" \
-    TRANSFORMERS_CACHE="/app/.cache/huggingface/transformers"
+    HUGGINGFACE_HUB_CACHE="/app/.cache/huggingface/hub"
 
 USER appuser
 
@@ -72,8 +71,7 @@ RUN mkdir -p /app/data /app/.cache/huggingface && \
 
 ENV PATH="/app/.venv/bin:$PATH" \
     HF_HOME="/app/.cache/huggingface" \
-    HUGGINGFACE_HUB_CACHE="/app/.cache/huggingface/hub" \
-    TRANSFORMERS_CACHE="/app/.cache/huggingface/transformers"
+    HUGGINGFACE_HUB_CACHE="/app/.cache/huggingface/hub"
 
 USER appuser
 

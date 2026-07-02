@@ -187,6 +187,22 @@ uv run python -m workers.worker
 
 Temporal UI is available at `http://localhost:8088` in this mode.
 
+## Production Deploy & Rollback
+
+CI publishes both images to GHCR tagged `latest` and `sha-<short-commit>`. Deploy on the prod host:
+
+```bash
+just deploy
+```
+
+To roll back, pin the previous SHA tag. Tags are listed on the GHCR package pages for `mimeme-api` and `mimeme-worker`.
+
+```bash
+IMAGE_TAG=sha-81aa28f docker compose -f docker.compose.prod.yml up -d api worker
+```
+
+Unset `IMAGE_TAG` and deploy again to get back on `latest`.
+
 ## Modal Setup
 
 ```bash
@@ -252,7 +268,9 @@ just test-model
 These load the configured Moondream2 and SigLIP2 models and are intentionally
 kept outside the normal `uv run pytest -q`, `just test`, and `just check` paths.
 Use them before changing model IDs/revisions or packages such as `transformers`,
-`torch`, `torchvision`, `accelerate`, or `bitsandbytes`.
+`torch`, `torchvision`, `accelerate`, or `bitsandbytes`. Those packages live in
+the `local-gpu` extra and are not installed in the runtime images. `just test-model`
+runs with `uv run --all-extras`, which pulls the extra in.
 
 To force tests to use a specific Postgres database:
 

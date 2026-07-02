@@ -4,12 +4,10 @@ from activities.vision.models import (
     AnnotateImageOutput,
     VisionModelConfig,
 )
-from activities.vision.moondream import Moondream2
 
 __all__ = [
     "annotate_image_activity",
     "AnnotateImageInput",
     "AnnotateImageOutput",
     "VisionModelConfig",
-    "Moondream2",
 ]

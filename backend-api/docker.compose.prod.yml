@@ -12,7 +12,7 @@ services:
     restart: unless-stopped
 
   api:
-    image: ghcr.io/listlessbird/mimeme-api:latest
+    image: ghcr.io/listlessbird/mimeme-api:${IMAGE_TAG:-latest}
     env_file: .env
     environment:
       - TEMPORAL_HOST=temporal:7233
@@ -52,7 +52,7 @@ services:
     restart: unless-stopped
 
   worker:
-    image: ghcr.io/listlessbird/mimeme-worker:latest
+    image: ghcr.io/listlessbird/mimeme-worker:${IMAGE_TAG:-latest}
     env_file: .env
     environment:
       - TEMPORAL_HOST=temporal:7233

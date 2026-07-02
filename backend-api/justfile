@@ -15,13 +15,13 @@ lint:
     uv run ruff check src tests
 
 type:
-    uv run pyright
+    uv run pyright -p .
 
 test:
     uv run pytest -q
 
 test-model:
-    RUN_MODEL_SMOKE=1 uv run pytest -q --tb=short --show-capture=no model_smoke
+    RUN_MODEL_SMOKE=1 uv run --all-extras pytest -q --tb=short --show-capture=no model_smoke
 
 cov:
     uv run pytest --cov=src --cov-report=term-missing -q

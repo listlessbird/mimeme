@@ -6,7 +6,6 @@ from activities.embedding.models import (
     EmbedImageInput,
     EmbedImageOutput,
 )
-from activities.embedding.siglip import SiglipEmbedder
 
 __all__ = [
     "EmbedderConfig",
@@ -14,6 +13,5 @@ __all__ = [
     "EmbedImageOutput",
     "EmbedBatchInput",
     "EmbedBatchOutput",
-    "SiglipEmbedder",
     "embed_batch_activity",
 ]
