@@ -126,7 +126,7 @@ class SourceRetry:
         self._db.commit()
         return RetryPlan(
             job_id=job_id,
-            workflow_id=f"ingest-workflow-{job_id}",
+            workflow_id=f"source-retry-workflow-{job_id}",
             source_run_ids=run_ids,
             dataset=dataset,
             count=len(urls),

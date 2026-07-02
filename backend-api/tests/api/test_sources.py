@@ -259,7 +259,7 @@ class TestRetryRun:
         body = resp.json()
         assert body["queued"] == 1
         assert body["job_id"]
-        assert body["workflow_id"] == f"ingest-workflow-{body['job_id']}"
+        assert body["workflow_id"] == f"source-retry-workflow-{body['job_id']}"
         mock_temporal.start_workflow.assert_called_once()
         db_session.refresh(url)
         assert url.status == ProcessingStatus.PENDING

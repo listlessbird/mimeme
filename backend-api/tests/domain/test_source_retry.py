@@ -59,7 +59,8 @@ class TestRetryRun:
         assert plan.count == 1
         assert plan.source_run_ids == [run.id]
         assert plan.dataset == "memes"
-        assert plan.workflow_id == f"ingest-workflow-{plan.job_id}"
+        assert plan.workflow_id == f"source-retry-workflow-{plan.job_id}"
+        assert plan.workflow_id != f"ingest-workflow-{plan.job_id}"
 
     def test_leaves_succeeded_urls_untouched(self, db_session: Session) -> None:
         src = create_ingestion_source(session=db_session)
