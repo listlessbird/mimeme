@@ -1,7 +1,5 @@
 {
   "python.defaultInterpreterPath": "${workspaceFolder}/backend-api/.venv/bin/python",
-  "python.analysis.extraPaths": ["${workspaceFolder}/backend-api/src"],
-  "python.analysis.typeCheckingMode": "basic",
   "python.analysis.diagnosticMode": "workspace",
   "python.testing.cwd": "${workspaceFolder}/backend-api",
   "python.testing.pytestEnabled": true,

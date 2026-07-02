@@ -1,13 +1,24 @@
 {
   "include": [
     "backend-api/src",
-    "backend-api/tests"
+    "backend-api/tests",
+    "text-encoder/src",
+    "text-encoder/scripts",
+    "text-encoder/model_smoke"
   ],
   "extraPaths": [
     "backend-api",
     "backend-api/src"
   ],
   "executionEnvironments": [
+    {
+      "root": "text-encoder",
+      "pythonVersion": "3.13",
+      "extraPaths": [
+        "text-encoder/src",
+        "text-encoder/.venv/lib/python3.13/site-packages"
+      ]
+    },
     {
       "root": "backend-api",
       "pythonVersion": "3.13",
