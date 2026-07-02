@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     embed_device: str = Field(default="cuda")
 
     index_type: str = Field(default="flat")
+    faiss_hnsw_ef_search: int = Field(default=128)
     index_cache_dir: Path = Field(default=Path("data/cache/indexes"))
 
     # modal integration in prod

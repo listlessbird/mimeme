@@ -5,6 +5,14 @@ from pathlib import Path
 import faiss  # type: ignore[import-untyped]
 import numpy as np
 
+from shared.config import settings
+
+
+def apply_search_params(index: faiss.Index) -> faiss.Index:
+    if hasattr(index, "hnsw"):
+        index.hnsw.efSearch = settings.faiss_hnsw_ef_search
+    return index
+
 
 class FaissVectorIndex:
     def __init__(self, index: faiss.Index, id_mapping: dict[int, int]) -> None:
@@ -35,7 +43,9 @@ class FaissVectorIndex:
 
     @classmethod
     def read(cls, *, index_file: Path, id_mapping: dict[int, int]) -> FaissVectorIndex:
-        return cls(index=faiss.read_index(str(index_file)), id_mapping=id_mapping)
+        return cls(
+            index=apply_search_params(faiss.read_index(str(index_file))), id_mapping=id_mapping
+        )
 
     @property
     def ntotal(self) -> int:
@@ -102,4 +112,4 @@ def create_faiss_index(
         raise ValueError(f"Unknown index type: {index_type}")
 
     index.add(embeddings)  # type: ignore[call-arg]
-    return index
+    return apply_search_params(index)

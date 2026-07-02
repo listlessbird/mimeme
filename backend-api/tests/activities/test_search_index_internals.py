@@ -203,3 +203,50 @@ def test_active_index_catalog_garbage_collection_retains_newest_and_skips_active
     assert remaining == {"v-new", "v-active-old"}
     artifacts.delete_stored_version.assert_called_once_with("v-old")
     artifacts.delete_cached_version.assert_called_once_with("v-old")
+
+
+def test_hnsw_index_gets_configured_ef_search(tmp_path: Path) -> None:
+    from activities.indexing.faiss_vectors import FaissVectorIndex
+    from shared.config import settings
+
+    rng = np.random.default_rng(0)
+    embeddings = rng.random((32, 8), dtype=np.float32)
+    vector_index = FaissVectorIndex.build(
+        embeddings=embeddings,
+        image_ids=list(range(100, 132)),
+        index_type="hnsw",
+    )
+
+    assert vector_index.index.hnsw.efSearch == settings.faiss_hnsw_ef_search
+
+    index_file = tmp_path / "i.faiss"
+    vector_index.index.hnsw.efSearch = 7
+    vector_index.write(index_file)
+    reloaded = FaissVectorIndex.read(index_file=index_file, id_mapping=vector_index.id_mapping)
+
+    assert reloaded.index.hnsw.efSearch == settings.faiss_hnsw_ef_search
+
+
+def test_flat_index_unaffected_by_search_params() -> None:
+    from activities.indexing.faiss_vectors import FaissVectorIndex
+
+    embeddings = np.array(
+        [
+            [1.0, 0.0],
+            [0.0, 1.0],
+        ],
+        dtype=np.float32,
+    )
+    vector_index = FaissVectorIndex.build(
+        embeddings=embeddings,
+        image_ids=[101, 202],
+        index_type="flat",
+    )
+
+    assert not hasattr(vector_index.index, "hnsw")
+
+    results = vector_index.search(np.array([1.0, 0.0], dtype=np.float32), k=2)
+
+    assert results[0][0] == 101
+    assert vector_index.get_vector_by_image_id(202) is not None
+    assert vector_index.get_vector_by_image_id(303) is None
