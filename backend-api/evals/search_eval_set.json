@@ -1,0 +1,1427 @@
+[
+  {
+    "query": "10 guy no officer dog personality",
+    "expected_image_id": 1582,
+    "origin": "llm"
+  },
+  {
+    "query": "no drugs dog likes me meme",
+    "expected_image_id": 1582,
+    "origin": "llm"
+  },
+  {
+    "query": "aaaaand its gone happy meme",
+    "expected_image_id": 1698,
+    "origin": "llm"
+  },
+  {
+    "query": "south park banker happy meme gone",
+    "expected_image_id": 1698,
+    "origin": "llm"
+  },
+  {
+    "query": "aaaaand its gone green bananas black",
+    "expected_image_id": 1714,
+    "origin": "llm"
+  },
+  {
+    "query": "bananas turn black and its gone meme",
+    "expected_image_id": 1714,
+    "origin": "llm"
+  },
+  {
+    "query": "aaaaand its gone back to the future",
+    "expected_image_id": 1724,
+    "origin": "llm"
+  },
+  {
+    "query": "aint nobody got time movie credits",
+    "expected_image_id": 1822,
+    "origin": "llm"
+  },
+  {
+    "query": "sweet brown movie credits meme",
+    "expected_image_id": 1822,
+    "origin": "llm"
+  },
+  {
+    "query": "guy with gun squat rack plates",
+    "expected_image_id": 1910,
+    "origin": "llm"
+  },
+  {
+    "query": "squat rack unloading plates meme",
+    "expected_image_id": 1910,
+    "origin": "llm"
+  },
+  {
+    "query": "american chopper april may meme",
+    "expected_image_id": 1933,
+    "origin": "llm"
+  },
+  {
+    "query": "chopper argument may is gonna suck",
+    "expected_image_id": 1933,
+    "origin": "llm"
+  },
+  {
+    "query": "american chopper diapers argument meme",
+    "expected_image_id": 1979,
+    "origin": "llm"
+  },
+  {
+    "query": "bad boy touching diapers meme",
+    "expected_image_id": 1979,
+    "origin": "llm"
+  },
+  {
+    "query": "ancient aliens christ paradise meme",
+    "expected_image_id": 2120,
+    "origin": "llm"
+  },
+  {
+    "query": "ancient aliens world like paradise",
+    "expected_image_id": 2120,
+    "origin": "llm"
+  },
+  {
+    "query": "archer hi just hi meme",
+    "expected_image_id": 2225,
+    "origin": "llm"
+  },
+  {
+    "query": "archer suit just hi",
+    "expected_image_id": 2225,
+    "origin": "llm"
+  },
+  {
+    "query": "archer how to make basic meme",
+    "expected_image_id": 2254,
+    "origin": "llm"
+  },
+  {
+    "query": "archer 10 percent brain meme",
+    "expected_image_id": 2272,
+    "origin": "llm"
+  },
+  {
+    "query": "only use ten percent brain archer",
+    "expected_image_id": 2272,
+    "origin": "llm"
+  },
+  {
+    "query": "awkward sealion called teacher mom",
+    "expected_image_id": 2392,
+    "origin": "llm"
+  },
+  {
+    "query": "hey mom teacher sealion meme",
+    "expected_image_id": 2392,
+    "origin": "llm"
+  },
+  {
+    "query": "back in my day cereal boxes",
+    "expected_image_id": 2465,
+    "origin": "llm"
+  },
+  {
+    "query": "old man no wifi cereal box meme",
+    "expected_image_id": 2465,
+    "origin": "llm"
+  },
+  {
+    "query": "bad pun dog gamer court trial",
+    "expected_image_id": 2649,
+    "origin": "llm"
+  },
+  {
+    "query": "husky free trial court meme",
+    "expected_image_id": 2649,
+    "origin": "llm"
+  },
+  {
+    "query": "bernie accept cookies meme",
+    "expected_image_id": 2923,
+    "origin": "llm"
+  },
+  {
+    "query": "once again asking accept cookies",
+    "expected_image_id": 2923,
+    "origin": "llm"
+  },
+  {
+    "query": "bernie asking to stay home",
+    "expected_image_id": 2970,
+    "origin": "llm"
+  },
+  {
+    "query": "once again stay home meme",
+    "expected_image_id": 2970,
+    "origin": "llm"
+  },
+  {
+    "query": "bernie scammers credit card meme",
+    "expected_image_id": 2978,
+    "origin": "llm"
+  },
+  {
+    "query": "once again asking credit card info",
+    "expected_image_id": 2978,
+    "origin": "llm"
+  },
+  {
+    "query": "black girl wat lotion wash it off",
+    "expected_image_id": 3002,
+    "origin": "llm"
+  },
+  {
+    "query": "why use lotion then wash hands meme",
+    "expected_image_id": 3002,
+    "origin": "llm"
+  },
+  {
+    "query": "at least i dont sleep around meme",
+    "expected_image_id": 3049,
+    "origin": "llm"
+  },
+  {
+    "query": "black girl wat single sleep with someone",
+    "expected_image_id": 3049,
+    "origin": "llm"
+  },
+  {
+    "query": "black girl wat ya boo meme",
+    "expected_image_id": 3051,
+    "origin": "llm"
+  },
+  {
+    "query": "what you doin ya boo meme",
+    "expected_image_id": 3051,
+    "origin": "llm"
+  },
+  {
+    "query": "nut button parents videogames violent",
+    "expected_image_id": 3117,
+    "origin": "llm"
+  },
+  {
+    "query": "parents blame video games button meme",
+    "expected_image_id": 3117,
+    "origin": "llm"
+  },
+  {
+    "query": "nut button virus outside meme",
+    "expected_image_id": 3170,
+    "origin": "llm"
+  },
+  {
+    "query": "virus happens everyone presses outside",
+    "expected_image_id": 3170,
+    "origin": "llm"
+  },
+  {
+    "query": "boardroom meeting coronavirus masks hands",
+    "expected_image_id": 3207,
+    "origin": "llm"
+  },
+  {
+    "query": "carona masks hand washing boardroom meme",
+    "expected_image_id": 3207,
+    "origin": "llm"
+  },
+  {
+    "query": "boardroom meeting dog ate report",
+    "expected_image_id": 3228,
+    "origin": "llm"
+  },
+  {
+    "query": "jerry report dog ate it meme",
+    "expected_image_id": 3228,
+    "origin": "llm"
+  },
+  {
+    "query": "brace yourself coronavirus memes meme",
+    "expected_image_id": 3319,
+    "origin": "llm"
+  },
+  {
+    "query": "ned stark corona memes are coming",
+    "expected_image_id": 3319,
+    "origin": "llm"
+  },
+  {
+    "query": "brace yourselves year in review facebook meme",
+    "expected_image_id": 3333,
+    "origin": "llm"
+  },
+  {
+    "query": "ned stark facebook year review videos too early",
+    "expected_image_id": 3333,
+    "origin": "llm"
+  },
+  {
+    "query": "bad at panicking toilet paper meme",
+    "expected_image_id": 3404,
+    "origin": "llm"
+  },
+  {
+    "query": "kermit panic buying toilet paper meme",
+    "expected_image_id": 3404,
+    "origin": "llm"
+  },
+  {
+    "query": "choosing airbnb reading host bio meme",
+    "expected_image_id": 3520,
+    "origin": "llm"
+  },
+  {
+    "query": "picard facepalm airbnb owner life story",
+    "expected_image_id": 3520,
+    "origin": "llm"
+  },
+  {
+    "query": "nice person everyone stupid meme",
+    "expected_image_id": 3570,
+    "origin": "llm"
+  },
+  {
+    "query": "picard facepalm trying to be nice stupid people",
+    "expected_image_id": 3570,
+    "origin": "llm"
+  },
+  {
+    "query": "change my mind hair gel weak frauds",
+    "expected_image_id": 3618,
+    "origin": "llm"
+  },
+  {
+    "query": "steven crowder hair gel meme",
+    "expected_image_id": 3618,
+    "origin": "llm"
+  },
+  {
+    "query": "change my mind breathing pauses death timer",
+    "expected_image_id": 3669,
+    "origin": "llm"
+  },
+  {
+    "query": "two minute life timer breathing meme",
+    "expected_image_id": 3669,
+    "origin": "llm"
+  },
+  {
+    "query": "bear hiding from killer farting meme",
+    "expected_image_id": 3696,
+    "origin": "llm"
+  },
+  {
+    "query": "confession bear killer fart giggles",
+    "expected_image_id": 3696,
+    "origin": "llm"
+  },
+  {
+    "query": "conspiracy keanu fat air meme",
+    "expected_image_id": 3819,
+    "origin": "llm"
+  },
+  {
+    "query": "no one disappears into fat air",
+    "expected_image_id": 3819,
+    "origin": "llm"
+  },
+  {
+    "query": "condescending wonka special persons day april 1",
+    "expected_image_id": 3949,
+    "origin": "llm"
+  },
+  {
+    "query": "wonka fathers day special person day meme",
+    "expected_image_id": 3949,
+    "origin": "llm"
+  },
+  {
+    "query": "disaster girl spider burning house",
+    "expected_image_id": 4035,
+    "origin": "llm"
+  },
+  {
+    "query": "i found a spider disaster girl",
+    "expected_image_id": 4035,
+    "origin": "llm"
+  },
+  {
+    "query": "doge petting no owner cute pup meme",
+    "expected_image_id": 4079,
+    "origin": "llm"
+  },
+  {
+    "query": "happy doge asks for pets follow home",
+    "expected_image_id": 4079,
+    "origin": "llm"
+  },
+  {
+    "query": "dont you squidward fart blame meme",
+    "expected_image_id": 4197,
+    "origin": "llm"
+  },
+  {
+    "query": "spongebob blamed fart on someone else",
+    "expected_image_id": 4197,
+    "origin": "llm"
+  },
+  {
+    "query": "dont you squidward ok boomer meme",
+    "expected_image_id": 4213,
+    "origin": "llm"
+  },
+  {
+    "query": "spongebob ok boomer 3am friend call",
+    "expected_image_id": 4213,
+    "origin": "llm"
+  },
+  {
+    "query": "epic handshake lag switchers ruining game",
+    "expected_image_id": 4473,
+    "origin": "llm"
+  },
+  {
+    "query": "lag switchers making game bad handshake",
+    "expected_image_id": 4473,
+    "origin": "llm"
+  },
+  {
+    "query": "evil toddler funny meme no upvote",
+    "expected_image_id": 4740,
+    "origin": "llm"
+  },
+  {
+    "query": "kid laughing dont upvote meme typo",
+    "expected_image_id": 4740,
+    "origin": "llm"
+  },
+  {
+    "query": "expanding brain just memes four panels",
+    "expected_image_id": 4803,
+    "origin": "llm"
+  },
+  {
+    "query": "expanding brain introverts extroverts lockdown",
+    "expected_image_id": 4843,
+    "origin": "llm"
+  },
+  {
+    "query": "lockdown day 9000 introuts extretters meme",
+    "expected_image_id": 4843,
+    "origin": "llm"
+  },
+  {
+    "query": "face you make ecosystem model used energy",
+    "expected_image_id": 4902,
+    "origin": "llm"
+  },
+  {
+    "query": "robert downey jr face ecosystem model energy",
+    "expected_image_id": 4902,
+    "origin": "llm"
+  },
+  {
+    "query": "dad hates failure da wae meme",
+    "expected_image_id": 5002,
+    "origin": "llm"
+  },
+  {
+    "query": "finding neverland ugandan knuckles failure",
+    "expected_image_id": 5002,
+    "origin": "llm"
+  },
+  {
+    "query": "dad son dreamed no hamburgers meme",
+    "expected_image_id": 5037,
+    "origin": "llm"
+  },
+  {
+    "query": "finding neverland no hamburgers world",
+    "expected_image_id": 5037,
+    "origin": "llm"
+  },
+  {
+    "query": "fry suspicious towel naked meme",
+    "expected_image_id": 5202,
+    "origin": "llm"
+  },
+  {
+    "query": "futurama fry naked under towel meme",
+    "expected_image_id": 5202,
+    "origin": "llm"
+  },
+  {
+    "query": "futurama fry flashlight app contacts pictures",
+    "expected_image_id": 5239,
+    "origin": "llm"
+  },
+  {
+    "query": "why flashlight app needs contacts meme",
+    "expected_image_id": 5239,
+    "origin": "llm"
+  },
+  {
+    "query": "futurama fry kid named covid",
+    "expected_image_id": 5244,
+    "origin": "llm"
+  },
+  {
+    "query": "will someone name their baby covid meme",
+    "expected_image_id": 5244,
+    "origin": "llm"
+  },
+  {
+    "query": "grandma finds internet favorite character dies",
+    "expected_image_id": 5313,
+    "origin": "llm"
+  },
+  {
+    "query": "grandma rereading character death meme",
+    "expected_image_id": 5313,
+    "origin": "llm"
+  },
+  {
+    "query": "grandma finds internet teen browser history",
+    "expected_image_id": 5330,
+    "origin": "llm"
+  },
+  {
+    "query": "old lady laptop kid search history meme",
+    "expected_image_id": 5330,
+    "origin": "llm"
+  },
+  {
+    "query": "be yourself unwanted grumpy cat",
+    "expected_image_id": 5407,
+    "origin": "llm"
+  },
+  {
+    "query": "grumpy cat be yourself nobody wants you",
+    "expected_image_id": 5407,
+    "origin": "llm"
+  },
+  {
+    "query": "grumpy cat death best day meme",
+    "expected_image_id": 5435,
+    "origin": "llm"
+  },
+  {
+    "query": "grumpy cat dies happiest day",
+    "expected_image_id": 5435,
+    "origin": "llm"
+  },
+  {
+    "query": "grumpy cat tribute frown smiles",
+    "expected_image_id": 5441,
+    "origin": "llm"
+  },
+  {
+    "query": "rip grumpy cat smiles frown",
+    "expected_image_id": 5441,
+    "origin": "llm"
+  },
+  {
+    "query": "coronavirus pill going places for no reason",
+    "expected_image_id": 5463,
+    "origin": "llm"
+  },
+  {
+    "query": "hard to swallow pills coronavirus travel urge",
+    "expected_image_id": 5463,
+    "origin": "llm"
+  },
+  {
+    "query": "hard to swallow pills im right meme",
+    "expected_image_id": 5470,
+    "origin": "llm"
+  },
+  {
+    "query": "pill bottle you know im right",
+    "expected_image_id": 5470,
+    "origin": "llm"
+  },
+  {
+    "query": "gues ill just chew pill meme",
+    "expected_image_id": 5502,
+    "origin": "llm"
+  },
+  {
+    "query": "hard to swallow pills just chew",
+    "expected_image_id": 5502,
+    "origin": "llm"
+  },
+  {
+    "query": "harold finds nice restaurant for girlfriend",
+    "expected_image_id": 5631,
+    "origin": "llm"
+  },
+  {
+    "query": "hide the pain harold restaurant girlfriend",
+    "expected_image_id": 5631,
+    "origin": "llm"
+  },
+  {
+    "query": "gf dropped me off cliff harold meme",
+    "expected_image_id": 5632,
+    "origin": "llm"
+  },
+  {
+    "query": "hide the pain harold girlfriend cliff",
+    "expected_image_id": 5632,
+    "origin": "llm"
+  },
+  {
+    "query": "amazon toilet paper sold out zombie wait meme",
+    "expected_image_id": 5746,
+    "origin": "llm"
+  },
+  {
+    "query": "ill just wait here amazon toilet paper out of stock",
+    "expected_image_id": 5746,
+    "origin": "llm"
+  },
+  {
+    "query": "ill just wait here loading loading",
+    "expected_image_id": 5769,
+    "origin": "llm"
+  },
+  {
+    "query": "zombie computer loading meme",
+    "expected_image_id": 5769,
+    "origin": "llm"
+  },
+  {
+    "query": "imagination spongebob on drugs",
+    "expected_image_id": 5892,
+    "origin": "llm"
+  },
+  {
+    "query": "spongebob rainbow drugs meme",
+    "expected_image_id": 5892,
+    "origin": "llm"
+  },
+  {
+    "query": "imagination spongebob high friends rainbow",
+    "expected_image_id": 5911,
+    "origin": "llm"
+  },
+  {
+    "query": "spongebob prove youre high rainbow meme",
+    "expected_image_id": 5911,
+    "origin": "llm"
+  },
+  {
+    "query": "imagination spongebob crush girlfriend",
+    "expected_image_id": 5932,
+    "origin": "llm"
+  },
+  {
+    "query": "spongebob rainbow crush says girlfriend",
+    "expected_image_id": 5932,
+    "origin": "llm"
+  },
+  {
+    "query": "inhaling seagull pizza rolls omg",
+    "expected_image_id": 5942,
+    "origin": "llm"
+  },
+  {
+    "query": "seagull hungry pizza rolls meme",
+    "expected_image_id": 5942,
+    "origin": "llm"
+  },
+  {
+    "query": "inhaling seagull uneaten sandwich",
+    "expected_image_id": 6002,
+    "origin": "llm"
+  },
+  {
+    "query": "is that a sandwich seagull meme",
+    "expected_image_id": 6002,
+    "origin": "llm"
+  },
+  {
+    "query": "10 guy keep secrets tells people",
+    "expected_image_id": 6144,
+    "origin": "llm"
+  },
+  {
+    "query": "10 guy secrets meme",
+    "expected_image_id": 6144,
+    "origin": "llm"
+  },
+  {
+    "query": "jack sparrow internet clean mind",
+    "expected_image_id": 6344,
+    "origin": "llm"
+  },
+  {
+    "query": "pirates chase clean mind internet meme",
+    "expected_image_id": 6344,
+    "origin": "llm"
+  },
+  {
+    "query": "laughing men in suits yo mama scale phone number",
+    "expected_image_id": 6432,
+    "origin": "llm"
+  },
+  {
+    "query": "yo mama fat scale phone number suits",
+    "expected_image_id": 6432,
+    "origin": "llm"
+  },
+  {
+    "query": "laughing men in suits same joke",
+    "expected_image_id": 6444,
+    "origin": "llm"
+  },
+  {
+    "query": "same joke laughing suits meme",
+    "expected_image_id": 6444,
+    "origin": "llm"
+  },
+  {
+    "query": "leo cheers life better job quit",
+    "expected_image_id": 6575,
+    "origin": "llm"
+  },
+  {
+    "query": "leonardo dicaprio cheers quit job",
+    "expected_image_id": 6575,
+    "origin": "llm"
+  },
+  {
+    "query": "facebook marked safe washed hands corona",
+    "expected_image_id": 6758,
+    "origin": "llm"
+  },
+  {
+    "query": "marked safe from coronavirus hand washing",
+    "expected_image_id": 6758,
+    "origin": "llm"
+  },
+  {
+    "query": "facebook safe moist talk meme",
+    "expected_image_id": 6781,
+    "origin": "llm"
+  },
+  {
+    "query": "marked safe toilet paper shortage",
+    "expected_image_id": 6783,
+    "origin": "llm"
+  },
+  {
+    "query": "toilet paper shortage marked safe meme",
+    "expected_image_id": 6783,
+    "origin": "llm"
+  },
+  {
+    "query": "me when im tried spongebob",
+    "expected_image_id": 7031,
+    "origin": "llm"
+  },
+  {
+    "query": "mocking spongebob tried typo",
+    "expected_image_id": 7031,
+    "origin": "llm"
+  },
+  {
+    "query": "mocking spongebob quarantine brain",
+    "expected_image_id": 7038,
+    "origin": "llm"
+  },
+  {
+    "query": "quarantine taking over my brain spongebob",
+    "expected_image_id": 7038,
+    "origin": "llm"
+  },
+  {
+    "query": "mocking spongebob krabs money",
+    "expected_image_id": 7087,
+    "origin": "llm"
+  },
+  {
+    "query": "boromir toilet paper shortage meme",
+    "expected_image_id": 7373,
+    "origin": "llm"
+  },
+  {
+    "query": "one does not simply toilet paper escape",
+    "expected_image_id": 7373,
+    "origin": "llm"
+  },
+  {
+    "query": "picard spelling errors imgflip ruined meme",
+    "expected_image_id": 7626,
+    "origin": "llm"
+  },
+  {
+    "query": "picard wtf meme urined spelling",
+    "expected_image_id": 7626,
+    "origin": "llm"
+  },
+  {
+    "query": "drivers license cant drive picard meme",
+    "expected_image_id": 7711,
+    "origin": "llm"
+  },
+  {
+    "query": "picard college degree drivers license",
+    "expected_image_id": 7711,
+    "origin": "llm"
+  },
+  {
+    "query": "no its patrick meme good",
+    "expected_image_id": 7733,
+    "origin": "llm"
+  },
+  {
+    "query": "patrick is this meme good",
+    "expected_image_id": 7733,
+    "origin": "llm"
+  },
+  {
+    "query": "patrick china coronavirus bats lab meme",
+    "expected_image_id": 7739,
+    "origin": "llm"
+  },
+  {
+    "query": "put it somewhere else china bats coronavirus",
+    "expected_image_id": 7739,
+    "origin": "llm"
+  },
+  {
+    "query": "patrick put fortnite in the bin",
+    "expected_image_id": 7812,
+    "origin": "llm"
+  },
+  {
+    "query": "why dont we bin fortnite meme",
+    "expected_image_id": 7812,
+    "origin": "llm"
+  },
+  {
+    "query": "no slipping up roll safe meme",
+    "expected_image_id": 7888,
+    "origin": "llm"
+  },
+  {
+    "query": "roll safe slipping away",
+    "expected_image_id": 7888,
+    "origin": "llm"
+  },
+  {
+    "query": "covid chasing my social life balloon",
+    "expected_image_id": 7932,
+    "origin": "llm"
+  },
+  {
+    "query": "running away balloon social life covid",
+    "expected_image_id": 7932,
+    "origin": "llm"
+  },
+  {
+    "query": "parents chasing me balloon meme",
+    "expected_image_id": 7941,
+    "origin": "llm"
+  },
+  {
+    "query": "running away balloon my parents me",
+    "expected_image_id": 7941,
+    "origin": "llm"
+  },
+  {
+    "query": "coronavirus quarantine chasing school freedom meme",
+    "expected_image_id": 7945,
+    "origin": "llm"
+  },
+  {
+    "query": "running away balloon school freedom quarantine",
+    "expected_image_id": 7945,
+    "origin": "llm"
+  },
+  {
+    "query": "running away balloon lockdown wifi speed",
+    "expected_image_id": 7992,
+    "origin": "llm"
+  },
+  {
+    "query": "see you after lockdown balloon meme",
+    "expected_image_id": 7992,
+    "origin": "llm"
+  },
+  {
+    "query": "macbeth killing duncan pablo meme",
+    "expected_image_id": 8028,
+    "origin": "llm"
+  },
+  {
+    "query": "sad pablo escobar macbeth duncan",
+    "expected_image_id": 8028,
+    "origin": "llm"
+  },
+  {
+    "query": "pandemic ending family coronavirus pablo meme",
+    "expected_image_id": 8060,
+    "origin": "llm"
+  },
+  {
+    "query": "sad pablo quarantine over family died",
+    "expected_image_id": 8060,
+    "origin": "llm"
+  },
+  {
+    "query": "lnd nat 5 escobar meme",
+    "expected_image_id": 8092,
+    "origin": "llm"
+  },
+  {
+    "query": "scumbag steve valentine money saved",
+    "expected_image_id": 8216,
+    "origin": "llm"
+  },
+  {
+    "query": "valentines day everyone hates me meme",
+    "expected_image_id": 8216,
+    "origin": "llm"
+  },
+  {
+    "query": "big lebowski no nut november nobody cares",
+    "expected_image_id": 8387,
+    "origin": "llm"
+  },
+  {
+    "query": "see nobody cares no nut november",
+    "expected_image_id": 8387,
+    "origin": "llm"
+  },
+  {
+    "query": "brother screams demonically ipad meme",
+    "expected_image_id": 8516,
+    "origin": "llm"
+  },
+  {
+    "query": "sparta leonidas ipad 5 seconds",
+    "expected_image_id": 8516,
+    "origin": "llm"
+  },
+  {
+    "query": "cant talk trash at all steve harvey",
+    "expected_image_id": 8831,
+    "origin": "llm"
+  },
+  {
+    "query": "steve harvey talk trash internet",
+    "expected_image_id": 8831,
+    "origin": "llm"
+  },
+  {
+    "query": "mom says school monday success kid",
+    "expected_image_id": 8918,
+    "origin": "llm"
+  },
+  {
+    "query": "success kid three day weekend monday school",
+    "expected_image_id": 8918,
+    "origin": "llm"
+  },
+  {
+    "query": "got my usual back success kid",
+    "expected_image_id": 8939,
+    "origin": "llm"
+  },
+  {
+    "query": "success kid mom took my usual",
+    "expected_image_id": 8939,
+    "origin": "llm"
+  },
+  {
+    "query": "success kid ice bucket tide pod refused",
+    "expected_image_id": 8945,
+    "origin": "llm"
+  },
+  {
+    "query": "survived challenges by not accepting meme",
+    "expected_image_id": 8945,
+    "origin": "llm"
+  },
+  {
+    "query": "office space meme huge text on face",
+    "expected_image_id": 9161,
+    "origin": "llm"
+  },
+  {
+    "query": "that would be great text covering face meme",
+    "expected_image_id": 9161,
+    "origin": "llm"
+  },
+  {
+    "query": "dos equis guy service and vehicle techs meme",
+    "expected_image_id": 9200,
+    "origin": "llm"
+  },
+  {
+    "query": "most interesting man essential workers vehicle techs",
+    "expected_image_id": 9200,
+    "origin": "llm"
+  },
+  {
+    "query": "dos equis guy not offended scroll meme",
+    "expected_image_id": 9206,
+    "origin": "llm"
+  },
+  {
+    "query": "most interesting man offended keep scrolling",
+    "expected_image_id": 9206,
+    "origin": "llm"
+  },
+  {
+    "query": "dos equis guy toilet paper shortage diarrhea meme",
+    "expected_image_id": 9221,
+    "origin": "llm"
+  },
+  {
+    "query": "most interesting man corona diarrhea toilet paper",
+    "expected_image_id": 9221,
+    "origin": "llm"
+  },
+  {
+    "query": "dos equis guy breast implant squeaky toy",
+    "expected_image_id": 9271,
+    "origin": "llm"
+  },
+  {
+    "query": "most interesting man plastic surgeon squeaky implants",
+    "expected_image_id": 9271,
+    "origin": "llm"
+  },
+  {
+    "query": "car couple corona getaway meme",
+    "expected_image_id": 9349,
+    "origin": "llm"
+  },
+  {
+    "query": "rock driving away from corona meme",
+    "expected_image_id": 9349,
+    "origin": "llm"
+  },
+  {
+    "query": "where id put my trophy dignity meme",
+    "expected_image_id": 9702,
+    "origin": "llm"
+  },
+  {
+    "query": "fairly oddparents trophy nintendo switch marvel vs capcom",
+    "expected_image_id": 9703,
+    "origin": "llm"
+  },
+  {
+    "query": "where id put my trophy marvel capcom 2 switch",
+    "expected_image_id": 9703,
+    "origin": "llm"
+  },
+  {
+    "query": "soccer trophy mom fairly oddparents meme",
+    "expected_image_id": 9711,
+    "origin": "llm"
+  },
+  {
+    "query": "where id put trophy 7 year old soccer mom",
+    "expected_image_id": 9711,
+    "origin": "llm"
+  },
+  {
+    "query": "fairly oddparents trophy no name meme",
+    "expected_image_id": 9735,
+    "origin": "llm"
+  },
+  {
+    "query": "where id put my trophy name meme",
+    "expected_image_id": 9735,
+    "origin": "llm"
+  },
+  {
+    "query": "fairly oddparents trophy nothing life meme",
+    "expected_image_id": 9750,
+    "origin": "llm"
+  },
+  {
+    "query": "fairly oddparents trophy friends meme",
+    "expected_image_id": 9758,
+    "origin": "llm"
+  },
+  {
+    "query": "trump bill signing today is just meme",
+    "expected_image_id": 9924,
+    "origin": "llm"
+  },
+  {
+    "query": "trump signing paper today is just",
+    "expected_image_id": 9924,
+    "origin": "llm"
+  },
+  {
+    "query": "fancy pooh old young meme",
+    "expected_image_id": 10011,
+    "origin": "llm"
+  },
+  {
+    "query": "tuxedo winnie pooh old youngnt",
+    "expected_image_id": 10011,
+    "origin": "llm"
+  },
+  {
+    "query": "fancy winnie pooh crying at mongo meme",
+    "expected_image_id": 10068,
+    "origin": "llm"
+  },
+  {
+    "query": "tuxedo pooh jack titanic mongo shrek 2",
+    "expected_image_id": 10068,
+    "origin": "llm"
+  },
+  {
+    "query": "red guy choosing omelette olive buttons",
+    "expected_image_id": 10091,
+    "origin": "llm"
+  },
+  {
+    "query": "two buttons omelette olive meme",
+    "expected_image_id": 10091,
+    "origin": "llm"
+  },
+  {
+    "query": "i want you pewdie pi meme",
+    "expected_image_id": 10339,
+    "origin": "llm"
+  },
+  {
+    "query": "uncle sam pewdiepie subscribe meme",
+    "expected_image_id": 10339,
+    "origin": "llm"
+  },
+  {
+    "query": "skeleton on bench five minutes playdate",
+    "expected_image_id": 10459,
+    "origin": "llm"
+  },
+  {
+    "query": "waiting skeleton playdate jimmy meme",
+    "expected_image_id": 10459,
+    "origin": "llm"
+  },
+  {
+    "query": "blackpink comeback skeleton bench meme",
+    "expected_image_id": 10526,
+    "origin": "llm"
+  },
+  {
+    "query": "waiting skeleton blackpink comeback",
+    "expected_image_id": 10526,
+    "origin": "llm"
+  },
+  {
+    "query": "skeleton bench waiting for covid to end",
+    "expected_image_id": 10541,
+    "origin": "llm"
+  },
+  {
+    "query": "waiting skeleton pandemic over meme",
+    "expected_image_id": 10541,
+    "origin": "llm"
+  },
+  {
+    "query": "hannibal meme reading twitter brain who did this",
+    "expected_image_id": 10566,
+    "origin": "llm"
+  },
+  {
+    "query": "who killed hannibal twitter all night brain",
+    "expected_image_id": 10566,
+    "origin": "llm"
+  },
+  {
+    "query": "hannibal buress china chinese people fever",
+    "expected_image_id": 10640,
+    "origin": "llm"
+  },
+  {
+    "query": "who killed hannibal china fever meme",
+    "expected_image_id": 10640,
+    "origin": "llm"
+  },
+  {
+    "query": "hannibal meme coronavirus china",
+    "expected_image_id": 10643,
+    "origin": "llm"
+  },
+  {
+    "query": "who killed hannibal corona virus china",
+    "expected_image_id": 10643,
+    "origin": "llm"
+  },
+  {
+    "query": "thanos on drugs vs cookie monster meme",
+    "expected_image_id": 10701,
+    "origin": "llm"
+  },
+  {
+    "query": "cosmo holding broom dank memes",
+    "expected_image_id": 10890,
+    "origin": "llm"
+  },
+  {
+    "query": "mom makes me go outside toy story meme",
+    "expected_image_id": 11015,
+    "origin": "llm"
+  },
+  {
+    "query": "woody buzz outside weather meme",
+    "expected_image_id": 11015,
+    "origin": "llm"
+  },
+  {
+    "query": "dad laughing 13 year old hoodie meme",
+    "expected_image_id": 11280,
+    "origin": "llm"
+  },
+  {
+    "query": "yo dawg son wants hoodie back",
+    "expected_image_id": 11280,
+    "origin": "llm"
+  },
+  {
+    "query": "10 guy wet girl umbrella",
+    "expected_image_id": 11358,
+    "origin": "llm"
+  },
+  {
+    "query": "not giving her umbrella meme",
+    "expected_image_id": 11358,
+    "origin": "llm"
+  },
+  {
+    "query": "aaaaand its gone paycheck bills",
+    "expected_image_id": 11443,
+    "origin": "llm"
+  },
+  {
+    "query": "south park bank paycheck bills meme",
+    "expected_image_id": 11443,
+    "origin": "llm"
+  },
+  {
+    "query": "aaaaand its gone motivation",
+    "expected_image_id": 11507,
+    "origin": "llm"
+  },
+  {
+    "query": "motivation disappeared bank meme",
+    "expected_image_id": 11507,
+    "origin": "llm"
+  },
+  {
+    "query": "aint nobody got time popular templates",
+    "expected_image_id": 11555,
+    "origin": "llm"
+  },
+  {
+    "query": "sweet brown popular templates meme",
+    "expected_image_id": 11555,
+    "origin": "llm"
+  },
+  {
+    "query": "american chopper meatballs meatloaf meme",
+    "expected_image_id": 11773,
+    "origin": "llm"
+  },
+  {
+    "query": "american chopper satan god thanos grape",
+    "expected_image_id": 11773,
+    "origin": "llm"
+  },
+  {
+    "query": "american chopper church bible gun",
+    "expected_image_id": 11799,
+    "origin": "llm"
+  },
+  {
+    "query": "millennials church gun pervert meme",
+    "expected_image_id": 11799,
+    "origin": "llm"
+  },
+  {
+    "query": "american chopper taxes paying 60 percent",
+    "expected_image_id": 11811,
+    "origin": "llm"
+  },
+  {
+    "query": "chopper argument owe me taxes meme",
+    "expected_image_id": 11811,
+    "origin": "llm"
+  },
+  {
+    "query": "archer fat girlfriend meme",
+    "expected_image_id": 12077,
+    "origin": "llm"
+  },
+  {
+    "query": "do you want fat girlfriend archer",
+    "expected_image_id": 12077,
+    "origin": "llm"
+  },
+  {
+    "query": "archer boy scouts girl scouts meme",
+    "expected_image_id": 12089,
+    "origin": "llm"
+  },
+  {
+    "query": "girl scouts already exists archer meme",
+    "expected_image_id": 12089,
+    "origin": "llm"
+  },
+  {
+    "query": "back in my day polar vortex bomb cyclone",
+    "expected_image_id": 12283,
+    "origin": "llm"
+  },
+  {
+    "query": "old man winter storms polar vortex meme",
+    "expected_image_id": 12283,
+    "origin": "llm"
+  },
+  {
+    "query": "back in my day nordi illegal",
+    "expected_image_id": 12297,
+    "origin": "llm"
+  },
+  {
+    "query": "old man nordi illegal meme",
+    "expected_image_id": 12297,
+    "origin": "llm"
+  },
+  {
+    "query": "bad pun dog fanta sea",
+    "expected_image_id": 12436,
+    "origin": "llm"
+  },
+  {
+    "query": "husky orange soda dream pun",
+    "expected_image_id": 12436,
+    "origin": "llm"
+  },
+  {
+    "query": "bad pun dog plate lunch on me",
+    "expected_image_id": 12455,
+    "origin": "llm"
+  },
+  {
+    "query": "husky plate joke lunch meme",
+    "expected_image_id": 12455,
+    "origin": "llm"
+  },
+  {
+    "query": "bad pun dog coronavirus viral",
+    "expected_image_id": 12477,
+    "origin": "llm"
+  },
+  {
+    "query": "husky upvote coronavirus meme",
+    "expected_image_id": 12477,
+    "origin": "llm"
+  },
+  {
+    "query": "bad pun dog top a car brake",
+    "expected_image_id": 12482,
+    "origin": "llm"
+  },
+  {
+    "query": "husky top a car tupdid meme",
+    "expected_image_id": 12482,
+    "origin": "llm"
+  },
+  {
+    "query": "bad pun dog part backwards trap",
+    "expected_image_id": 12511,
+    "origin": "llm"
+  },
+  {
+    "query": "husky dont spell part backwards",
+    "expected_image_id": 12511,
+    "origin": "llm"
+  },
+  {
+    "query": "be like bill old math meme",
+    "expected_image_id": 12689,
+    "origin": "llm"
+  },
+  {
+    "query": "stick figure age bad at math",
+    "expected_image_id": 12689,
+    "origin": "llm"
+  },
+  {
+    "query": "bernie asking spare toilet paper",
+    "expected_image_id": 12774,
+    "origin": "llm"
+  },
+  {
+    "query": "once again asking toilet paper meme",
+    "expected_image_id": 12774,
+    "origin": "llm"
+  },
+  {
+    "query": "blue button vector meme",
+    "expected_image_id": 12968,
+    "origin": "llm"
+  },
+  {
+    "query": "nut button vector direction magnitude",
+    "expected_image_id": 12968,
+    "origin": "llm"
+  },
+  {
+    "query": "boardroom meeting next iphone bigger",
+    "expected_image_id": 13053,
+    "origin": "llm"
+  },
+  {
+    "query": "iphone features boardroom suggestion meme",
+    "expected_image_id": 13053,
+    "origin": "llm"
+  },
+  {
+    "query": "boardroom meeting boomers old people you",
+    "expected_image_id": 13096,
+    "origin": "llm"
+  },
+  {
+    "query": "boomers old people you meme",
+    "expected_image_id": 13096,
+    "origin": "llm"
+  },
+  {
+    "query": "brace yourselves baby crying meme",
+    "expected_image_id": 13115,
+    "origin": "llm"
+  },
+  {
+    "query": "ned stark baby about to cry",
+    "expected_image_id": 13115,
+    "origin": "llm"
+  },
+  {
+    "query": "but thats none stole something meme",
+    "expected_image_id": 13290,
+    "origin": "llm"
+  },
+  {
+    "query": "kermit tea someone stole something",
+    "expected_image_id": 13290,
+    "origin": "llm"
+  }
+]
