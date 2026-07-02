@@ -161,6 +161,96 @@ class IngestWorkflow:
                         )
 
                         if process_result.is_duplicate:
+                            if process_result.needs_annotation:
+                                last_step = "annotate_duplicate_image"
+                                workflow.logger.info(
+                                    "workflow_step",
+                                    extra={
+                                        "workflow_name": "IngestWorkflow",
+                                        "job_id": input.job_id,
+                                        "image_id": process_result.image_id,
+                                        "step": "annotate_duplicate_image",
+                                    },
+                                )
+                                await record_stage(ingest_url_id, IngestStage.ANNOTATING)
+                                annotation_result: AnnotateImageOutput = (
+                                    await workflow.execute_activity(
+                                        annotate_image_activity,
+                                        AnnotateImageInput(
+                                            image_id=process_result.image_id,
+                                            s3_key=process_result.s3_key,
+                                        ),
+                                        start_to_close_timeout=timedelta(minutes=10),
+                                        retry_policy=RETRY_GPU,
+                                    )
+                                )
+
+                                last_step = "save_duplicate_annotations"
+                                await workflow.execute_activity(
+                                    save_annotations_activity,
+                                    SaveAnnotationsInput(
+                                        image_id=process_result.image_id,
+                                        caption=annotation_result.caption,
+                                        caption_model=annotation_result.caption_model,
+                                        ocr_text=annotation_result.ocr_text,
+                                        ocr_model=annotation_result.ocr_model,
+                                    ),
+                                    start_to_close_timeout=timedelta(minutes=1),
+                                    retry_policy=RETRY_DB,
+                                )
+                                caption = annotation_result.caption
+                                ocr_text = annotation_result.ocr_text
+                            else:
+                                caption = process_result.existing_caption
+                                ocr_text = process_result.existing_ocr_text
+
+                            if process_result.needs_embedding:
+                                text = policy.compose_embedding_text(caption, ocr_text)
+
+                                last_step = "embed_duplicate_image"
+                                workflow.logger.info(
+                                    "workflow_step",
+                                    extra={
+                                        "workflow_name": "IngestWorkflow",
+                                        "job_id": input.job_id,
+                                        "image_id": process_result.image_id,
+                                        "step": "embed_duplicate_image",
+                                    },
+                                )
+                                await record_stage(ingest_url_id, IngestStage.EMBEDDING)
+                                embed_result: EmbedBatchOutput = await workflow.execute_activity(
+                                    embed_batch_activity,
+                                    EmbedBatchInput(
+                                        items=[
+                                            EmbedImageInput(
+                                                image_id=process_result.image_id,
+                                                s3_key=process_result.s3_key,
+                                                text=text,
+                                                sha256=process_result.sha256,
+                                                dataset=input.dataset,
+                                            )
+                                        ],
+                                        dataset=input.dataset,
+                                    ),
+                                    start_to_close_timeout=timedelta(minutes=10),
+                                    retry_policy=RETRY_GPU,
+                                )
+
+                                embedding = policy.embedding_decision(embed_result.results)
+                                if embedding:
+                                    last_step = "save_duplicate_embedding_info"
+                                    await workflow.execute_activity(
+                                        save_embedding_info_activity,
+                                        SaveEmbeddingInfoInput(
+                                            image_id=embedding.image_id,
+                                            model=embedding.model,
+                                            dimension=embedding.dimension,
+                                            image_embedding_key=embedding.image_embedding_key,
+                                        ),
+                                        start_to_close_timeout=timedelta(minutes=1),
+                                        retry_policy=RETRY_DB,
+                                    )
+
                             duplicate = policy.record_duplicate(process_result.image_id)
                             last_step = "mark_duplicate_done"
                             await record_stage(ingest_url_id, IngestStage.DEDUPED)

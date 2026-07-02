@@ -29,6 +29,7 @@ from shared.models.orm import (
     Artifact,
     Image,
     Processing,
+    ProcessingStatus,
 )
 from tests.factories import (
     create_annotation,
@@ -270,7 +271,60 @@ class TestProcessImageActivity:
 
         assert result.is_duplicate is True
         assert result.image_id == existing.id
+        assert result.needs_annotation is True
+        assert result.needs_embedding is True
         # Should NOT upload to S3 for duplicates
+        mock_storage.upload_file.assert_not_called()
+
+    async def test_fully_processed_duplicate_does_not_request_repair(
+        self, db_session: Session, activity_env: ActivityEnvironment
+    ) -> None:
+        existing = create_image(
+            session=db_session,
+            sha256="processed-hash",
+            s3_key="images/test/processed.jpg",
+        )
+        create_processing(
+            session=db_session,
+            image=existing,
+            caption_status=ProcessingStatus.DONE,
+            ocr_status=ProcessingStatus.DONE,
+            embed_status=ProcessingStatus.DONE,
+            embed_s3_key="embeddings/test/processed.npy",
+        )
+        create_annotation(
+            session=db_session,
+            image=existing,
+            caption_text="existing caption",
+            ocr_text="existing ocr",
+        )
+        db_session.flush()
+
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as f:
+            f.write(b"\xff\xd8\xff\xe0" + b"\x00" * 100)
+            temp_path = f.name
+
+        mock_storage = MagicMock()
+
+        inp = ProcessImageInput(
+            local_path=temp_path,
+            filename="cat.jpg",
+            ingest_url_id=1,
+            dataset="test-dataset",
+        )
+
+        with (
+            patch("activities.storage.activities.get_storage_service", return_value=mock_storage),
+            patch("activities.storage.activities.compute_sha256", return_value="processed-hash"),
+        ):
+            result = activity_env.run(process_image_activity, inp)
+
+        assert result.is_duplicate is True
+        assert result.image_id == existing.id
+        assert result.needs_annotation is False
+        assert result.needs_embedding is False
+        assert result.existing_caption == "existing caption"
+        assert result.existing_ocr_text == "existing ocr"
         mock_storage.upload_file.assert_not_called()
 
 

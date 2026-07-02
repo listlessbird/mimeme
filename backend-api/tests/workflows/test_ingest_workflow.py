@@ -303,6 +303,59 @@ class TestIngestWorkflowDuplicateHandling:
         assert "record_ingest_stage_activity:ANNOTATING" not in _activity_calls
         assert "record_ingest_stage_activity:COMPLETE" not in _activity_calls
 
+    async def test_incomplete_duplicate_finishes_processing_before_deduping(self) -> None:
+        """A duplicate whose canonical image is pending still gets annotation/embed work."""
+
+        @activity.defn(name="process_image_activity")
+        async def mock_process_incomplete_duplicate(
+            input: ProcessImageInput,
+        ) -> ProcessImageOutput:
+            _activity_calls.append("process_image_activity")
+            return ProcessImageOutput(
+                ingest_url_id=input.ingest_url_id,
+                image_id=42,
+                sha256="dup-hash",
+                s3_key="images/test/dup.jpg",
+                width=800,
+                height=600,
+                format="jpeg",
+                is_duplicate=True,
+                needs_annotation=True,
+                needs_embedding=True,
+            )
+
+        activities = [a for a in ALL_MOCK_ACTIVITIES if a.__name__ != "mock_process_image"]
+        activities.append(mock_process_incomplete_duplicate)
+
+        task_queue = str(uuid.uuid4())
+        async with await WorkflowEnvironment.start_time_skipping(
+            data_converter=pydantic_data_converter
+        ) as env:
+            async with Worker(
+                env.client,
+                task_queue=task_queue,
+                workflows=[IngestWorkflow],
+                activities=activities,
+            ):
+                result = await env.client.execute_workflow(
+                    IngestWorkflow.run,
+                    IngestWorkflowInput(job_id="test-incomplete-dup"),
+                    id=str(uuid.uuid4()),
+                    task_queue=task_queue,
+                )
+
+        assert result.duplicates == 2
+        assert result.processed == 0
+        assert result.failed == 0
+        assert _activity_calls.count("annotate_image_activity") == 2
+        assert _activity_calls.count("save_annotations_activity") == 2
+        assert _activity_calls.count("embed_batch_activity") == 2
+        assert _activity_calls.count("save_embedding_info_activity") == 2
+        assert _activity_calls.count("mark_ingest_url_done_activity") == 2
+        assert "record_ingest_stage_activity:ANNOTATING" in _activity_calls
+        assert "record_ingest_stage_activity:EMBEDDING" in _activity_calls
+        assert "record_ingest_stage_activity:DEDUPED" in _activity_calls
+
 
 class TestIngestWorkflowEmptyUrls:
     async def test_empty_url_list(self) -> None:

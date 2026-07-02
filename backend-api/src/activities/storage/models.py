@@ -37,6 +37,10 @@ class ProcessImageOutput(BaseModel):
     is_duplicate: bool = False
     duplicate_reason: DuplicateReason | None = None
     duplicate_of_image_id: int | None = None
+    needs_annotation: bool = False
+    needs_embedding: bool = False
+    existing_caption: str | None = None
+    existing_ocr_text: str | None = None
 
 
 class ImageMetadata(BaseModel):

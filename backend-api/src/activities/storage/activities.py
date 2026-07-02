@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 import httpx
 import structlog
+from sqlalchemy.orm import Session
 from temporalio import activity
 
 from activities.storage.img_utils import compute_phash, compute_sha256, get_image_info
@@ -18,12 +19,35 @@ from activities.storage.models import (
 from activities.storage.phash_index import get_phash_index
 from shared.db import session_scope
 from shared.logging import emit_activity_event
-from shared.models import DuplicateReason, ORMImage, Processing
+from shared.models import DuplicateReason, ORMImage, Processing, ProcessingStatus
 from shared.services import StorageService, get_storage_service
 
 log = structlog.get_logger()
 
 IMAGE_ACCEPT_HEADER = "image/avif,image/webp,image/apng,image/png,image/jpeg,image/*,*/*;q=0.8"
+
+
+def _duplicate_processing_fields(session: Session, image: ORMImage) -> dict[str, object]:
+    proc = image.processing
+    if proc is None:
+        proc = Processing(image_id=image.id)
+        image.processing = proc
+        session.add(proc)
+
+    annotation = image.annotation
+    needs_annotation = (
+        annotation is None
+        or proc.caption_status != ProcessingStatus.DONE
+        or proc.ocr_status != ProcessingStatus.DONE
+    )
+    needs_embedding = proc.embed_status != ProcessingStatus.DONE or not proc.embed_s3_key
+
+    return {
+        "needs_annotation": needs_annotation,
+        "needs_embedding": needs_embedding,
+        "existing_caption": annotation.caption_text if annotation else None,
+        "existing_ocr_text": annotation.ocr_text if annotation else None,
+    }
 
 
 @activity.defn
@@ -211,6 +235,7 @@ def process_image_activity(input: ProcessImageInput) -> ProcessImageOutput:
             existing = session.query(ORMImage).filter_by(sha256=sha256).first()
 
             if existing:
+                duplicate_processing = _duplicate_processing_fields(session, existing)
                 image_id = existing.id
                 is_duplicate = True
                 s3_key = existing.s3_key or ""
@@ -235,6 +260,7 @@ def process_image_activity(input: ProcessImageInput) -> ProcessImageOutput:
                     is_duplicate=True,
                     duplicate_reason=DuplicateReason.SHA256,
                     duplicate_of_image_id=existing.id,
+                    **duplicate_processing,
                 )
 
         phash = compute_phash(local_path)
@@ -242,17 +268,29 @@ def process_image_activity(input: ProcessImageInput) -> ProcessImageOutput:
         matched_image_id = get_phash_index().match(phash)
 
         if matched_image_id is not None:
+            with session_scope() as session:
+                existing = session.get(ORMImage, matched_image_id)
+                if existing is None:
+                    raise ValueError(f"matched duplicate image {matched_image_id} not found")
+                duplicate_processing = _duplicate_processing_fields(session, existing)
+                canonical_sha256 = existing.sha256
+                canonical_s3_key = existing.s3_key or ""
+                width = existing.width
+                height = existing.height
+                format = existing.format
+
             return ProcessImageOutput(
                 ingest_url_id=input.ingest_url_id,
                 image_id=matched_image_id,
-                sha256=sha256,
-                s3_key="",
-                width=None,
-                height=None,
-                format=None,
+                sha256=canonical_sha256,
+                s3_key=canonical_s3_key,
+                width=width,
+                height=height,
+                format=format,
                 is_duplicate=True,
                 duplicate_reason=DuplicateReason.PHASH,
                 duplicate_of_image_id=matched_image_id,
+                **duplicate_processing,
             )
 
         width, height, format = get_image_info(local_path)
