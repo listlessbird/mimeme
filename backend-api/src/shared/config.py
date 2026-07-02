@@ -45,8 +45,12 @@ class Settings(BaseSettings):
     gpu_backend: Literal["local", "modal"] = Field(default="local")
     modal_app_name: str = Field(default="findmeme-gpu")
 
-    # local text encoder for search (bypasses Temporal+Modal)
-    search_text_encoder_device: str = Field(default="cpu")
+    onnx_text_encoder_repo: str = Field(
+        default="listlessbird/siglip2-base-patch16-naflex-text-onnx"
+    )
+    onnx_text_encoder_revision: str = Field(default="092dc08370b1a01d69c78067051b124881a95407")
+    onnx_text_encoder_variant: str = Field(default="text_model_int8.onnx")
+    onnx_text_encoder_threads: int = Field(default=4)
     preload_text_encoder_on_startup: bool = Field(default=True)
 
     axiom_api_token: str = ""

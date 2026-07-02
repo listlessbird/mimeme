@@ -11,6 +11,10 @@ from fastapi import FastAPI
 
 from api.deps import get_index_manager
 from api.services.text_encoder import SearchTextEncoder
+from domain.search_index import (
+    SearchEncoderIncompatibleError,
+    check_encoder_index_compatibility,
+)
 from shared.config import settings
 from shared.db import get_db
 from shared.logging import setup_logging
@@ -26,7 +30,10 @@ def _startup_env_snapshot() -> dict[str, object]:
         "gpu_backend": settings.gpu_backend,
         "embed_model": settings.embed_model,
         "embed_device": settings.embed_device,
-        "search_text_encoder_device": settings.search_text_encoder_device,
+        "onnx_text_encoder_repo": settings.onnx_text_encoder_repo,
+        "onnx_text_encoder_revision": settings.onnx_text_encoder_revision,
+        "onnx_text_encoder_variant": settings.onnx_text_encoder_variant,
+        "onnx_text_encoder_threads": settings.onnx_text_encoder_threads,
         "preload_text_encoder_on_startup": settings.preload_text_encoder_on_startup,
         "index_type": settings.index_type,
         "index_cache_dir": str(settings.index_cache_dir),
@@ -75,6 +82,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     index_manager = get_index_manager()
     db_active_version: str | None = None
+    db_embed_model: str | None = None
     autoloaded_version: str | None = None
     try:
         db_gen = get_db()
@@ -82,6 +90,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         try:
             active_build = db.query(IndexBuild).filter(IndexBuild.is_active).first()
             db_active_version = active_build.version if active_build else None
+            db_embed_model = active_build.embed_model if active_build else None
             if not db_active_version:
                 log.warning("no_active_index_in_db")
 
@@ -108,6 +117,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         for result in results:
             if isinstance(result, Exception):
                 log.warning("startup_task_failed", error=str(result))
+
+    if settings.preload_text_encoder_on_startup:
+        try:
+            encoder = await asyncio.to_thread(SearchTextEncoder.get_instance)
+            check_encoder_index_compatibility(encoder, db_embed_model)
+        except SearchEncoderIncompatibleError:
+            pass
+        except Exception as e:
+            log.warning("text_encoder_preload_failed", error=str(e))
 
     if index_manager.is_loaded:
         log.info(

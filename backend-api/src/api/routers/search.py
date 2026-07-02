@@ -9,6 +9,7 @@ from api.models.errors import error_responses
 from api.models.search import SearchResponse
 from api.rate_limit import SEARCH_LIMIT, limiter
 from domain.search_index import (
+    SearchEncoderIncompatibleError,
     SearchExecutionFailedError,
     SearchImageNotFoundError,
     SearchIndexExecution,
@@ -56,6 +57,8 @@ async def search(
             index_version=page.index_version,
         )
     except SearchIndexUnavailableError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except SearchEncoderIncompatibleError as exc:
         raise HTTPException(status_code=503, detail=str(exc))
     except SearchIndexLoadError as exc:
         raise HTTPException(status_code=500, detail=str(exc))

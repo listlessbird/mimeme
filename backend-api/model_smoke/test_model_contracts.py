@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Generator
+from pathlib import Path
 
 import numpy as np
 import pytest
@@ -67,17 +68,34 @@ def test_siglip_embedder_encodes_image_and_text() -> None:
     _assert_embedding_contract(text_features, (1, 768))
 
 
-def test_search_text_encoder_encodes_query_on_cpu() -> None:
+def test_search_text_encoder_matches_torch_reference() -> None:
+    fixture = np.load(Path(__file__).parent / "fixtures" / "torch_text_reference.npz")
+    queries = [str(query) for query in fixture["queries"]]
+    reference_ids = fixture["input_ids"]
+    reference_embeddings = fixture["embeddings"]
+
     encoder = SearchTextEncoder(
-        model_name=settings.embed_model,
-        device="cpu",
+        repo_id=settings.onnx_text_encoder_repo,
+        revision=settings.onnx_text_encoder_revision,
+        variant=settings.onnx_text_encoder_variant,
+        threads=settings.onnx_text_encoder_threads,
     )
 
-    embedding = encoder.encode("yellow circle blue rectangle")
+    assert encoder.source_model == settings.embed_model
 
-    assert embedding.shape == (768,)
-    assert embedding.dtype == np.float32
-    assert np.isfinite(embedding).all()
+    for i, query in enumerate(queries):
+        np.testing.assert_array_equal(
+            encoder.tokenize(query)[0], reference_ids[i], err_msg=f"query: {query!r}"
+        )
+
+    embeddings = np.stack([encoder.encode(query) for query in queries])
+    _assert_embedding_contract(embeddings, reference_embeddings.shape)
+    assert embeddings.dtype == np.float32
+
+    cosines = (embeddings * reference_embeddings).sum(axis=1) / (
+        np.linalg.norm(embeddings, axis=1) * np.linalg.norm(reference_embeddings, axis=1)
+    )
+    assert cosines.min() >= 0.99, f"min cosine {cosines.min():.5f} < 0.99"
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="requires CUDA")

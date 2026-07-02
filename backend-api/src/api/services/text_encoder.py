@@ -1,56 +1,72 @@
 from __future__ import annotations
 
+import json
 import threading
 import time
+from pathlib import Path
+from typing import cast
 
 import numpy as np
+import onnxruntime as ort
 import structlog
-import torch
-from transformers import AutoModel, AutoProcessor
+from huggingface_hub import snapshot_download
+from tokenizers import Tokenizer
 
-from domain.inference import select_pooled_feature_tensor
 from shared.config import settings
 
 _log = structlog.get_logger().bind(component="search_text_encoder")
 
 
 class SearchTextEncoder:
-    """Lightweight local text encoder for search queries.
-
-    Loads the SigLIP model once on CPU so search queries bypass
-    the Temporal → Modal round-trip entirely.
-    """
-
     _instance: SearchTextEncoder | None = None
     _lock = threading.Lock()
 
-    def __init__(self, model_name: str, device: str) -> None:
-        self.model_name = model_name
-        self.device = torch.device(device)
-        self._is_siglip2 = "siglip2" in model_name.lower()
+    def __init__(self, repo_id: str, revision: str, variant: str, threads: int) -> None:
+        self.repo_id = repo_id
+        self.revision = revision
+        self.variant = variant
 
         started = time.monotonic()
         _log.info(
             "text_encoder_loading",
-            model=model_name,
-            device=device,
+            repo=repo_id,
+            revision=revision,
+            variant=variant,
+            threads=threads,
         )
 
-        self._processor = AutoProcessor.from_pretrained(
-            model_name,
-            trust_remote_code=True,
+        artifact_dir = Path(
+            snapshot_download(
+                repo_id,
+                revision=revision,
+                allow_patterns=[variant, "tokenizer.json", "export_meta.json"],
+            )
         )
-        self._model = AutoModel.from_pretrained(
-            model_name,
-            trust_remote_code=True,
-        ).to(self.device)
-        self._model.eval()
+
+        meta = json.loads((artifact_dir / "export_meta.json").read_text())
+        self.source_model: str = meta["source_model"]
+        max_length = meta.get("max_length", 64)
+        pad_token_id = meta.get("pad_token_id", 0)
+
+        self._tokenizer = Tokenizer.from_file(str(artifact_dir / "tokenizer.json"))
+        self._tokenizer.enable_padding(length=max_length, pad_id=pad_token_id, pad_token="<pad>")
+        self._tokenizer.enable_truncation(max_length=max_length)
+
+        options = ort.SessionOptions()
+        options.intra_op_num_threads = threads
+        self._session = ort.InferenceSession(
+            str(artifact_dir / variant),
+            sess_options=options,
+            providers=["CPUExecutionProvider"],
+        )
 
         duration_ms = int((time.monotonic() - started) * 1000)
         _log.info(
             "text_encoder_ready",
-            model=model_name,
-            device=device,
+            repo=repo_id,
+            revision=revision,
+            variant=variant,
+            source_model=self.source_model,
             duration_ms=duration_ms,
         )
 
@@ -60,41 +76,18 @@ class SearchTextEncoder:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = cls(
-                        model_name=settings.embed_model,
-                        device=settings.search_text_encoder_device,
+                        repo_id=settings.onnx_text_encoder_repo,
+                        revision=settings.onnx_text_encoder_revision,
+                        variant=settings.onnx_text_encoder_variant,
+                        threads=settings.onnx_text_encoder_threads,
                     )
         assert cls._instance is not None
         return cls._instance
 
+    def tokenize(self, query: str) -> np.ndarray:
+        return np.array([self._tokenizer.encode(query).ids], dtype=np.int64)
+
     def encode(self, query: str) -> np.ndarray:
-        """Encode a single text query into an embedding vector.
-
-        Returns the raw (unnormalised) embedding — L2 normalisation is
-        handled by FaissIndexManager.search() before querying the index.
-        """
-        if self._is_siglip2:
-            inputs = self._processor(
-                text=[query],
-                return_tensors="pt",
-                padding="max_length",
-                max_length=64,
-            )
-        else:
-            inputs = self._processor(
-                text=[query],
-                return_tensors="pt",
-                padding="max_length",
-            )
-
-        inputs = {k: v.to(self.device) for k, v in inputs.items()}
-
-        with torch.no_grad():
-            if hasattr(self._model, "get_text_features"):
-                feats = select_pooled_feature_tensor(
-                    self._model.get_text_features(**inputs),
-                    kind="text",
-                )
-            else:
-                feats = select_pooled_feature_tensor(self._model(**inputs), kind="text")
-
-        return feats.detach().cpu().numpy().astype(np.float32)[0]
+        input_ids = self.tokenize(query)
+        output = cast(np.ndarray, self._session.run(["text_embeds"], {"input_ids": input_ids})[0])
+        return output[0].astype(np.float32)

@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from api.models.search import SearchResult
 from domain.search_index import (
+    SearchEncoderIncompatibleError,
     SearchImageNotFoundError,
     SearchIndexPage,
     SearchIndexUnavailableError,
@@ -97,6 +98,16 @@ class TestSearchEndpoint:
         with patch("api.routers.search.SearchIndexExecution") as execution_cls:
             execution_cls.return_value.search.side_effect = SearchIndexUnavailableError(
                 "Search index not loaded"
+            )
+            resp = client.get("/search?q=test")
+        assert resp.status_code == 503
+
+    def test_search_incompatible_encoder_returns_503(
+        self, client: TestClient, mock_index_manager: MagicMock
+    ) -> None:
+        with patch("api.routers.search.SearchIndexExecution") as execution_cls:
+            execution_cls.return_value.search.side_effect = SearchEncoderIncompatibleError(
+                "Text encoder was exported from a different model"
             )
             resp = client.get("/search?q=test")
         assert resp.status_code == 503

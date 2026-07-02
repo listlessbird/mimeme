@@ -24,6 +24,7 @@ log = structlog.get_logger()
 
 _last_index_check: float = 0.0
 _INDEX_CHECK_INTERVAL: float = 60.0
+_active_embed_model: str | None = None
 
 
 class SearchIndexUnavailableError(Exception):
@@ -36,6 +37,10 @@ class SearchIndexLoadError(Exception):
 
 class SearchQueryEncodingError(Exception):
     """Raised when a text query cannot be encoded."""
+
+
+class SearchEncoderIncompatibleError(Exception):
+    """Raised when the text encoder's source model does not match the active index."""
 
 
 class SearchInvalidRequestError(Exception):
@@ -58,6 +63,20 @@ class SearchIndexPage(BaseModel, frozen=True):
     offset: int
     search_time_ms: float
     index_version: str | None
+
+
+def check_encoder_index_compatibility(encoder: object, index_embed_model: str | None) -> None:
+    encoder_model = getattr(encoder, "source_model", None)
+    if encoder_model and index_embed_model and encoder_model != index_embed_model:
+        log.error(
+            "text_encoder_index_model_mismatch",
+            encoder_source_model=encoder_model,
+            index_embed_model=index_embed_model,
+        )
+        raise SearchEncoderIncompatibleError(
+            f"Text encoder was exported from {encoder_model!r} but the active "
+            f"index was built with {index_embed_model!r}"
+        )
 
 
 def reciprocal_rank_fusion(
@@ -333,9 +352,11 @@ class SearchIndexExecution:
         _last_index_check = now
 
     def _ensure_index_loaded(self, db: Session) -> None:
+        global _active_embed_model
         active_build = db.query(IndexBuild).filter(IndexBuild.is_active).first()
         if active_build is None:
             raise SearchIndexUnavailableError("Search index not loaded")
+        _active_embed_model = active_build.embed_model
 
         if (
             not self._index_manager.is_loaded
@@ -352,6 +373,13 @@ class SearchIndexExecution:
     def _encode_query(self, query: str, mode: str | None) -> list[float]:
         try:
             encoder = self._text_encoder_factory()
+        except Exception as exc:
+            log.exception("search_text_encoder_load_failed", query=query, mode=mode)
+            raise SearchQueryEncodingError(f"Failed to load text encoder: {exc}") from exc
+
+        check_encoder_index_compatibility(encoder, _active_embed_model)
+
+        try:
             embedding_arr = encoder.encode(query)
             return embedding_arr.tolist()
         except Exception as exc:

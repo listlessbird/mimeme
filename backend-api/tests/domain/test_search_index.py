@@ -11,6 +11,7 @@ from tests.factories import create_annotation, create_image, create_index_build
 
 import domain.search_index as search_index
 from domain.search_index import (
+    SearchEncoderIncompatibleError,
     SearchImageNotFoundError,
     SearchIndexExecution,
     SearchIndexUnavailableError,
@@ -21,8 +22,10 @@ from domain.search_index import (
 
 
 class _TextEncoder:
-    def __init__(self, *, fails: bool = False) -> None:
+    def __init__(self, *, fails: bool = False, source_model: str | None = None) -> None:
         self.fails = fails
+        if source_model is not None:
+            self.source_model = source_model
 
     def encode(self, query: str) -> np.ndarray:
         if self.fails:
@@ -33,6 +36,7 @@ class _TextEncoder:
 @pytest.fixture(autouse=True)
 def _reset_index_check(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(search_index, "_last_index_check", 0.0)
+    monkeypatch.setattr(search_index, "_active_embed_model", None)
 
 
 def _patch_session_scope(monkeypatch: pytest.MonkeyPatch, db_session: Session) -> None:
@@ -95,6 +99,91 @@ def test_query_encoding_failure_is_domain_error(
 
     with pytest.raises(SearchQueryEncodingError):
         execution.search(query="cat", limit=20, offset=0, mode="image")
+
+
+def test_encoder_index_model_mismatch_raises_incompatible(
+    db_session: Session,
+    mock_index_manager: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_session_scope(monkeypatch, db_session)
+    create_index_build(
+        session=db_session,
+        version="v1-test",
+        is_active=True,
+        embed_model="google/siglip2-base-patch16-naflex",
+    )
+    db_session.flush()
+    mock_index_manager.is_loaded = True
+    mock_index_manager.active_version = "v1-test"
+
+    execution = SearchIndexExecution(
+        mock_index_manager,
+        text_encoder_factory=lambda: _TextEncoder(source_model="some/other-model"),
+    )
+
+    with pytest.raises(SearchEncoderIncompatibleError):
+        execution.search(query="cat", limit=20, offset=0, mode="image")
+
+
+def test_encoder_index_model_match_searches_normally(
+    db_session: Session,
+    mock_index_manager: MagicMock,
+    mock_storage: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_session_scope(monkeypatch, db_session)
+    image = create_image(session=db_session)
+    create_index_build(
+        session=db_session,
+        version="v1-test",
+        is_active=True,
+        embed_model="google/siglip2-base-patch16-naflex",
+    )
+    db_session.flush()
+    mock_index_manager.is_loaded = True
+    mock_index_manager.active_version = "v1-test"
+    mock_index_manager.has_text_index.return_value = False
+    mock_index_manager.search.return_value = [(image.id, 0.9)]
+
+    page = SearchIndexExecution(
+        mock_index_manager,
+        storage=mock_storage,
+        text_encoder_factory=lambda: _TextEncoder(
+            source_model="google/siglip2-base-patch16-naflex"
+        ),
+    ).search(query="cat", limit=20, offset=0, mode="image")
+
+    assert [result.id for result in page.results] == [image.id]
+
+
+def test_encoder_without_source_model_skips_guard(
+    db_session: Session,
+    mock_index_manager: MagicMock,
+    mock_storage: MagicMock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_session_scope(monkeypatch, db_session)
+    image = create_image(session=db_session)
+    create_index_build(
+        session=db_session,
+        version="v1-test",
+        is_active=True,
+        embed_model="google/siglip2-base-patch16-naflex",
+    )
+    db_session.flush()
+    mock_index_manager.is_loaded = True
+    mock_index_manager.active_version = "v1-test"
+    mock_index_manager.has_text_index.return_value = False
+    mock_index_manager.search.return_value = [(image.id, 0.9)]
+
+    page = SearchIndexExecution(
+        mock_index_manager,
+        storage=mock_storage,
+        text_encoder_factory=lambda: _TextEncoder(),
+    ).search(query="cat", limit=20, offset=0, mode="image")
+
+    assert [result.id for result in page.results] == [image.id]
 
 
 def test_search_hydrates_results_and_paginates(
