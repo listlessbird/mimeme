@@ -1,0 +1,27 @@
+default:
+    @just --list
+
+sync:
+    uv sync --all-groups
+
+bench *args:
+    uv run python scripts/bench_text_encoder.py {{args}}
+
+test:
+    uv run pytest -q
+
+test-model:
+    RUN_MODEL_SMOKE=1 uv run pytest -m model_smoke -v
+
+fmt:
+    uv run ruff check --fix .
+    uv run ruff format .
+
+lint:
+    uv run ruff format --check .
+    uv run ruff check .
+
+type:
+    uv run pyright -p .
+
+check: lint type test
