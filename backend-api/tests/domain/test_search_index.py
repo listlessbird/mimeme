@@ -24,10 +24,12 @@ from domain.search_index import (
 class _TextEncoder:
     def __init__(self, *, fails: bool = False, source_model: str | None = None) -> None:
         self.fails = fails
+        self.queries: list[str] = []
         if source_model is not None:
             self.source_model = source_model
 
     def encode(self, query: str) -> np.ndarray:
+        self.queries.append(query)
         if self.fails:
             raise RuntimeError("encoder failed")
         return np.array([0.1, 0.2], dtype=np.float32)
@@ -37,6 +39,8 @@ class _TextEncoder:
 def _reset_index_check(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(search_index, "_last_index_check", 0.0)
     monkeypatch.setattr(search_index, "_active_embed_model", None)
+    with search_index._embedding_cache_lock:
+        search_index._embedding_cache.clear()
 
 
 def _patch_read_session_scope(monkeypatch: pytest.MonkeyPatch, db_session: Session) -> None:
@@ -46,6 +50,64 @@ def _patch_read_session_scope(monkeypatch: pytest.MonkeyPatch, db_session: Sessi
         db_session.flush()
 
     monkeypatch.setattr(search_index, "read_session_scope", _test_read_session_scope)
+
+
+def test_query_embedding_cache_reuses_normalized_query(monkeypatch: pytest.MonkeyPatch) -> None:
+    encoder = _TextEncoder()
+
+    def get_instance() -> _TextEncoder:
+        return encoder
+
+    monkeypatch.setattr(search_index.SearchTextEncoder, "get_instance", get_instance)
+    execution = SearchIndexExecution(
+        MagicMock(),
+        text_encoder_factory=search_index.SearchTextEncoder.get_instance,
+    )
+
+    execution._encode_query("Cat Meme ", "image")
+    execution._encode_query("cat meme", "image")
+
+    assert encoder.queries == ["Cat Meme "]
+
+
+def test_query_embedding_cache_misses_for_different_queries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    encoder = _TextEncoder()
+
+    def get_instance() -> _TextEncoder:
+        return encoder
+
+    monkeypatch.setattr(search_index.SearchTextEncoder, "get_instance", get_instance)
+    execution = SearchIndexExecution(
+        MagicMock(),
+        text_encoder_factory=search_index.SearchTextEncoder.get_instance,
+    )
+
+    execution._encode_query("cat meme", "image")
+    execution._encode_query("dog meme", "image")
+
+    assert encoder.queries == ["cat meme", "dog meme"]
+
+
+def test_query_embedding_cache_evicts_oldest_entry(monkeypatch: pytest.MonkeyPatch) -> None:
+    encoder = _TextEncoder()
+
+    def get_instance() -> _TextEncoder:
+        return encoder
+
+    monkeypatch.setattr(search_index.SearchTextEncoder, "get_instance", get_instance)
+    monkeypatch.setattr(search_index, "_EMBEDDING_CACHE_MAX", 1)
+    execution = SearchIndexExecution(
+        MagicMock(),
+        text_encoder_factory=search_index.SearchTextEncoder.get_instance,
+    )
+
+    execution._encode_query("first", "image")
+    execution._encode_query("second", "image")
+    execution._encode_query("first", "image")
+
+    assert encoder.queries == ["first", "second", "first"]
 
 
 def test_no_active_index_raises_unavailable(

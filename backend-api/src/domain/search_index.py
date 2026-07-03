@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import threading
 import time
+from collections import OrderedDict
 from time import perf_counter
 from typing import Literal, cast
 
@@ -25,6 +27,32 @@ log = structlog.get_logger()
 _last_index_check: float = 0.0
 _INDEX_CHECK_INTERVAL: float = 60.0
 _active_embed_model: str | None = None
+
+_embedding_cache: OrderedDict[str, list[float]] = OrderedDict()
+_embedding_cache_lock = threading.Lock()
+_EMBEDDING_CACHE_MAX = 512
+
+
+def _get_cached_embedding(key: str) -> list[float] | None:
+    with _embedding_cache_lock:
+        cached = _embedding_cache.get(key)
+
+        if cached is None:
+            return None
+
+        _embedding_cache.move_to_end(key)
+
+        return list(cached)
+
+
+def _store_cached_embedding(key: str, embedding: list[float]) -> None:
+
+    with _embedding_cache_lock:
+        _embedding_cache[key] = list(embedding)
+        _embedding_cache.move_to_end(key)
+
+        while len(_embedding_cache) > _EMBEDDING_CACHE_MAX:
+            _embedding_cache.popitem(last=False)
 
 
 class SearchIndexUnavailableError(Exception):
@@ -379,9 +407,27 @@ class SearchIndexExecution:
 
         check_encoder_index_compatibility(encoder, _active_embed_model)
 
+        use_cache = self._text_encoder_factory == SearchTextEncoder.get_instance
+
+        cache_key = query.strip().lower()
+
+        if use_cache:
+            cached = _get_cached_embedding(cache_key)
+
+            if cached is not None:
+                log.info("search_embedding_cache", hit=True, query=query, mode=mode)
+
+                return cached
+
         try:
             embedding_arr = encoder.encode(query)
-            return embedding_arr.tolist()
+            embedding = embedding_arr.tolist()
         except Exception as exc:
             log.exception("search_query_encoding_failed", query=query, mode=mode)
             raise SearchQueryEncodingError(f"Failed to encode query: {exc}") from exc
+
+        if use_cache:
+            _store_cached_embedding(cache_key, embedding)
+            log.info("search_embedding_cache", hit=False, query=query, mode=mode)
+
+        return embedding

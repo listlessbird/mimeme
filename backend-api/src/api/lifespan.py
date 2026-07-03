@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -63,6 +64,14 @@ def _index_files_snapshot(version: str | None) -> dict[str, object]:
     }
 
 
+def _preload_and_warm_text_encoder() -> None:
+    started = time.monotonic()
+    encoder = SearchTextEncoder.get_instance()
+    encoder.encode("warmup")
+    duration_ms = int((time.monotonic() - started) * 1000)
+    structlog.get_logger().info("text_encoder_warmed", duration_ms=duration_ms)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log = structlog.get_logger()
@@ -110,7 +119,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         startup_tasks.append(asyncio.to_thread(index_manager.load_index_version, db_active_version))
     if settings.preload_text_encoder_on_startup:
         log.info("preloading_text_encoder")
-        startup_tasks.append(asyncio.to_thread(SearchTextEncoder.get_instance))
+        startup_tasks.append(asyncio.to_thread(_preload_and_warm_text_encoder))
 
     if startup_tasks:
         results = await asyncio.gather(*startup_tasks, return_exceptions=True)
