@@ -1,14 +1,14 @@
 from __future__ import annotations
 
+import asyncio
+
 import structlog
 from fastapi import APIRouter, Response, status
 from sqlalchemy import text
-from temporalio.client import Client
-from temporalio.contrib.pydantic import pydantic_data_converter
 
+from api.deps import get_temporal_client
 from api.models.errors import error_responses
 from api.models.health import HealthResponse
-from shared.config import settings
 from shared.db import get_engine
 from shared.services.storage import get_storage_service
 
@@ -39,10 +39,7 @@ def _check_s3() -> bool:
 
 async def _check_temporal() -> bool:
     try:
-        client = await Client.connect(
-            settings.temporal_host,
-            data_converter=pydantic_data_converter,
-        )
+        client = await get_temporal_client()
         await client.service_client.check_health()
         return True
     except Exception as e:
@@ -51,13 +48,15 @@ async def _check_temporal() -> bool:
 
 
 @router.get(
-    "/live",
+    "/ready",
     response_model=HealthResponse,
     responses={503: {"model": HealthResponse, "description": "Dependency unavailable"}},
 )
-async def healthcheck(response: Response) -> HealthResponse:
-    pg_ok = _check_postgres()
-    s3_ok = _check_s3()
+async def check_readiness(response: Response) -> HealthResponse:
+    pg_ok, s3_ok = await asyncio.gather(
+        asyncio.to_thread(_check_postgres), asyncio.to_thread(_check_s3)
+    )
+
     temporal_ok = await _check_temporal()
 
     healthy = pg_ok and s3_ok and temporal_ok
@@ -70,7 +69,5 @@ async def healthcheck(response: Response) -> HealthResponse:
             temporal=temporal_ok,
         )
 
-    status_code = status.HTTP_200_OK if healthy else status.HTTP_503_SERVICE_UNAVAILABLE
-
-    response.status_code = status_code
+    response.status_code = status.HTTP_200_OK if healthy else status.HTTP_503_SERVICE_UNAVAILABLE
     return HealthResponse(status="ok" if healthy else "degraded")

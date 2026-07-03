@@ -189,6 +189,7 @@ def test_list_derives_stats_by_query(db_session: Session) -> None:
     assert item.stats.items_discovered == 3
     assert item.stats.duplicate_count == 2
     assert item.stats.images_ingested == 1
+    assert item.stats.failed_count == 1
 
 
 def test_list_stats_are_zero_for_a_fresh_source(db_session: Session) -> None:
@@ -201,12 +202,8 @@ def test_list_stats_are_zero_for_a_fresh_source(db_session: Session) -> None:
         item.stats.items_discovered,
         item.stats.duplicate_count,
         item.stats.images_ingested,
-    ) == (
-        0,
-        0,
-        0,
-        0,
-    )
+        item.stats.failed_count,
+    ) == (0, 0, 0, 0, 0)
 
 
 # --- detail ---------------------------------------------------------------

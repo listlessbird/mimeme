@@ -6,7 +6,7 @@ import structlog
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-_SKIP_TIMING_PATHS = {"/live", "/ready", "/health"}
+_SKIP_TIMING_PATHS = {"/ready", "/health"}
 
 
 def register_middleware(app: FastAPI) -> None:

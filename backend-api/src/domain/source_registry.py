@@ -242,32 +242,18 @@ class SourceRegistry:
             .group_by(SourceItem.source_id)
         ).all()
 
-        duplicate_rows = self.db.execute(
-            select(IngestURL.source_id, func.count(IngestURL.id))
-            .where(
-                IngestURL.source_id.in_(source_ids),
-                IngestURL.duplicate_reason.is_not(None),
+        url_rows = self.db.execute(
+            select(
+                IngestURL.source_id,
+                func.count(IngestURL.id).filter(IngestURL.duplicate_reason.is_not(None)),
+                func.count(IngestURL.id).filter(
+                    IngestURL.status == ProcessingStatus.DONE,
+                    IngestURL.image_id.is_not(None),
+                    IngestURL.duplicate_reason.is_(None),
+                ),
+                func.count(IngestURL.id).filter(IngestURL.status == ProcessingStatus.FAILED),
             )
-            .group_by(IngestURL.source_id)
-        ).all()
-
-        ingested_rows = self.db.execute(
-            select(IngestURL.source_id, func.count(IngestURL.id))
-            .where(
-                IngestURL.source_id.in_(source_ids),
-                IngestURL.status == ProcessingStatus.DONE,
-                IngestURL.image_id.is_not(None),
-                IngestURL.duplicate_reason.is_(None),
-            )
-            .group_by(IngestURL.source_id)
-        ).all()
-
-        failed_rows = self.db.execute(
-            select(IngestURL.source_id, func.count(IngestURL.id))
-            .where(
-                IngestURL.source_id.in_(source_ids),
-                IngestURL.status == ProcessingStatus.FAILED,
-            )
+            .where(IngestURL.source_id.in_(source_ids))
             .group_by(IngestURL.source_id)
         ).all()
 
@@ -277,14 +263,10 @@ class SourceRegistry:
         for source_id, count in item_rows:
             stats[source_id]["items_discovered"] = count
 
-        for source_id, count in duplicate_rows:
-            stats[source_id]["duplicate_count"] = count
-
-        for source_id, count in ingested_rows:
-            stats[source_id]["images_ingested"] = count
-
-        for source_id, count in failed_rows:
-            stats[source_id]["failed_count"] = count
+        for source_id, duplicate_count, images_ingested, failed_count in url_rows:
+            stats[source_id]["duplicate_count"] = duplicate_count
+            stats[source_id]["images_ingested"] = images_ingested
+            stats[source_id]["failed_count"] = failed_count
 
         return {source_id: SourceStats(**values) for source_id, values in stats.items()}
 
