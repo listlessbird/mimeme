@@ -309,8 +309,13 @@ class TestIngestionDetail:
 
 class TestIngestionLogs:
     def test_logs_unavailable_when_axiom_not_configured(
-        self, client: TestClient, db_session: Session
+        self,
+        client: TestClient,
+        db_session: Session,
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        monkeypatch.setattr(settings, "axiom_api_token", "")
+        monkeypatch.setattr(settings, "axiom_dataset", "")
         attempt = _attempt(db_session)
         db_session.flush()
 

@@ -15,9 +15,16 @@ def get_engine() -> Engine:
         settings.db_url_str,
         echo=False,
         future=True,
-        pool_pre_ping=True,
+        pool_pre_ping=False,
+        pool_recycle=240,
         pool_size=5,
         max_overflow=10,
+        connect_args={
+            "keepalives": 1,
+            "keepalives_idle": 30,
+            "keepalives_interval": 10,
+            "keepalives_count": 3,
+        },
     )
 
 
@@ -39,6 +46,17 @@ def session_scope() -> Iterator[Session]:
     except Exception:
         session.rollback()
         raise
+    finally:
+        session.close()
+
+
+@contextmanager
+def read_session_scope() -> Iterator[Session]:
+    factory = cast(sessionmaker[Session], get_session_factory())
+    session = factory()
+
+    try:
+        yield session
     finally:
         session.close()
 

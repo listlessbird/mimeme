@@ -39,13 +39,13 @@ def _reset_index_check(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(search_index, "_active_embed_model", None)
 
 
-def _patch_session_scope(monkeypatch: pytest.MonkeyPatch, db_session: Session) -> None:
+def _patch_read_session_scope(monkeypatch: pytest.MonkeyPatch, db_session: Session) -> None:
     @contextmanager
-    def _test_session_scope() -> Iterator[Session]:
+    def _test_read_session_scope() -> Iterator[Session]:
         yield db_session
         db_session.flush()
 
-    monkeypatch.setattr(search_index, "session_scope", _test_session_scope)
+    monkeypatch.setattr(search_index, "read_session_scope", _test_read_session_scope)
 
 
 def test_no_active_index_raises_unavailable(
@@ -53,7 +53,7 @@ def test_no_active_index_raises_unavailable(
     mock_index_manager: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_session_scope(monkeypatch, db_session)
+    _patch_read_session_scope(monkeypatch, db_session)
     mock_index_manager.is_loaded = False
 
     execution = SearchIndexExecution(
@@ -70,7 +70,7 @@ def test_stale_loaded_index_triggers_active_index_load(
     mock_index_manager: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_session_scope(monkeypatch, db_session)
+    _patch_read_session_scope(monkeypatch, db_session)
     create_index_build(session=db_session, version="v2", is_active=True)
     db_session.flush()
     mock_index_manager.is_loaded = True
@@ -86,7 +86,7 @@ def test_query_encoding_failure_is_domain_error(
     mock_index_manager: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_session_scope(monkeypatch, db_session)
+    _patch_read_session_scope(monkeypatch, db_session)
     create_index_build(session=db_session, version="v1-test", is_active=True)
     db_session.flush()
     mock_index_manager.is_loaded = True
@@ -106,7 +106,7 @@ def test_encoder_index_model_mismatch_raises_incompatible(
     mock_index_manager: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_session_scope(monkeypatch, db_session)
+    _patch_read_session_scope(monkeypatch, db_session)
     create_index_build(
         session=db_session,
         version="v1-test",
@@ -132,7 +132,7 @@ def test_encoder_index_model_match_searches_normally(
     mock_storage: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_session_scope(monkeypatch, db_session)
+    _patch_read_session_scope(monkeypatch, db_session)
     image = create_image(session=db_session)
     create_index_build(
         session=db_session,
@@ -163,7 +163,7 @@ def test_encoder_without_source_model_skips_guard(
     mock_storage: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_session_scope(monkeypatch, db_session)
+    _patch_read_session_scope(monkeypatch, db_session)
     image = create_image(session=db_session)
     create_index_build(
         session=db_session,
@@ -192,7 +192,7 @@ def test_search_hydrates_results_and_paginates(
     mock_storage: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_session_scope(monkeypatch, db_session)
+    _patch_read_session_scope(monkeypatch, db_session)
     first = create_image(session=db_session)
     second = create_image(session=db_session)
     create_annotation(session=db_session, image=second, caption_text="Second", ocr_text="LOL")
@@ -293,7 +293,7 @@ def test_find_similar_excludes_query_image(
     mock_storage: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_session_scope(monkeypatch, db_session)
+    _patch_read_session_scope(monkeypatch, db_session)
     query = create_image(session=db_session)
     second = create_image(session=db_session)
     third = create_image(session=db_session)
@@ -319,7 +319,7 @@ def test_find_similar_missing_vector_raises_domain_not_found(
     mock_storage: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_session_scope(monkeypatch, db_session)
+    _patch_read_session_scope(monkeypatch, db_session)
     create_index_build(session=db_session, version="v1-test", is_active=True)
     db_session.flush()
     mock_index_manager.is_loaded = True

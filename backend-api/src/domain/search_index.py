@@ -14,7 +14,7 @@ from activities.indexing import FaissIndexManager
 from api.models.search import SearchResult
 from api.services.text_encoder import SearchTextEncoder
 from shared.config import settings
-from shared.db import session_scope
+from shared.db import read_session_scope
 from shared.models import IndexBuild
 from shared.models.orm import Annotation
 from shared.models.orm import Image as ORMImage
@@ -278,7 +278,7 @@ class SearchIndexExecution:
         embedding = self._encode_query(query, mode)
 
         try:
-            with session_scope() as db:
+            with read_session_scope() as db:
                 service = SearchService(self._index_manager, storage=self._storage)
                 results = service.search_by_embedding(
                     embedding=embedding,
@@ -321,7 +321,7 @@ class SearchIndexExecution:
         self.ensure_index_loaded_for_thread()
 
         try:
-            with session_scope() as db:
+            with read_session_scope() as db:
                 service = SearchService(self._index_manager, storage=self._storage)
                 results = service.find_similar(image_id=image_id, limit=limit, db=db)
         except ValueError as exc:
@@ -347,7 +347,7 @@ class SearchIndexExecution:
         now = time.monotonic()
         if self._index_manager.is_loaded and (now - _last_index_check) < _INDEX_CHECK_INTERVAL:
             return
-        with session_scope() as db:
+        with read_session_scope() as db:
             self._ensure_index_loaded(db)
         _last_index_check = now
 
