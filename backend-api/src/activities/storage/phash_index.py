@@ -1,6 +1,7 @@
 import threading
 
 import numpy as np
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from domain.phash_gate import find_near_duplicate, phash_to_uint64
@@ -33,7 +34,9 @@ class PhashIndex:
 
     def load_from_db(self, session: Session) -> None:
 
-        rows = session.query(ORMImage.id, ORMImage.phash).filter(ORMImage.phash.isnot(None)).all()
+        rows = session.execute(
+            select(ORMImage.id, ORMImage.phash).where(ORMImage.phash.isnot(None))
+        ).all()
 
         phashes: list[int] = []
         image_ids: list[int] = []

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
+from sqlalchemy import select
 
 from api.auth import AdminRequired
 from api.deps import DbSession, TemporalClientDep
@@ -110,7 +111,10 @@ async def list_index_versions(
     db: DbSession,
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
 ) -> IndexVersionsResponse:
-    builds = db.query(IndexBuild).order_by(IndexBuild.created_at.desc()).limit(limit).all()
+
+    builds = db.scalars(
+        select(IndexBuild).order_by(IndexBuild.created_at.desc()).limit(limit)
+    ).all()
 
     return IndexVersionsResponse(
         versions=[

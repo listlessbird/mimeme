@@ -1,4 +1,5 @@
 import datetime
+from collections.abc import Sequence
 from typing import Any
 
 from pydantic import BaseModel
@@ -120,12 +121,12 @@ class SourceRegistry:
         return self._to_source_view(source)
 
     def list_sources(self) -> list[SourceListItem]:
-        sources = (
-            self.db.query(IngestionSource)
-            .filter(IngestionSource.deleted_at.is_(None))
+
+        sources = self.db.scalars(
+            select(IngestionSource)
+            .where(IngestionSource.deleted_at.is_(None))
             .order_by(IngestionSource.created_at.desc())
-            .all()
-        )
+        ).all()
 
         stats_by_souce_id = self._stats_by_source_id([source.id for source in sources])
 
@@ -139,13 +140,12 @@ class SourceRegistry:
     def get_source(self, source_id: int, *, recent_runs_limit: int = 20) -> SourceDetail:
         source = self._live_source_or_raise(source_id)
 
-        runs = (
-            self.db.query(SourceRun)
-            .filter(SourceRun.source_id == source.id)
+        runs = self.db.scalars(
+            select(SourceRun)
+            .where(SourceRun.source_id == source.id)
             .order_by(SourceRun.created_at.desc())
             .limit(recent_runs_limit)
-            .all()
-        )
+        ).all()
 
         return SourceDetail(
             **self._to_source_view(source).model_dump(),
@@ -196,16 +196,19 @@ class SourceRegistry:
         self.db.flush()
 
     def _live_name_exists(self, name: str) -> bool:
+
         return (
-            self.db.query(IngestionSource)
-            .filter(IngestionSource.name == name, IngestionSource.deleted_at.is_(None))
-            .first()
+            self.db.scalars(
+                select(IngestionSource).where(
+                    IngestionSource.name == name, IngestionSource.deleted_at.is_(None)
+                )
+            ).first()
             is not None
         )
 
     def _live_source_or_raise(self, source_id: int) -> IngestionSource:
-        source = (
-            self.db.query(IngestionSource).filter(
+        source = self.db.scalars(
+            select(IngestionSource).where(
                 IngestionSource.id == source_id, IngestionSource.deleted_at.is_(None)
             )
         ).one_or_none()
@@ -270,7 +273,7 @@ class SourceRegistry:
 
         return {source_id: SourceStats(**values) for source_id, values in stats.items()}
 
-    def _to_run_views(self, runs: list[SourceRun]) -> list[SourceRunView]:
+    def _to_run_views(self, runs: Sequence[SourceRun]) -> list[SourceRunView]:
         run_ids = [run.id for run in runs]
 
         if not run_ids:
@@ -307,25 +310,21 @@ class SourceRegistry:
         return views
 
     def _discovered_count_by_run_id(self, run_ids: list[int]) -> dict[int, int]:
-        rows = (
-            self.db.query(SourceItem.last_source_run_id, func.count(SourceItem.id))
-            .filter(SourceItem.last_source_run_id.in_(run_ids))
+        rows = self.db.execute(
+            select(SourceItem.last_source_run_id, func.count(SourceItem.id))
+            .where(SourceItem.last_source_run_id.in_(run_ids))
             .group_by(SourceItem.last_source_run_id)
-            .all()
-        )
+        ).all()
 
         return {run_id: count for run_id, count in rows if run_id is not None}
 
     def _url_outcomes_by_run_id(self, run_ids: list[int]) -> dict[int, list[UrlOutcome]]:
-        rows = (
-            self.db.query(
-                IngestURL.source_run_id,
-                IngestURL.status,
-                IngestURL.duplicate_reason,
+
+        rows = self.db.execute(
+            select(IngestURL.source_run_id, IngestURL.status, IngestURL.duplicate_reason).where(
+                IngestURL.source_run_id.in_(run_ids)
             )
-            .filter(IngestURL.source_run_id.in_(run_ids))
-            .all()
-        )
+        ).all()
 
         outcomes_by_run_id: dict[int, list[UrlOutcome]] = {run_id: [] for run_id in run_ids}
 

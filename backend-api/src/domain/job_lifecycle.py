@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from pydantic import BaseModel
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from shared.models import (
@@ -204,15 +205,15 @@ class JobLifecycle:
         job_type: JobType | None,
         limit: int,
     ) -> JobList:
-        query = self._db.query(Job)
+        stmt = select(Job)
 
         if status:
-            query = query.filter(Job.status == status)
+            stmt = stmt.where(Job.status == status)
         if job_type:
-            query = query.filter(Job.type == job_type)
+            stmt = stmt.where(Job.type == job_type)
 
-        total = query.count()
-        jobs = query.order_by(Job.created_at.desc()).limit(limit).all()
+        total = self._db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+        jobs = self._db.scalars(stmt.order_by(Job.created_at.desc()).limit(limit)).all()
         return JobList(jobs=[self._project_job(job) for job in jobs], total=total)
 
     def request_cancellation(self, job_id: str) -> JobCancellation:
@@ -232,7 +233,7 @@ class JobLifecycle:
 
     def initialize_ingest(self, job_id: str) -> IngestInitialization:
         self.start_job(job_id)
-        urls = self._db.query(IngestURL).filter_by(job_id=job_id).all()
+        urls = self._db.scalars(select(IngestURL).where(IngestURL.job_id == job_id)).all()
         return IngestInitialization(urls=[IngestUrlRef(id=url.id, url=url.url) for url in urls])
 
     def start_job(self, job_id: str) -> None:
@@ -343,7 +344,8 @@ class JobLifecycle:
         if url is None:
             return IngestUrlDoneResult(found=False, image_exists=None)
 
-        image_exists = self._db.query(Image.id).filter(Image.id == image_id).first() is not None
+        image_exists = self._db.scalar(select(Image.id).where(Image.id == image_id)) is not None
+
         if image_exists:
             url.status = ProcessingStatus.DONE
             url.image_id = image_id

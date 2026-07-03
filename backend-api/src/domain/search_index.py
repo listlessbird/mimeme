@@ -381,7 +381,9 @@ class SearchIndexExecution:
 
     def _ensure_index_loaded(self, db: Session) -> None:
         global _active_embed_model
-        active_build = db.query(IndexBuild).filter(IndexBuild.is_active).first()
+
+        active_build = db.scalars(select(IndexBuild).where(IndexBuild.is_active.is_(True))).first()
+
         if active_build is None:
             raise SearchIndexUnavailableError("Search index not loaded")
         _active_embed_model = active_build.embed_model

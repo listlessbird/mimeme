@@ -9,6 +9,7 @@ from typing import Any
 
 import structlog
 from fastapi import FastAPI
+from sqlalchemy import select
 
 from api.deps import get_index_manager
 from api.services.text_encoder import SearchTextEncoder
@@ -97,7 +98,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         db_gen = get_db()
         db = next(db_gen)
         try:
-            active_build = db.query(IndexBuild).filter(IndexBuild.is_active).first()
+            active_build = db.scalars(
+                select(IndexBuild).where(IndexBuild.is_active.is_(True))
+            ).first()
             db_active_version = active_build.version if active_build else None
             db_embed_model = active_build.embed_model if active_build else None
             if not db_active_version:

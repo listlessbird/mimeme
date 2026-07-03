@@ -7,6 +7,7 @@ import time
 import numpy as np
 import structlog
 from botocore.exceptions import ClientError
+from sqlalchemy import select
 from temporalio import activity
 
 from activities.indexing.faiss_manager import FaissIndexManager
@@ -40,14 +41,12 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
     index_manager = FaissIndexManager.get_instance()
     try:
         with session_scope() as session:
-            done_procs = (
-                session.query(Processing.image_id, Processing.embed_s3_key)
-                .filter(
+            done_procs = session.execute(
+                select(Processing.image_id, Processing.embed_s3_key).where(
                     Processing.embed_status == ProcessingStatus.DONE,
                     Processing.embed_s3_key.isnot(None),
                 )
-                .all()
-            )
+            ).all()
 
         total_candidates = len(done_procs)
         candidates = [

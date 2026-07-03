@@ -6,6 +6,7 @@ from urllib.parse import urlparse
 
 import httpx
 import structlog
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from temporalio import activity
 
@@ -239,7 +240,7 @@ def process_image_activity(input: ProcessImageInput) -> ProcessImageOutput:
     try:
         sha256 = compute_sha256(local_path)
         with session_scope() as session:
-            existing = session.query(ORMImage).filter_by(sha256=sha256).first()
+            existing = session.scalars(select(ORMImage).where(ORMImage.sha256 == sha256)).first()
 
             if existing:
                 duplicate_processing = _duplicate_processing_fields(session, existing)
