@@ -11,6 +11,7 @@ persistence and queueing behavior, plus idempotency under retry.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 
 import pytest
@@ -111,23 +112,37 @@ class TestDiscoverAndQueueActivity:
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
         source, run = _setup(db_session)
+        old_seen_at = datetime(2024, 1, 1, tzinfo=UTC)
         create_source_item(
-            session=db_session, source=source, source_id=source.id, external_item_id="aaa"
+            session=db_session,
+            source=source,
+            source_id=source.id,
+            external_item_id="aaa",
+            last_seen_at=old_seen_at,
+        )
+        create_source_item(
+            session=db_session,
+            source=source,
+            source_id=source.id,
+            external_item_id="ccc",
+            last_seen_at=old_seen_at,
         )
 
         result = activity_env.run(
             discover_and_queue_activity,
-            _input(source, run, _response(_meme("aaa"), _meme("bbb"))),
+            _input(source, run, _response(_meme("aaa"), _meme("bbb"), _meme("ccc"))),
         )
 
-        assert result.discovered == 2
+        assert result.discovered == 3
         assert result.queued == 1
 
-        # "aaa" updated in place (no duplicate row), "bbb" inserted.
         items = _items(db_session, source.id)
-        assert {i.external_item_id for i in items} == {"aaa", "bbb"}
-        seen = next(i for i in items if i.external_item_id == "aaa")
-        assert seen.last_source_run_id == run.id
+        assert {i.external_item_id for i in items} == {"aaa", "bbb", "ccc"}
+        seen_items = [i for i in items if i.external_item_id in {"aaa", "ccc"}]
+        assert all(i.last_source_run_id == run.id for i in seen_items)
+        assert all(i.last_seen_at > old_seen_at for i in seen_items)
+        inserted = next(i for i in items if i.external_item_id == "bbb")
+        assert inserted.first_seen_at == inserted.last_seen_at
 
         urls = _urls(db_session, run.id)
         assert {u.url for u in urls} == {"https://i.redd.it/bbb.png"}

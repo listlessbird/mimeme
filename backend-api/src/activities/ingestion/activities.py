@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import httpx
 import structlog
-from sqlalchemy import func
+from sqlalchemy import func, update
 from sqlalchemy.orm import Session
 from temporalio import activity
 
@@ -201,17 +201,17 @@ def discover_and_queue_activity(input: DiscoverAndQueueInput) -> DiscoverAndQueu
             dedup = dedup_source_items(discovered_items, seen_ids=seen_ids)
             now = datetime.now(UTC)
 
-            for item in dedup.already_seen:
-                existing = (
-                    session.query(SourceItem)
-                    .filter(
+            seen_external_ids = [item.external_item_id for item in dedup.already_seen]
+
+            if seen_external_ids:
+                session.execute(
+                    update(SourceItem)
+                    .where(
                         SourceItem.source_id == input.source_id,
-                        SourceItem.external_item_id == item.external_item_id,
+                        SourceItem.external_item_id.in_(seen_external_ids),
                     )
-                    .one()
+                    .values(last_seen_at=now, last_source_run_id=input.source_run_id)
                 )
-                existing.last_seen_at = now
-                existing.last_source_run_id = input.source_run_id
 
             new_pairs: list[tuple[DiscoveredItem, SourceItem]] = []
             for item in dedup.new:
