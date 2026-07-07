@@ -134,6 +134,20 @@ def _patch_session_scope(db_session: Session, monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr("shared.db.get_db", _test_get_db)
 
 
+@pytest.fixture()
+def _patch_domain_session_scope(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    @contextmanager
+    def _test_session_scope() -> Iterator[Session]:
+        yield db_session
+        db_session.flush()
+
+    monkeypatch.setattr("shared.db.session_scope", _test_session_scope)
+    monkeypatch.setattr("shared.db.read_session_scope", _test_session_scope)
+
+
 # ---------------------------------------------------------------------------
 # Mock fixtures for external services
 # ---------------------------------------------------------------------------
@@ -192,6 +206,7 @@ def mock_index_manager() -> MagicMock:
 @pytest.fixture()
 def client(
     db_session: Session,
+    _patch_domain_session_scope: None,
     mock_storage: MagicMock,
     mock_temporal: AsyncMock,
     mock_index_manager: MagicMock,

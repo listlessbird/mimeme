@@ -72,7 +72,7 @@ async def create_source(
     _auth: AdminRequired, body: CreateSourceRequest, db: DbSession, temporal: TemporalClientDep
 ) -> SourceResponse:
     try:
-        view = SourceRegistry(db).create(
+        view = SourceRegistry().create(
             name=body.name,
             adapter_key=body.adapter_key,
             adapter_config=dict(body.adapter_config),
@@ -93,8 +93,8 @@ async def create_source(
 
 
 @router.get("", response_model=SourceListResponse)
-async def list_sources(_auth: AdminRequired, db: DbSession) -> SourceListResponse:
-    items = SourceRegistry(db).list_sources()
+async def list_sources(_auth: AdminRequired) -> SourceListResponse:
+    items = SourceRegistry().list_sources()
     return SourceListResponse(
         sources=[SourceListItemResponse.model_validate(item.model_dump()) for item in items],
         total=len(items),
@@ -102,9 +102,9 @@ async def list_sources(_auth: AdminRequired, db: DbSession) -> SourceListRespons
 
 
 @router.get("/{source_id}", response_model=SourceDetailResponse, responses=error_responses(404))
-async def get_source(_auth: AdminRequired, source_id: int, db: DbSession) -> SourceDetailResponse:
+async def get_source(_auth: AdminRequired, source_id: int) -> SourceDetailResponse:
     try:
-        detail = SourceRegistry(db).get_source(source_id)
+        detail = SourceRegistry().get_source(source_id)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
 
@@ -123,7 +123,7 @@ async def update_source(
         patch = body.model_dump(exclude_unset=True)
         if patch.get("adapter_config") is None:
             patch.pop("adapter_config", None)
-        view = SourceRegistry(db).patch(source_id, **patch)
+        view = SourceRegistry().patch(source_id, **patch)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
 
@@ -139,10 +139,10 @@ async def update_source(
     responses=error_responses(404),
 )
 async def trigger_source_run(
-    _auth: AdminRequired, source_id: int, db: DbSession, temporal: TemporalClientDep
+    _auth: AdminRequired, source_id: int, temporal: TemporalClientDep
 ) -> TriggerRunResponse:
     try:
-        SourceRegistry(db).get_source(source_id)
+        SourceRegistry().get_source(source_id)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
 
@@ -191,7 +191,7 @@ async def retry_source(
     temporal: TemporalClientDep,
 ) -> RetryResponse:
     try:
-        plan = SourceRetry(db).retry_source(source_id)
+        plan = SourceRetry().retry_source(source_id)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
     except NothingToRetryError:
@@ -214,7 +214,7 @@ async def retry_source_run(
     temporal: TemporalClientDep,
 ) -> RetryResponse:
     try:
-        plan = SourceRetry(db).retry_run(source_id, run_id)
+        plan = SourceRetry().retry_run(source_id, run_id)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
     except RunNotFoundError:
@@ -239,7 +239,7 @@ async def retry_source_item(
     temporal: TemporalClientDep,
 ) -> RetryResponse:
     try:
-        plan = SourceRetry(db).retry_item(source_id, item_id)
+        plan = SourceRetry().retry_item(source_id, item_id)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
     except SourceItemNotFoundError:
@@ -258,14 +258,13 @@ async def retry_source_item(
 async def list_source_items(
     _auth: AdminRequired,
     source_id: int,
-    db: DbSession,
     storage: StorageDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
     status: SourceItemIngestState | None = None,
 ) -> SourceItemListResponse:
     try:
-        page = SourceItemBrowser(db, storage).list_items(
+        page = SourceItemBrowser(storage).list_items(
             source_id, limit=limit, offset=offset, status=status
         )
     except SourceNotFoundError:
@@ -289,13 +288,12 @@ async def list_run_items(
     _auth: AdminRequired,
     source_id: int,
     run_id: int,
-    db: DbSession,
     storage: StorageDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> RunItemListResponse:
     try:
-        page = SourceItemBrowser(db, storage).list_run_items(
+        page = SourceItemBrowser(storage).list_run_items(
             source_id, run_id, limit=limit, offset=offset
         )
     except SourceNotFoundError:
@@ -316,7 +314,7 @@ async def delete_source(
     _auth: AdminRequired, source_id: int, db: DbSession, temporal: TemporalClientDep
 ) -> None:
     try:
-        SourceRegistry(db).soft_delete(source_id)
+        SourceRegistry().soft_delete(source_id)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
 

@@ -111,7 +111,6 @@ async def upload_image(
 async def list_images(
     request: Request,
     _auth: AdminRequired,
-    db: DbSession,
     storage: StorageDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -119,7 +118,7 @@ async def list_images(
     dataset: Annotated[str | None, Query()] = None,
     sort: Annotated[Literal["newest", "oldest"], Query()] = "newest",
 ) -> ImageListResponse:
-    page = ImageCatalog(db, storage).list_images(
+    page = ImageCatalog(storage).list_images(
         limit=limit,
         offset=offset,
         status=status.value if status else None,
@@ -146,11 +145,10 @@ async def list_images(
 async def get_image(
     _auth: AdminRequired,
     image_id: int,
-    db: DbSession,
     storage: StorageDep,
 ) -> ImageResponse:
     try:
-        image = ImageCatalog(db, storage).get_image(image_id)
+        image = ImageCatalog(storage).get_image(image_id)
     except ImageCatalogNotFoundError:
         raise HTTPException(status_code=404, detail="Image not found")
     payload = image.model_dump()
@@ -162,10 +160,9 @@ async def get_image(
 async def delete_image(
     _auth: AdminRequired,
     image_id: int,
-    db: DbSession,
     storage: StorageDep,
 ) -> None:
     try:
-        ImageCatalog(db, storage).delete_image(image_id)
+        ImageCatalog(storage).delete_image(image_id)
     except ImageCatalogNotFoundError:
         raise HTTPException(status_code=404, detail="Image not found")

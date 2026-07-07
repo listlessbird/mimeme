@@ -131,6 +131,13 @@ executionEnvironments = [
     ] },
 ]
 typeCheckingMode = "basic"
+strict = [
+    "src/domain/image_catalog.py",
+    "src/domain/ingestion_browse.py",
+    "src/domain/source_item_browse.py",
+    "src/domain/source_registry.py",
+    "src/domain/source_retry.py",
+]
 useLibraryCodeForTypes = true
 reportMissingTypeStubs = false
 reportPrivateImportUsage = false

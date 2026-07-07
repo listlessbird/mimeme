@@ -47,6 +47,8 @@ from shared.models import (
 
 UTC = datetime.UTC
 
+pytestmark = pytest.mark.usefixtures("_patch_domain_session_scope")
+
 
 def _at(day: int) -> datetime.datetime:
     return datetime.datetime(2026, 1, day, tzinfo=UTC)
@@ -56,7 +58,7 @@ def _at(day: int) -> datetime.datetime:
 
 
 def test_create_persists_source_and_returns_view(db_session: Session) -> None:
-    view = SourceRegistry(db_session).create(
+    view = SourceRegistry().create(
         name="r/memes daily",
         adapter_key="meme_api",
         adapter_config={"subreddits": ["memes", "dankmemes"]},
@@ -77,7 +79,7 @@ def test_create_persists_source_and_returns_view(db_session: Session) -> None:
 
 def test_create_rejects_unknown_adapter_key(db_session: Session) -> None:
     with pytest.raises(UnknownAdapterKeyError):
-        SourceRegistry(db_session).create(
+        SourceRegistry().create(
             name="bad-source",
             adapter_key="not_a_real_adapter",
             adapter_config={},
@@ -92,7 +94,7 @@ def test_create_rejects_unknown_adapter_key(db_session: Session) -> None:
 
 
 def test_create_rejects_duplicate_live_name(db_session: Session) -> None:
-    registry = SourceRegistry(db_session)
+    registry = SourceRegistry()
     registry.create(
         name="dupe",
         adapter_key="meme_api",
@@ -117,7 +119,7 @@ def test_create_rejects_duplicate_live_name(db_session: Session) -> None:
 
 def test_create_reuses_name_of_a_soft_deleted_source(db_session: Session) -> None:
     # ADR-0003: soft-deleting frees the name, so recreate-with-same-name works.
-    registry = SourceRegistry(db_session)
+    registry = SourceRegistry()
     first = registry.create(
         name="reuse-me",
         adapter_key="meme_api",
@@ -146,7 +148,7 @@ def test_create_reuses_name_of_a_soft_deleted_source(db_session: Session) -> Non
 
 
 def test_list_excludes_soft_deleted_sources(db_session: Session) -> None:
-    registry = SourceRegistry(db_session)
+    registry = SourceRegistry()
     live = create_ingestion_source(session=db_session, name="live-one")
     deleted = create_ingestion_source(session=db_session, name="gone")
     registry.soft_delete(deleted.id)
@@ -183,7 +185,7 @@ def test_list_derives_stats_by_query(db_session: Session) -> None:
     )
     create_ingest_url(session=db_session, job=job, source_id=src.id, status=ProcessingStatus.FAILED)
 
-    item = next(i for i in SourceRegistry(db_session).list_sources() if i.name == "stats-src")
+    item = next(i for i in SourceRegistry().list_sources() if i.name == "stats-src")
 
     assert item.stats.run_count == 2
     assert item.stats.items_discovered == 3
@@ -195,7 +197,7 @@ def test_list_derives_stats_by_query(db_session: Session) -> None:
 def test_list_stats_are_zero_for_a_fresh_source(db_session: Session) -> None:
     create_ingestion_source(session=db_session, name="fresh")
 
-    item = next(i for i in SourceRegistry(db_session).list_sources() if i.name == "fresh")
+    item = next(i for i in SourceRegistry().list_sources() if i.name == "fresh")
 
     assert (
         item.stats.run_count,
@@ -215,7 +217,7 @@ def test_get_returns_recent_runs_newest_first(db_session: Session) -> None:
     newest = create_source_run(session=db_session, source=src, created_at=_at(3))
     create_source_run(session=db_session, source=src, created_at=_at(2))
 
-    detail = SourceRegistry(db_session).get_source(src.id)
+    detail = SourceRegistry().get_source(src.id)
 
     created = [r.created_at for r in detail.recent_runs]
     assert created == sorted(created, reverse=True)
@@ -258,7 +260,7 @@ def test_get_recent_run_carries_derived_counts_and_stored_status(db_session: Ses
     for _ in range(4):
         create_source_item(session=db_session, source=src, last_source_run_id=run.id)
 
-    run_view = SourceRegistry(db_session).get_source(src.id).recent_runs[0]
+    run_view = SourceRegistry().get_source(src.id).recent_runs[0]
 
     assert run_view.status == SourceRunStatus.RUNNING
     assert run_view.discovered == 4
@@ -272,7 +274,7 @@ def test_get_respects_recent_runs_limit(db_session: Session) -> None:
     for day in range(1, 4):
         create_source_run(session=db_session, source=src, created_at=_at(day))
 
-    detail = SourceRegistry(db_session).get_source(src.id, recent_runs_limit=2)
+    detail = SourceRegistry().get_source(src.id, recent_runs_limit=2)
 
     assert len(detail.recent_runs) == 2
     assert detail.recent_runs[0].created_at == _at(3)
@@ -281,11 +283,11 @@ def test_get_respects_recent_runs_limit(db_session: Session) -> None:
 
 def test_get_missing_source_raises_not_found(db_session: Session) -> None:
     with pytest.raises(SourceNotFoundError):
-        SourceRegistry(db_session).get_source(999_999)
+        SourceRegistry().get_source(999_999)
 
 
 def test_get_soft_deleted_source_raises_not_found(db_session: Session) -> None:
-    registry = SourceRegistry(db_session)
+    registry = SourceRegistry()
     src = create_ingestion_source(session=db_session)
     registry.soft_delete(src.id)
 
@@ -297,7 +299,7 @@ def test_get_soft_deleted_source_raises_not_found(db_session: Session) -> None:
 
 
 def test_patch_updates_only_provided_fields(db_session: Session) -> None:
-    registry = SourceRegistry(db_session)
+    registry = SourceRegistry()
     src = create_ingestion_source(
         session=db_session,
         schedule_cron="0 * * * *",
@@ -315,7 +317,7 @@ def test_patch_updates_only_provided_fields(db_session: Session) -> None:
 
 
 def test_patch_can_disable_then_reenable(db_session: Session) -> None:
-    registry = SourceRegistry(db_session)
+    registry = SourceRegistry()
     src = create_ingestion_source(session=db_session, enabled=True)
 
     assert registry.patch(src.id, enabled=False).enabled is False
@@ -324,11 +326,11 @@ def test_patch_can_disable_then_reenable(db_session: Session) -> None:
 
 def test_patch_missing_source_raises_not_found(db_session: Session) -> None:
     with pytest.raises(SourceNotFoundError):
-        SourceRegistry(db_session).patch(999_999, enabled=False)
+        SourceRegistry().patch(999_999, enabled=False)
 
 
 def test_patch_soft_deleted_source_raises_not_found(db_session: Session) -> None:
-    registry = SourceRegistry(db_session)
+    registry = SourceRegistry()
     src = create_ingestion_source(session=db_session)
     registry.soft_delete(src.id)
 
@@ -340,7 +342,7 @@ def test_patch_soft_deleted_source_raises_not_found(db_session: Session) -> None
 
 
 def test_soft_delete_sets_deleted_at_and_hides_from_listing(db_session: Session) -> None:
-    registry = SourceRegistry(db_session)
+    registry = SourceRegistry()
     src = create_ingestion_source(session=db_session, name="to-delete")
 
     registry.soft_delete(src.id)
@@ -351,7 +353,7 @@ def test_soft_delete_sets_deleted_at_and_hides_from_listing(db_session: Session)
 
 
 def test_soft_delete_preserves_runs_and_items(db_session: Session) -> None:
-    registry = SourceRegistry(db_session)
+    registry = SourceRegistry()
     src = create_ingestion_source(session=db_session)
     run = create_source_run(session=db_session, source=src)
     item = create_source_item(session=db_session, source=src)
@@ -364,7 +366,7 @@ def test_soft_delete_preserves_runs_and_items(db_session: Session) -> None:
 
 
 def test_soft_delete_already_deleted_raises_not_found(db_session: Session) -> None:
-    registry = SourceRegistry(db_session)
+    registry = SourceRegistry()
     src = create_ingestion_source(session=db_session)
     registry.soft_delete(src.id)
 

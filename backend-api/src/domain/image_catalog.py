@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.orm import Session
 
+from shared import db
 from shared.config import settings
 from shared.models import Annotation, Processing, ProcessingStatus
 from shared.models import ORMImage as Image
@@ -87,8 +88,7 @@ def project_image_status(proc: Processing | None) -> ImageCatalogStatus:
 
 
 class ImageCatalog:
-    def __init__(self, db: Session, storage: StorageService) -> None:
-        self._db = db
+    def __init__(self, storage: StorageService) -> None:
         self._storage = storage
 
     def list_images(
@@ -100,69 +100,76 @@ class ImageCatalog:
         dataset: str | None = None,
         sort: Literal["newest", "oldest"] = "newest",
     ) -> ImageCatalogPage:
-        id_query = select(Image.id)
 
-        if dataset:
-            id_query = id_query.where(Image.dataset == dataset)
+        with db.read_session_scope() as session:
+            id_query = select(Image.id)
 
-        if status:
-            id_query = id_query.outerjoin(Processing, Image.id == Processing.image_id).where(
-                self._status_filter(status)
+            if dataset:
+                id_query = id_query.where(Image.dataset == dataset)
+
+            if status:
+                id_query = id_query.outerjoin(Processing, Image.id == Processing.image_id).where(
+                    self._status_filter(status)
+                )
+
+            total = (
+                session.execute(select(func.count()).select_from(id_query.subquery())).scalar() or 0
             )
 
-        total = (
-            self._db.execute(select(func.count()).select_from(id_query.subquery())).scalar() or 0
-        )
+            order_by = Image.id.desc() if sort == "newest" else Image.id.asc()
+            image_ids = (
+                session.execute(id_query.order_by(order_by).limit(limit).offset(offset))
+                .scalars()
+                .all()
+            )
 
-        order_by = Image.id.desc() if sort == "newest" else Image.id.asc()
-        image_ids = (
-            self._db.execute(id_query.order_by(order_by).limit(limit).offset(offset))
-            .scalars()
-            .all()
-        )
-
-        images = self._load_images(list(image_ids))
-        return ImageCatalogPage(
-            images=images,
-            total=total,
-            limit=limit,
-            offset=offset,
-            has_more=(offset + len(images)) < total,
-        )
+            images = self._load_images(session, list(image_ids))
+            return ImageCatalogPage(
+                images=images,
+                total=total,
+                limit=limit,
+                offset=offset,
+                has_more=(offset + len(images)) < total,
+            )
 
     def get_image(self, image_id: int) -> ImageCatalogImage:
-        rows = self._load_images([image_id])
+        with db.read_session_scope() as session:
+            rows = self._load_images(session, [image_id])
+
         if not rows:
             raise ImageCatalogNotFoundError(f"Image {image_id} not found")
         return rows[0]
 
     def delete_image(self, image_id: int) -> None:
-        image = self._db.get(Image, image_id)
-        if image is None:
-            raise ImageCatalogNotFoundError(f"Image {image_id} not found")
 
-        keys_to_delete: list[str] = []
-        if image.s3_key:
-            keys_to_delete.append(image.s3_key)
+        with db.session_scope() as session:
+            image = session.get(Image, image_id)
 
-        if image.processing and image.processing.embed_s3_key:
-            keys_to_delete.append(image.processing.embed_s3_key)
-            keys_to_delete.append(image.processing.embed_s3_key.replace(".npy", "_text.npy"))
+            if image is None:
+                raise ImageCatalogNotFoundError(f"Image {image_id} not found")
 
-        for key in keys_to_delete:
-            try:
-                self._storage.delete(key)
-            except Exception:
-                pass
+            keys_to_delete: list[str] = []
 
-        self._db.delete(image)
-        self._db.commit()
+            if image.s3_key:
+                keys_to_delete.append(image.s3_key)
 
-    def _load_images(self, image_ids: list[int]) -> list[ImageCatalogImage]:
+            if image.processing and image.processing.embed_s3_key:
+                keys_to_delete.append(image.processing.embed_s3_key)
+                keys_to_delete.append(image.processing.embed_s3_key.replace(".npy", "_text.npy"))
+
+            for key in keys_to_delete:
+                try:
+                    self._storage.delete(key)
+                except Exception:
+                    pass
+
+            session.delete(image)
+
+    def _load_images(self, session: Session, image_ids: list[int]) -> list[ImageCatalogImage]:
         if not image_ids:
             return []
 
-        rows = self._db.execute(
+        rows = session.execute(
             select(Image, Processing, Annotation)
             .outerjoin(Processing, Processing.image_id == Image.id)
             .outerjoin(Annotation, Annotation.image_id == Image.id)

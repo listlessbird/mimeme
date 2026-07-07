@@ -6,9 +6,9 @@ from typing import Any
 
 from pydantic import BaseModel
 from sqlalchemy import ColumnElement, and_, func, or_, select
-from sqlalchemy.orm import Session
 
 from domain.source_item_browse import preview_from_metadata, resolve_thumbnail_url
+from shared import db
 from shared.config import settings
 from shared.models.orm import (
     DuplicateReason,
@@ -21,6 +21,7 @@ from shared.models.orm import (
     SourceRun,
     SourceRunTrigger,
 )
+from shared.services.storage import StorageService
 
 DEFAULT_LIVE_WINDOW = datetime.timedelta(minutes=5)
 
@@ -108,8 +109,7 @@ _DEDUPED = and_(
 
 
 class IngestionBrowser:
-    def __init__(self, db: Session, storage: Any) -> None:
-        self.db = db
+    def __init__(self, storage: StorageService) -> None:
         self.storage = storage
 
     def list_attempts(
@@ -128,42 +128,44 @@ class IngestionBrowser:
         live_window: datetime.timedelta = DEFAULT_LIVE_WINDOW,
         now: datetime.datetime | None = None,
     ) -> IngestionPage:
-        predicates = self._predicates(
-            view=view,
-            stage=stage,
-            trigger=trigger,
-            source_id=source_id,
-            dataset=dataset,
-            outcome=outcome,
-            created_from=created_from,
-            created_to=created_to,
-            live_window=live_window,
-            now=now,
-        )
 
-        total = self.db.scalar(
-            self._with_joins(select(func.count(IngestURL.id)).select_from(IngestURL)).where(
-                *predicates
+        with db.read_session_scope() as session:
+            predicates = self._predicates(
+                view=view,
+                stage=stage,
+                trigger=trigger,
+                source_id=source_id,
+                dataset=dataset,
+                outcome=outcome,
+                created_from=created_from,
+                created_to=created_to,
+                live_window=live_window,
+                now=now,
             )
-        )
 
-        rows = self.db.execute(
-            self._with_joins(
-                select(
-                    IngestURL,
-                    IngestionSource.name,
-                    SourceRun.trigger_mode,
-                    Image.s3_key,
-                    Image.dataset,
-                    IngestionSource.dataset,
-                    SourceItem.raw_metadata,
-                ).select_from(IngestURL)
+            total = session.scalar(
+                self._with_joins(select(func.count(IngestURL.id)).select_from(IngestURL)).where(
+                    *predicates
+                )
             )
-            .where(*predicates)
-            .order_by(IngestURL.created_at.desc(), IngestURL.id.desc())
-            .limit(limit)
-            .offset(offset)
-        ).all()
+
+            rows = session.execute(
+                self._with_joins(
+                    select(
+                        IngestURL,
+                        IngestionSource.name,
+                        SourceRun.trigger_mode,
+                        Image.s3_key,
+                        Image.dataset,
+                        IngestionSource.dataset,
+                        SourceItem.raw_metadata,
+                    ).select_from(IngestURL)
+                )
+                .where(*predicates)
+                .order_by(IngestURL.created_at.desc(), IngestURL.id.desc())
+                .limit(limit)
+                .offset(offset)
+            ).all()
 
         return IngestionPage(
             rows=[self._row(*r) for r in rows],
@@ -173,19 +175,22 @@ class IngestionBrowser:
         )
 
     def get_attempt(self, ingest_url_id: int) -> IngestionDetail:
-        row = self.db.execute(
-            self._with_joins(
-                select(
-                    IngestURL,
-                    IngestionSource.name,
-                    SourceRun.trigger_mode,
-                    Image.s3_key,
-                    Image.dataset,
-                    IngestionSource.dataset,
-                    SourceItem.raw_metadata,
-                ).select_from(IngestURL)
-            ).where(IngestURL.id == ingest_url_id)
-        ).first()
+
+        with db.read_session_scope() as session:
+            row = session.execute(
+                self._with_joins(
+                    select(
+                        IngestURL,
+                        IngestionSource.name,
+                        SourceRun.trigger_mode,
+                        Image.s3_key,
+                        Image.dataset,
+                        IngestionSource.dataset,
+                        SourceItem.raw_metadata,
+                    ).select_from(IngestURL)
+                ).where(IngestURL.id == ingest_url_id)
+            ).first()
+
         if row is None:
             raise AttemptNotFoundError(ingest_url_id)
 

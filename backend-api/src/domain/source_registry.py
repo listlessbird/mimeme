@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from domain.adapters.registry import KNOWN_ADAPTER_KEYS, UnknownAdapterKeyError
 from domain.source_run_accounting import UrlOutcome, derive_run_accounting
+from shared import db
 from shared.models.orm import (
     IngestionSource,
     IngestURL,
@@ -81,9 +82,6 @@ class SourceDetail(SourceView, frozen=True):
 
 
 class SourceRegistry:
-    def __init__(self, db: Session) -> None:
-        self.db = db
-
     def create(
         self,
         *,
@@ -100,58 +98,63 @@ class SourceRegistry:
         if adapter_key not in KNOWN_ADAPTER_KEYS:
             raise UnknownAdapterKeyError(adapter_key)
 
-        if self._live_name_exists(name):
-            raise DuplicateSourceNameError(name)
+        with db.session_scope() as session:
+            if self._live_name_exists(session, name):
+                raise DuplicateSourceNameError(name)
 
-        source = IngestionSource(
-            name=name,
-            adapter_key=adapter_key,
-            adapter_config=adapter_config,
-            dataset=dataset,
-            schedule_cron=schedule_cron,
-            schedule_timezone=schedule_timezone,
-            max_items_per_run=max_items_per_run,
-            enabled=enabled,
-        )
+            source = IngestionSource(
+                name=name,
+                adapter_key=adapter_key,
+                adapter_config=adapter_config,
+                dataset=dataset,
+                schedule_cron=schedule_cron,
+                schedule_timezone=schedule_timezone,
+                max_items_per_run=max_items_per_run,
+                enabled=enabled,
+            )
 
-        self.db.add(source)
-        self.db.flush()
-        self.db.refresh(source)
+            session.add(source)
+            session.flush()
+            session.refresh(source)
 
-        return self._to_source_view(source)
+            return self._to_source_view(source)
 
     def list_sources(self) -> list[SourceListItem]:
 
-        sources = self.db.scalars(
-            select(IngestionSource)
-            .where(IngestionSource.deleted_at.is_(None))
-            .order_by(IngestionSource.created_at.desc())
-        ).all()
+        with db.read_session_scope() as session:
+            sources = session.scalars(
+                select(IngestionSource)
+                .where(IngestionSource.deleted_at.is_(None))
+                .order_by(IngestionSource.created_at.desc())
+            ).all()
 
-        stats_by_souce_id = self._stats_by_source_id([source.id for source in sources])
+            stats_by_souce_id = self._stats_by_source_id(session, [source.id for source in sources])
 
-        return [
-            SourceListItem(
-                **self._to_source_view(source).model_dump(), stats=stats_by_souce_id[source.id]
-            )
-            for source in sources
-        ]
+            return [
+                SourceListItem(
+                    **self._to_source_view(source).model_dump(),
+                    stats=stats_by_souce_id[source.id],
+                )
+                for source in sources
+            ]
 
     def get_source(self, source_id: int, *, recent_runs_limit: int = 20) -> SourceDetail:
-        source = self._live_source_or_raise(source_id)
 
-        runs = self.db.scalars(
-            select(SourceRun)
-            .where(SourceRun.source_id == source.id)
-            .order_by(SourceRun.created_at.desc())
-            .limit(recent_runs_limit)
-        ).all()
+        with db.read_session_scope() as session:
+            source = self._live_source_or_raise(session, source_id)
 
-        return SourceDetail(
-            **self._to_source_view(source).model_dump(),
-            stats=self._stats_by_source_id([source.id])[source.id],
-            recent_runs=self._to_run_views(runs),
-        )
+            runs = session.scalars(
+                select(SourceRun)
+                .where(SourceRun.source_id == source.id)
+                .order_by(SourceRun.created_at.desc())
+                .limit(recent_runs_limit)
+            ).all()
+
+            return SourceDetail(
+                **self._to_source_view(source).model_dump(),
+                stats=self._stats_by_source_id(session, [source.id])[source.id],
+                recent_runs=self._to_run_views(session, runs),
+            )
 
     def patch(
         self,
@@ -164,41 +167,45 @@ class SourceRegistry:
         max_items_per_run: int | None | _Unset = UNSET,
         enabled: bool | _Unset = UNSET,
     ) -> SourceView:
-        source = self._live_source_or_raise(source_id)
 
-        if not isinstance(adapter_config, _Unset):
-            source.adapter_config = adapter_config
+        with db.session_scope() as session:
+            source = self._live_source_or_raise(session, source_id)
 
-        if not isinstance(dataset, _Unset):
-            source.dataset = dataset
+            if not isinstance(adapter_config, _Unset):
+                source.adapter_config = adapter_config
 
-        if not isinstance(schedule_cron, _Unset):
-            source.schedule_cron = schedule_cron
+            if not isinstance(dataset, _Unset):
+                source.dataset = dataset
 
-        if not isinstance(schedule_timezone, _Unset):
-            source.schedule_timezone = schedule_timezone
+            if not isinstance(schedule_cron, _Unset):
+                source.schedule_cron = schedule_cron
 
-        if not isinstance(max_items_per_run, _Unset):
-            source.max_items_per_run = max_items_per_run
+            if not isinstance(schedule_timezone, _Unset):
+                source.schedule_timezone = schedule_timezone
 
-        if not isinstance(enabled, _Unset):
-            source.enabled = enabled
+            if not isinstance(max_items_per_run, _Unset):
+                source.max_items_per_run = max_items_per_run
 
-        self.db.flush()
-        self.db.refresh(source)
+            if not isinstance(enabled, _Unset):
+                source.enabled = enabled
 
-        return self._to_source_view(source)
+            session.flush()
+            session.refresh(source)
+
+            return self._to_source_view(source)
 
     def soft_delete(self, source_id: int) -> None:
-        source = self._live_source_or_raise(source_id)
 
-        source.deleted_at = datetime.datetime.now(datetime.UTC)
-        self.db.flush()
+        with db.session_scope() as session:
+            source = self._live_source_or_raise(session, source_id)
 
-    def _live_name_exists(self, name: str) -> bool:
+            source.deleted_at = datetime.datetime.now(datetime.UTC)
+            session.flush()
+
+    def _live_name_exists(self, session: Session, name: str) -> bool:
 
         return (
-            self.db.scalars(
+            session.scalars(
                 select(IngestionSource).where(
                     IngestionSource.name == name, IngestionSource.deleted_at.is_(None)
                 )
@@ -206,8 +213,8 @@ class SourceRegistry:
             is not None
         )
 
-    def _live_source_or_raise(self, source_id: int) -> IngestionSource:
-        source = self.db.scalars(
+    def _live_source_or_raise(self, session: Session, source_id: int) -> IngestionSource:
+        source = session.scalars(
             select(IngestionSource).where(
                 IngestionSource.id == source_id, IngestionSource.deleted_at.is_(None)
             )
@@ -218,7 +225,9 @@ class SourceRegistry:
 
         return source
 
-    def _stats_by_source_id(self, source_ids: list[int]) -> dict[int, SourceStats]:
+    def _stats_by_source_id(
+        self, session: Session, source_ids: list[int]
+    ) -> dict[int, SourceStats]:
         stats = {
             source_id: {
                 "run_count": 0,
@@ -233,19 +242,19 @@ class SourceRegistry:
         if not source_ids:
             return {}
 
-        run_rows = self.db.execute(
+        run_rows = session.execute(
             select(SourceRun.source_id, func.count(SourceRun.id))
             .where(SourceRun.source_id.in_(source_ids))
             .group_by(SourceRun.source_id)
         ).all()
 
-        item_rows = self.db.execute(
+        item_rows = session.execute(
             select(SourceItem.source_id, func.count(SourceItem.id))
             .where(SourceItem.source_id.in_(source_ids))
             .group_by(SourceItem.source_id)
         ).all()
 
-        url_rows = self.db.execute(
+        url_rows = session.execute(
             select(
                 IngestURL.source_id,
                 func.count(IngestURL.id).filter(IngestURL.duplicate_reason.is_not(None)),
@@ -273,14 +282,14 @@ class SourceRegistry:
 
         return {source_id: SourceStats(**values) for source_id, values in stats.items()}
 
-    def _to_run_views(self, runs: Sequence[SourceRun]) -> list[SourceRunView]:
+    def _to_run_views(self, session: Session, runs: Sequence[SourceRun]) -> list[SourceRunView]:
         run_ids = [run.id for run in runs]
 
         if not run_ids:
             return []
 
-        discovered_by_run_id = self._discovered_count_by_run_id(run_ids)
-        outcomes_by_run_id = self._url_outcomes_by_run_id(run_ids)
+        discovered_by_run_id = self._discovered_count_by_run_id(session, run_ids)
+        outcomes_by_run_id = self._url_outcomes_by_run_id(session, run_ids)
 
         views: list[SourceRunView] = []
 
@@ -309,8 +318,8 @@ class SourceRegistry:
 
         return views
 
-    def _discovered_count_by_run_id(self, run_ids: list[int]) -> dict[int, int]:
-        rows = self.db.execute(
+    def _discovered_count_by_run_id(self, session: Session, run_ids: list[int]) -> dict[int, int]:
+        rows = session.execute(
             select(SourceItem.last_source_run_id, func.count(SourceItem.id))
             .where(SourceItem.last_source_run_id.in_(run_ids))
             .group_by(SourceItem.last_source_run_id)
@@ -318,9 +327,11 @@ class SourceRegistry:
 
         return {run_id: count for run_id, count in rows if run_id is not None}
 
-    def _url_outcomes_by_run_id(self, run_ids: list[int]) -> dict[int, list[UrlOutcome]]:
+    def _url_outcomes_by_run_id(
+        self, session: Session, run_ids: list[int]
+    ) -> dict[int, list[UrlOutcome]]:
 
-        rows = self.db.execute(
+        rows = session.execute(
             select(IngestURL.source_run_id, IngestURL.status, IngestURL.duplicate_reason).where(
                 IngestURL.source_run_id.in_(run_ids)
             )

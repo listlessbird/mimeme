@@ -14,9 +14,14 @@ from tests.factories import (
 from domain.image_catalog import ImageCatalog, ImageCatalogNotFoundError
 from shared.models.orm import Annotation, Artifact, Image, Processing, ProcessingStatus
 
+pytestmark = pytest.mark.usefixtures("_patch_domain_session_scope")
 
-def test_list_images_empty(db_session: Session, mock_storage: MagicMock) -> None:
-    page = ImageCatalog(db_session, mock_storage).list_images(limit=20, offset=0)
+
+def test_list_images_empty(
+    db_session: Session,
+    mock_storage: MagicMock,
+) -> None:
+    page = ImageCatalog(mock_storage).list_images(limit=20, offset=0)
 
     assert page.images == []
     assert page.total == 0
@@ -28,7 +33,7 @@ def test_list_images_with_pagination(db_session: Session, mock_storage: MagicMoc
         create_image(session=db_session)
     db_session.flush()
 
-    page = ImageCatalog(db_session, mock_storage).list_images(limit=2, offset=0)
+    page = ImageCatalog(mock_storage).list_images(limit=2, offset=0)
 
     assert len(page.images) == 2
     assert page.total == 3
@@ -40,7 +45,7 @@ def test_list_images_filters_by_dataset(db_session: Session, mock_storage: Magic
     create_image(session=db_session, dataset="dogs")
     db_session.flush()
 
-    page = ImageCatalog(db_session, mock_storage).list_images(
+    page = ImageCatalog(mock_storage).list_images(
         limit=20,
         offset=0,
         dataset="cats",
@@ -55,7 +60,7 @@ def test_list_images_sorts_oldest(db_session: Session, mock_storage: MagicMock) 
     second = create_image(session=db_session)
     db_session.flush()
 
-    page = ImageCatalog(db_session, mock_storage).list_images(
+    page = ImageCatalog(mock_storage).list_images(
         limit=20,
         offset=0,
         sort="oldest",
@@ -84,7 +89,7 @@ def test_list_images_projects_status(
     create_processing(session=db_session, image=image, **processing_overrides)
     db_session.flush()
 
-    page = ImageCatalog(db_session, mock_storage).list_images(limit=20, offset=0)
+    page = ImageCatalog(mock_storage).list_images(limit=20, offset=0)
 
     assert page.images[0].status == expected_status
 
@@ -99,7 +104,7 @@ def test_list_images_filters_by_projected_status(
     create_processing(session=db_session, image=failed, caption_status=ProcessingStatus.FAILED)
     db_session.flush()
 
-    page = ImageCatalog(db_session, mock_storage).list_images(
+    page = ImageCatalog(mock_storage).list_images(
         limit=20,
         offset=0,
         status="failed",
@@ -114,7 +119,7 @@ def test_get_image_with_annotation(db_session: Session, mock_storage: MagicMock)
     create_annotation(session=db_session, image=image, caption_text="A cat", ocr_text="LOL")
     db_session.flush()
 
-    result = ImageCatalog(db_session, mock_storage).get_image(image.id)
+    result = ImageCatalog(mock_storage).get_image(image.id)
 
     assert result.id == image.id
     assert result.caption == "A cat"
@@ -125,7 +130,7 @@ def test_get_image_without_annotation(db_session: Session, mock_storage: MagicMo
     image = create_image(session=db_session)
     db_session.flush()
 
-    result = ImageCatalog(db_session, mock_storage).get_image(image.id)
+    result = ImageCatalog(mock_storage).get_image(image.id)
 
     assert result.id == image.id
     assert result.caption is None
@@ -134,7 +139,7 @@ def test_get_image_without_annotation(db_session: Session, mock_storage: MagicMo
 
 def test_get_image_missing(db_session: Session, mock_storage: MagicMock) -> None:
     with pytest.raises(ImageCatalogNotFoundError):
-        ImageCatalog(db_session, mock_storage).get_image(999999)
+        ImageCatalog(mock_storage).get_image(999999)
 
 
 def test_presigned_url_attached_when_storage_key_exists(
@@ -144,7 +149,7 @@ def test_presigned_url_attached_when_storage_key_exists(
     image = create_image(session=db_session, s3_key="images/test/example.jpg")
     db_session.flush()
 
-    result = ImageCatalog(db_session, mock_storage).get_image(image.id)
+    result = ImageCatalog(mock_storage).get_image(image.id)
 
     assert result.url == "https://mock-s3/presigned"
     mock_storage.generate_presigned_url.assert_called_once()
@@ -164,7 +169,7 @@ def test_delete_image_removes_database_rows_and_storage_artifacts(
     create_artifact(session=db_session, image=image)
     db_session.flush()
 
-    ImageCatalog(db_session, mock_storage).delete_image(image.id)
+    ImageCatalog(mock_storage).delete_image(image.id)
 
     assert db_session.get(Image, image.id) is None
     assert db_session.query(Processing).filter_by(image_id=image.id).first() is None
@@ -177,7 +182,7 @@ def test_delete_image_removes_database_rows_and_storage_artifacts(
 
 def test_delete_image_missing(db_session: Session, mock_storage: MagicMock) -> None:
     with pytest.raises(ImageCatalogNotFoundError):
-        ImageCatalog(db_session, mock_storage).delete_image(999999)
+        ImageCatalog(mock_storage).delete_image(999999)
 
 
 def test_delete_image_storage_failure_does_not_block_database_deletion(
@@ -188,6 +193,6 @@ def test_delete_image_storage_failure_does_not_block_database_deletion(
     db_session.flush()
     mock_storage.delete.side_effect = RuntimeError("storage unavailable")
 
-    ImageCatalog(db_session, mock_storage).delete_image(image.id)
+    ImageCatalog(mock_storage).delete_image(image.id)
 
     assert db_session.get(Image, image.id) is None

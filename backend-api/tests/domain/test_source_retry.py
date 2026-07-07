@@ -28,6 +28,8 @@ from domain.source_retry import (
 )
 from shared.models import ProcessingStatus, SourceRunStatus
 
+pytestmark = pytest.mark.usefixtures("_patch_domain_session_scope")
+
 
 def _failed_url(session: Session, run, item, **kwargs):
     job = create_job(session=session)
@@ -50,7 +52,7 @@ class TestRetryRun:
         item = create_source_item(session=db_session, source=src, source_id=src.id)
         url = _failed_url(db_session, run, item)
 
-        plan = SourceRetry(db_session).retry_run(src.id, run.id)
+        plan = SourceRetry().retry_run(src.id, run.id)
 
         db_session.refresh(url)
         assert url.status == ProcessingStatus.PENDING
@@ -80,7 +82,7 @@ class TestRetryRun:
         )
         failed = _failed_url(db_session, run, item)
 
-        plan = SourceRetry(db_session).retry_run(src.id, run.id)
+        plan = SourceRetry().retry_run(src.id, run.id)
 
         db_session.refresh(done)
         db_session.refresh(failed)
@@ -97,7 +99,7 @@ class TestRetryRun:
         item = create_source_item(session=db_session, source=src, source_id=src.id)
         _failed_url(db_session, run, item)
 
-        SourceRetry(db_session).retry_run(src.id, run.id)
+        SourceRetry().retry_run(src.id, run.id)
 
         db_session.refresh(run)
         assert run.status == SourceRunStatus.RUNNING
@@ -107,17 +109,17 @@ class TestRetryRun:
         run = create_source_run(session=db_session, source=src, source_id=src.id)
 
         with pytest.raises(NothingToRetryError):
-            SourceRetry(db_session).retry_run(src.id, run.id)
+            SourceRetry().retry_run(src.id, run.id)
 
     def test_unknown_run_raises(self, db_session: Session) -> None:
         src = create_ingestion_source(session=db_session)
 
         with pytest.raises(RunNotFoundError):
-            SourceRetry(db_session).retry_run(src.id, 999999)
+            SourceRetry().retry_run(src.id, 999999)
 
     def test_unknown_source_raises(self, db_session: Session) -> None:
         with pytest.raises(SourceNotFoundError):
-            SourceRetry(db_session).retry_run(999999, 1)
+            SourceRetry().retry_run(999999, 1)
 
 
 class TestRetrySource:
@@ -130,7 +132,7 @@ class TestRetrySource:
         url_a = _failed_url(db_session, run_a, item_a)
         url_b = _failed_url(db_session, run_b, item_b)
 
-        plan = SourceRetry(db_session).retry_source(src.id)
+        plan = SourceRetry().retry_source(src.id)
 
         db_session.refresh(url_a)
         db_session.refresh(url_b)
@@ -144,11 +146,11 @@ class TestRetrySource:
         src = create_ingestion_source(session=db_session)
 
         with pytest.raises(NothingToRetryError):
-            SourceRetry(db_session).retry_source(src.id)
+            SourceRetry().retry_source(src.id)
 
     def test_unknown_source_raises(self, db_session: Session) -> None:
         with pytest.raises(SourceNotFoundError):
-            SourceRetry(db_session).retry_source(999999)
+            SourceRetry().retry_source(999999)
 
 
 class TestRetryItem:
@@ -158,7 +160,7 @@ class TestRetryItem:
         item = create_source_item(session=db_session, source=src, source_id=src.id)
         url = _failed_url(db_session, run, item)
 
-        plan = SourceRetry(db_session).retry_item(src.id, item.id)
+        plan = SourceRetry().retry_item(src.id, item.id)
 
         db_session.refresh(url)
         assert url.status == ProcessingStatus.PENDING
@@ -171,7 +173,7 @@ class TestRetryItem:
         src = create_ingestion_source(session=db_session)
 
         with pytest.raises(SourceItemNotFoundError):
-            SourceRetry(db_session).retry_item(src.id, 999999)
+            SourceRetry().retry_item(src.id, 999999)
 
     def test_item_with_no_failed_attempt_raises(self, db_session: Session) -> None:
         src = create_ingestion_source(session=db_session)
@@ -190,4 +192,4 @@ class TestRetryItem:
         )
 
         with pytest.raises(NothingToRetryError):
-            SourceRetry(db_session).retry_item(src.id, item.id)
+            SourceRetry().retry_item(src.id, item.id)
