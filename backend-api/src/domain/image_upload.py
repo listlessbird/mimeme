@@ -6,7 +6,7 @@ import uuid
 from pydantic import BaseModel
 
 from shared.config import settings
-from shared.services.storage import StorageService
+from shared.services.api_storage import ApiStorage
 
 UPLOAD_STAGING_PREFIX = "uploads/staging"
 
@@ -33,7 +33,7 @@ def _extension(filename: str | None) -> str | None:
 
 
 class ImageUploadStager:
-    def __init__(self, storage: StorageService) -> None:
+    def __init__(self, storage: ApiStorage) -> None:
         self._storage = storage
 
     def stage(
@@ -47,5 +47,5 @@ class ImageUploadStager:
         self._storage.upload_bytes(
             content, key, content_type=content_type or "application/octet-stream"
         )
-        url = self._storage.generate_presigned_url(key, expiration=settings.s3_presigned_url_expiry)
+        url = self._storage.presign(key, expiration=settings.s3_presigned_url_expiry)
         return StagedUpload(key=key, url=url)

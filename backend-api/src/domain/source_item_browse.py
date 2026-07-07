@@ -21,7 +21,7 @@ from shared.models.orm import (
     SourceItem,
     SourceRun,
 )
-from shared.services.storage import StorageService
+from shared.services.api_storage import ApiStorage
 
 
 class RunNotFoundError(Exception):
@@ -114,7 +114,7 @@ class RunItemsPage(BaseModel, frozen=True):
 
 
 class SourceItemBrowser:
-    def __init__(self, storage: StorageService) -> None:
+    def __init__(self, storage: ApiStorage) -> None:
         self.storage = storage
 
     def list_items(
@@ -152,9 +152,7 @@ class SourceItemBrowser:
             ).all()
 
             def presign(key: str) -> str:
-                return self.storage.generate_presigned_url(
-                    key, expiration=settings.s3_presigned_url_expiry
-                )
+                return self.storage.presign(key, expiration=settings.s3_presigned_url_expiry)
 
             items: list[SourceItemView] = []
             for item, attempt, image_s3_key in rows:
@@ -233,9 +231,7 @@ class SourceItemBrowser:
             )
 
             def presign(key: str) -> str:
-                return self.storage.generate_presigned_url(
-                    key, expiration=settings.s3_presigned_url_expiry
-                )
+                return self.storage.presign(key, expiration=settings.s3_presigned_url_expiry)
 
             items: list[RunItemView] = []
             for url in rows:

@@ -11,7 +11,7 @@ from shared import db
 from shared.config import settings
 from shared.models import Annotation, Processing, ProcessingStatus
 from shared.models import ORMImage as Image
-from shared.services.storage import StorageService
+from shared.services.api_storage import ApiStorage
 
 ImageCatalogStatus = Literal[
     "pending",
@@ -88,7 +88,7 @@ def project_image_status(proc: Processing | None) -> ImageCatalogStatus:
 
 
 class ImageCatalog:
-    def __init__(self, storage: StorageService) -> None:
+    def __init__(self, storage: ApiStorage) -> None:
         self._storage = storage
 
     def list_images(
@@ -192,7 +192,7 @@ class ImageCatalog:
     ) -> ImageCatalogImage:
         url = None
         if image.s3_key:
-            url = self._storage.generate_presigned_url(
+            url = self._storage.presign(
                 image.s3_key,
                 expiration=settings.s3_presigned_url_expiry,
             )

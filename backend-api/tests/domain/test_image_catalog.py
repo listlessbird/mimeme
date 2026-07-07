@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import BinaryIO
 from unittest.mock import MagicMock
 
 import pytest
@@ -15,6 +16,24 @@ from domain.image_catalog import ImageCatalog, ImageCatalogNotFoundError
 from shared.models.orm import Annotation, Artifact, Image, Processing, ProcessingStatus
 
 pytestmark = pytest.mark.usefixtures("_patch_domain_session_scope")
+
+
+class FakeApiStorage:
+    def __init__(self) -> None:
+        self.presigned_keys: list[tuple[str, int]] = []
+
+    def presign(self, key: str, expiration: int = 3600) -> str:
+        self.presigned_keys.append((key, expiration))
+        return f"https://fake/{key}"
+
+    def upload_bytes(self, data: bytes | BinaryIO, key: str, content_type: str) -> str:
+        return f"etag:{key}"
+
+    def delete(self, key: str) -> None:
+        pass
+
+    def exists(self, key: str) -> bool:
+        return True
 
 
 def test_list_images_empty(
@@ -152,7 +171,18 @@ def test_presigned_url_attached_when_storage_key_exists(
     result = ImageCatalog(mock_storage).get_image(image.id)
 
     assert result.url == "https://mock-s3/presigned"
-    mock_storage.generate_presigned_url.assert_called_once()
+    mock_storage.presign.assert_called_once()
+
+
+def test_image_catalog_uses_api_storage_presign_surface(db_session: Session) -> None:
+    storage = FakeApiStorage()
+    image = create_image(session=db_session, s3_key="images/test/example.jpg")
+    db_session.flush()
+
+    result = ImageCatalog(storage).get_image(image.id)
+
+    assert result.url == "https://fake/images/test/example.jpg"
+    assert storage.presigned_keys == [("images/test/example.jpg", 3600)]
 
 
 def test_delete_image_removes_database_rows_and_storage_artifacts(

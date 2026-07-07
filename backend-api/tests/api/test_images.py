@@ -76,7 +76,7 @@ class TestIngestImages:
 
 class TestUploadImage:
     def test_upload_stores_file_and_creates_ingest_job(
-        self, client: TestClient, db_session: Session, mock_storage: MagicMock
+        self, client: TestClient, db_session: Session, api_storage
     ) -> None:
         resp = client.post(
             "/images/upload",
@@ -90,8 +90,8 @@ class TestUploadImage:
         assert data["duplicates"] == 0
 
         # stored to a staging key
-        mock_storage.upload_bytes.assert_called_once()
-        stored_key = mock_storage.upload_bytes.call_args.args[1]
+        assert len(api_storage.uploaded) == 1
+        stored_key = api_storage.uploaded[0].key
         assert stored_key.startswith("uploads/staging/")
 
         # converged on the URL-based ingest path: one ingest_url over the staged URL
@@ -115,7 +115,7 @@ class TestUploadImage:
         assert resp.status_code == 400
 
     def test_upload_rejects_non_admin(
-        self, client: TestClient, mock_storage: MagicMock, monkeypatch: pytest.MonkeyPatch
+        self, client: TestClient, api_storage, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(settings, "app_env", "production")
         monkeypatch.setattr(settings, "api_key_admin", "secret-admin-key")
@@ -126,7 +126,7 @@ class TestUploadImage:
         )
 
         assert resp.status_code == 403
-        mock_storage.upload_bytes.assert_not_called()
+        assert api_storage.uploaded == []
 
 
 class TestListImages:
@@ -245,10 +245,10 @@ class TestDeleteImage:
         assert resp.status_code == 404
 
     def test_delete_calls_storage_delete(
-        self, client: TestClient, db_session: Session, mock_storage: MagicMock
+        self, client: TestClient, db_session: Session, api_storage
     ) -> None:
         image = create_image(session=db_session, s3_key="images/test/abc.jpg")
         db_session.flush()
 
         client.delete(f"/images/{image.id}")
-        mock_storage.delete.assert_called()
+        assert api_storage.deleted == ["images/test/abc.jpg"]

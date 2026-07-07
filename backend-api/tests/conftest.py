@@ -15,6 +15,8 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass
+from typing import BinaryIO
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -153,10 +155,49 @@ def _patch_domain_session_scope(
 # ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class UploadBytesCall:
+    data: bytes | BinaryIO
+    key: str
+    content_type: str
+
+
+class FakeApiStorage:
+    def __init__(self) -> None:
+        self.presigned: list[tuple[str, int]] = []
+        self.uploaded: list[UploadBytesCall] = []
+        self.deleted: list[str] = []
+        self.existing_keys: set[str] = set()
+
+    def presign(self, key: str, expiration: int = 3600) -> str:
+        self.presigned.append((key, expiration))
+        return "https://mock-s3/presigned"
+
+    def upload_bytes(
+        self, data: bytes | BinaryIO, key: str, content_type: str = "application/octet-stream"
+    ) -> str:
+        self.uploaded.append(UploadBytesCall(data=data, key=key, content_type=content_type))
+        self.existing_keys.add(key)
+        return "mock-etag"
+
+    def delete(self, key: str) -> None:
+        self.deleted.append(key)
+        self.existing_keys.discard(key)
+
+    def exists(self, key: str) -> bool:
+        return key in self.existing_keys
+
+
+@pytest.fixture()
+def api_storage() -> FakeApiStorage:
+    return FakeApiStorage()
+
+
 @pytest.fixture()
 def mock_storage() -> MagicMock:
     """Mock StorageService — no real S3 calls."""
     storage = MagicMock()
+    storage.presign.return_value = "https://mock-s3/presigned"
     storage.generate_presigned_url.return_value = "https://mock-s3/presigned"
     storage.upload_file.return_value = "mock-etag"
     storage.upload_bytes.return_value = "mock-etag"
@@ -207,7 +248,7 @@ def mock_index_manager() -> MagicMock:
 def client(
     db_session: Session,
     _patch_domain_session_scope: None,
-    mock_storage: MagicMock,
+    api_storage: FakeApiStorage,
     mock_temporal: AsyncMock,
     mock_index_manager: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
@@ -238,8 +279,8 @@ def client(
     async def _override_temporal() -> AsyncMock:
         return mock_temporal
 
-    def _override_storage() -> MagicMock:
-        return mock_storage
+    def _override_storage() -> FakeApiStorage:
+        return api_storage
 
     def _override_index_manager() -> MagicMock:
         return mock_index_manager

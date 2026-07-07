@@ -21,7 +21,7 @@ from shared.models.orm import (
     SourceRun,
     SourceRunTrigger,
 )
-from shared.services.storage import StorageService
+from shared.services.api_storage import ApiStorage
 
 DEFAULT_LIVE_WINDOW = datetime.timedelta(minutes=5)
 
@@ -109,7 +109,7 @@ _DEDUPED = and_(
 
 
 class IngestionBrowser:
-    def __init__(self, storage: StorageService) -> None:
+    def __init__(self, storage: ApiStorage) -> None:
         self.storage = storage
 
     def list_attempts(
@@ -302,9 +302,7 @@ class IngestionBrowser:
         raw_metadata: dict[str, Any] | None,
     ) -> IngestionRow:
         def presign(key: str) -> str:
-            return self.storage.generate_presigned_url(
-                key, expiration=settings.s3_presigned_url_expiry
-            )
+            return self.storage.presign(key, expiration=settings.s3_presigned_url_expiry)
 
         return IngestionRow(
             ingest_url_id=attempt.id,
