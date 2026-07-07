@@ -25,12 +25,43 @@ class TestGetJob:
 
     def test_get_job_with_json_result(self, client: TestClient, db_session: Session) -> None:
         job = create_job(session=db_session, status=JobStatus.COMPLETED)
-        job.result = json.dumps({"processed": 5, "failed": 0})
+        job.result = json.dumps({"processed": 5, "failed": 0, "duplicates": 0})
         db_session.flush()
 
         resp = client.get(f"/jobs/{job.id}")
         data = resp.json()
         assert data["result"]["processed"] == 5
+        assert data["result"]["duplicates"] == 0
+
+    def test_get_rebuild_job_with_json_result(
+        self, client: TestClient, db_session: Session
+    ) -> None:
+        job = create_job(
+            session=db_session,
+            type=JobType.REBUILD_INDEX,
+            status=JobStatus.COMPLETED,
+        )
+        job.result = json.dumps(
+            {
+                "version": "v-1",
+                "num_vectors": 10,
+                "dimension": 768,
+                "removed_versions": ["v-old"],
+                "text_num_vectors": 9,
+            }
+        )
+        db_session.flush()
+
+        resp = client.get(f"/jobs/{job.id}")
+        data = resp.json()
+
+        assert data["result"] == {
+            "version": "v-1",
+            "num_vectors": 10,
+            "dimension": 768,
+            "removed_versions": ["v-old"],
+            "text_num_vectors": 9,
+        }
 
     def test_get_job_with_invalid_json_result(
         self, client: TestClient, db_session: Session

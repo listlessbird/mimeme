@@ -132,6 +132,8 @@ executionEnvironments = [
 ]
 typeCheckingMode = "basic"
 strict = [
+    "src/domain/job_rules.py",
+    "src/domain/job_store.py",
     "src/domain/image_catalog.py",
     "src/domain/ingestion_browse.py",
     "src/domain/source_item_browse.py",

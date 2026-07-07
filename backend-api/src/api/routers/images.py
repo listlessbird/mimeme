@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 
 from api.auth import AdminRequired
-from api.deps import DbSession, StorageDep, TemporalClientDep
+from api.deps import StorageDep, TemporalClientDep
 from api.models.errors import error_responses
 from api.models.images import (
     ImageIngestRequest,
@@ -15,7 +15,7 @@ from api.models.images import (
 from api.rate_limit import ADMIN_LIMIT, limiter
 from domain.image_catalog import ImageCatalog, ImageCatalogNotFoundError
 from domain.image_upload import ImageUploadStager
-from domain.job_lifecycle import JobLifecycle
+from domain.job_store import ApiJobStore
 from shared.config import settings
 from workflows import IngestWorkflow, IngestWorkflowInput
 
@@ -23,7 +23,6 @@ router = APIRouter(prefix="/images", tags=["Images"], responses=error_responses(
 
 
 async def _launch_ingest(
-    db: DbSession,
     temporal: TemporalClientDep,
     *,
     urls: list[str],
@@ -31,10 +30,8 @@ async def _launch_ingest(
     tags: list[str],
     callback_url: str | None,
 ) -> ImageIngestResponse:
-    lifecycle = JobLifecycle(db)
-    job = lifecycle.create_ingest_job(
-        urls=urls, dataset=dataset, tags=tags, callback_url=callback_url
-    )
+    store = ApiJobStore()
+    job = store.create_ingest_job(urls=urls, dataset=dataset, tags=tags, callback_url=callback_url)
 
     await temporal.start_workflow(
         IngestWorkflow.run,
@@ -47,7 +44,7 @@ async def _launch_ingest(
         id=job.workflow_id,
         task_queue=settings.temporal_task_queue,
     )
-    lifecycle.record_workflow_id(job.job_id, job.workflow_id)
+    store.record_workflow_id(job.job_id, job.workflow_id)
 
     return ImageIngestResponse(
         job_id=job.job_id,
@@ -63,11 +60,9 @@ async def ingest_images(
     request: Request,
     _auth: AdminRequired,
     ingest_request: ImageIngestRequest,
-    db: DbSession,
     temporal: TemporalClientDep,
 ) -> ImageIngestResponse:
     return await _launch_ingest(
-        db,
         temporal,
         urls=[str(url) for url in ingest_request.urls],
         dataset=ingest_request.dataset,
@@ -81,7 +76,6 @@ async def ingest_images(
 async def upload_image(
     request: Request,
     _auth: AdminRequired,
-    db: DbSession,
     storage: StorageDep,
     temporal: TemporalClientDep,
     file: Annotated[UploadFile, File()],
@@ -97,7 +91,6 @@ async def upload_image(
     )
 
     return await _launch_ingest(
-        db,
         temporal,
         urls=[staged.url],
         dataset=dataset,

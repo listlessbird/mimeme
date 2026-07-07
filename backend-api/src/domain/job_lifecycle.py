@@ -1,14 +1,19 @@
 from __future__ import annotations
 
-import json
 import uuid
 from datetime import UTC, datetime
-from typing import Any
 
-from pydantic import BaseModel
-from sqlalchemy import func, select
+from pydantic import BaseModel, ValidationError
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from domain.job_rules import (
+    IngestJobResultPayload,
+    JobResultPayload,
+    RawJobResultPayload,
+    RebuildJobResultPayload,
+    derive_completion_status,
+)
 from shared.models import (
     DuplicateReason,
     IngestStage,
@@ -38,7 +43,7 @@ class JobView(BaseModel, frozen=True):
     created_at: datetime
     started_at: datetime | None
     completed_at: datetime | None
-    result: dict[str, Any] | None
+    result: JobResultPayload | None
 
 
 class JobList(BaseModel, frozen=True):
@@ -93,48 +98,12 @@ class JobLifecycle:
     def __init__(self, db: Session) -> None:
         self._db = db
 
-    def create_ingest_job(
-        self,
-        *,
-        urls: list[str],
-        dataset: str | None,
-        tags: list[str],
-        callback_url: str | None,
-    ) -> IngestJobCreation:
-        unique_urls = list(dict.fromkeys(urls))
-        duplicates = len(urls) - len(unique_urls)
-        job_id = f"ingest-{uuid.uuid4().hex[:12]}"
-        workflow_id = f"ingest-workflow-{job_id}"
-
-        job = Job(id=job_id, type=JobType.INGEST)
-        self._db.add(job)
-        self._db.flush()
-
-        for url in unique_urls:
-            self._db.add(IngestURL(job_id=job_id, url=url))
-
-        self._db.commit()
-        return IngestJobCreation(
-            job_id=job_id,
-            workflow_id=workflow_id,
-            queued=len(unique_urls),
-            duplicates=duplicates,
-            dataset=dataset,
-            tags=tags,
-            callback_url=callback_url,
-        )
-
     def create_source_ingest_job(
         self,
         *,
         dataset: str | None,
         items: list[SourceIngestItem],
     ) -> IngestJobCreation:
-        """Create the INGEST Job + provenance-carrying ingest_urls for a Source run.
-
-        Unlike ``create_ingest_job`` (the manual path), this only ``flush``es —
-        the calling activity owns the transaction boundary via ``session_scope``.
-        """
         job_id = f"ingest-{uuid.uuid4().hex[:12]}"
         workflow_id = f"ingest-workflow-{job_id}"
 
@@ -192,45 +161,6 @@ class JobLifecycle:
         job.workflow_id = workflow_id
         self._db.commit()
 
-    def get_job(self, job_id: str) -> JobView:
-        job = self._db.get(Job, job_id)
-        if job is None:
-            raise JobLifecycleNotFoundError(f"Job {job_id} not found")
-        return self._project_job(job)
-
-    def list_jobs(
-        self,
-        *,
-        status: JobStatus | None,
-        job_type: JobType | None,
-        limit: int,
-    ) -> JobList:
-        stmt = select(Job)
-
-        if status:
-            stmt = stmt.where(Job.status == status)
-        if job_type:
-            stmt = stmt.where(Job.type == job_type)
-
-        total = self._db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
-        jobs = self._db.scalars(stmt.order_by(Job.created_at.desc()).limit(limit)).all()
-        return JobList(jobs=[self._project_job(job) for job in jobs], total=total)
-
-    def request_cancellation(self, job_id: str) -> JobCancellation:
-        job = self._db.get(Job, job_id)
-        if job is None:
-            raise JobLifecycleNotFoundError(f"Job {job_id} not found")
-        if job.status in (JobStatus.COMPLETED, JobStatus.FAILED):
-            raise JobLifecycleInvalidStateError("Cannot cancel completed job")
-        return JobCancellation(workflow_id=job.workflow_id)
-
-    def mark_cancelled(self, job_id: str) -> None:
-        job = self._db.get(Job, job_id)
-        if job is None:
-            raise JobLifecycleNotFoundError(f"Job {job_id} not found")
-        job.status = JobStatus.CANCELLED
-        self._db.commit()
-
     def initialize_ingest(self, job_id: str) -> IngestInitialization:
         self.start_job(job_id)
         urls = self._db.scalars(select(IngestURL).where(IngestURL.job_id == job_id)).all()
@@ -265,16 +195,12 @@ class JobLifecycle:
         job = self._db.get(Job, job_id)
         if job is None:
             return False
-        job.status = JobStatus.COMPLETED if failed == 0 else JobStatus.FAILED
+        job.status = derive_completion_status(failed=failed)
         job.progress = 100.0
         job.completed_at = datetime.now(UTC)
-        job.result = json.dumps(
-            {
-                "processed": processed,
-                "failed": failed,
-                "duplicates": duplicates,
-            }
-        )
+        job.result = IngestJobResultPayload(
+            processed=processed, failed=failed, duplicates=duplicates
+        ).model_dump_json()
         self._db.flush()
         return True
 
@@ -304,15 +230,14 @@ class JobLifecycle:
         job.status = JobStatus.COMPLETED
         job.progress = 100.0
         job.completed_at = datetime.now(UTC)
-        job.result = json.dumps(
-            {
-                "version": version,
-                "num_vectors": num_vectors,
-                "dimension": dimension,
-                "removed_versions": removed_versions,
-                "text_num_vectors": text_num_vectors,
-            }
-        )
+        job.result = RebuildJobResultPayload(
+            version=version,
+            num_vectors=num_vectors,
+            dimension=dimension,
+            removed_versions=removed_versions,
+            text_num_vectors=text_num_vectors,
+        ).model_dump_json()
+
         self._db.flush()
 
     def record_stage(self, ingest_url_id: int, stage: IngestStage) -> bool:
@@ -367,14 +292,17 @@ class JobLifecycle:
             created_at=job.created_at,
             started_at=job.started_at,
             completed_at=job.completed_at,
-            result=self._parse_result(job.result),
+            result=self._parse_result(job.type, job.result),
         )
 
-    def _parse_result(self, result: str | None) -> dict[str, Any] | None:
+    def _parse_result(self, job_type: JobType, result: str | None) -> JobResultPayload | None:
         if result is None:
             return None
+
         try:
-            parsed = json.loads(result)
-        except json.JSONDecodeError:
-            return {"raw": result}
-        return parsed if isinstance(parsed, dict) else {"raw": parsed}
+            if job_type == JobType.REBUILD_INDEX:
+                return RebuildJobResultPayload.model_validate_json(result)
+
+            return IngestJobResultPayload.model_validate_json(result)
+        except ValidationError:
+            return RawJobResultPayload(raw=result)
