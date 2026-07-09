@@ -13,15 +13,17 @@ without Docker.
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import BinaryIO
+from typing import BinaryIO, TypeVar
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, create_engine, event, text
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import Connection, Engine, create_engine, event, text
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -30,6 +32,8 @@ os.environ.setdefault("APP_ENV", "development")
 os.environ.setdefault("PRELOAD_TEXT_ENCODER_ON_STARTUP", "false")
 
 from shared.models.orm import Base  # noqa: E402
+
+T = TypeVar("T")
 
 
 def _build_test_engine() -> Engine:
@@ -56,6 +60,15 @@ def _build_test_engine() -> Engine:
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+
+
+def _async_test_url(engine: Engine) -> str:
+    sync_url = engine.url.render_as_string(hide_password=False)
+    if sync_url.startswith("postgresql://"):
+        return "postgresql+asyncpg://" + sync_url[len("postgresql://") :]
+    if sync_url.startswith("postgres://"):
+        return "postgresql+asyncpg://" + sync_url[len("postgres://") :]
+    return sync_url
 
 
 # ---------------------------------------------------------------------------
@@ -106,6 +119,69 @@ def db_session(db_engine: Engine) -> Iterator[Session]:
     session.close()
     transaction.rollback()
     connection.close()
+
+
+@pytest.fixture()
+async def async_db_engine(db_engine: Engine) -> AsyncIterator[AsyncEngine]:
+    if db_engine.dialect.name != "postgresql":
+        pytest.skip("async DB fixtures require PostgreSQL")
+
+    engine = create_async_engine(_async_test_url(db_engine), echo=False, future=True)
+
+    yield engine
+
+    await engine.dispose()
+
+
+@pytest.fixture()
+async def async_db_connection(
+    async_db_engine: AsyncEngine,
+) -> AsyncIterator[AsyncConnection]:
+    connection = await async_db_engine.connect()
+    transaction = await connection.begin()
+
+    yield connection
+
+    await transaction.rollback()
+    await connection.close()
+
+
+@pytest.fixture()
+async def async_db_session(
+    async_db_connection: AsyncConnection,
+) -> AsyncIterator[AsyncSession]:
+    session = AsyncSession(
+        bind=async_db_connection,
+        expire_on_commit=False,
+        join_transaction_mode="create_savepoint",
+    )
+
+    yield session
+
+    await session.close()
+
+
+@pytest.fixture()
+def run_sync_seed(
+    async_db_connection: AsyncConnection,
+) -> Callable[[Callable[[Session], T]], Awaitable[T]]:
+    async def _run(seed: Callable[[Session], T]) -> T:
+        def _inside(sync_connection: Connection) -> T:
+            session = Session(
+                bind=sync_connection,
+                expire_on_commit=False,
+                join_transaction_mode="rollback_only",
+            )
+            try:
+                result = seed(session)
+                session.flush()
+                return result
+            finally:
+                session.close()
+
+        return await async_db_connection.run_sync(_inside)
+
+    return _run
 
 
 @pytest.fixture()
@@ -292,3 +368,45 @@ def client(
 
     with TestClient(app, raise_server_exceptions=False) as tc:
         yield tc
+
+
+@pytest.fixture()
+async def async_client(
+    db_session: Session,
+    _patch_domain_session_scope: None,
+    api_storage: FakeApiStorage,
+    mock_temporal: AsyncMock,
+    mock_index_manager: MagicMock,
+) -> AsyncIterator[AsyncClient]:
+    from contextlib import asynccontextmanager
+
+    from api.deps import get_db, get_index_manager, get_storage, get_temporal_client
+    from api.main import create_app
+
+    @asynccontextmanager
+    async def _noop_lifespan(app: object):
+        yield
+
+    app = create_app()
+    app.router.lifespan_context = _noop_lifespan
+
+    def _override_db() -> Iterator[Session]:
+        yield db_session
+
+    async def _override_temporal() -> AsyncMock:
+        return mock_temporal
+
+    def _override_storage() -> FakeApiStorage:
+        return api_storage
+
+    def _override_index_manager() -> MagicMock:
+        return mock_index_manager
+
+    app.dependency_overrides[get_db] = _override_db
+    app.dependency_overrides[get_temporal_client] = _override_temporal
+    app.dependency_overrides[get_storage] = _override_storage
+    app.dependency_overrides[get_index_manager] = _override_index_manager
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac

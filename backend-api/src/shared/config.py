@@ -3,8 +3,9 @@ from __future__ import annotations
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal, cast
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from pydantic import Field, PostgresDsn, RedisDsn, field_validator
+from pydantic import Field, PostgresDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -16,7 +17,14 @@ class Settings(BaseSettings):
     log_level: str = Field(default="INFO")
 
     db_url: PostgresDsn = cast(PostgresDsn, "postgresql://postgres:postgres@localhost:5432/mimeme")
-    redis_url: RedisDsn = cast(RedisDsn, "redis://localhost:6379/0")
+
+    db_pool_size_async: int = Field(default=10)
+    db_max_overflow_async: int = Field(default=20)
+    db_gate_limit: int = Field(default=64)
+    db_gate_timeout_s: float = Field(default=5.0)
+    db_statement_cache_size: int = Field(default=100)
+
+    # redis_url: RedisDsn = cast(RedisDsn, "redis://localhost:6379/0")
 
     api_key_admin: str | None = None
     api_key_readonly: str | None = None
@@ -69,6 +77,32 @@ class Settings(BaseSettings):
         if db_url.startswith("postgres://"):
             return "postgresql://" + db_url[len("postgres://") :]
         return db_url
+
+    @property
+    def async_db_url_str(self) -> str:
+        parts = urlsplit(self.db_url_str)
+
+        query_items = [
+            (key, value)
+            for key, value in parse_qsl(parts.query, keep_blank_values=True)
+            if key not in {"sslmode", "channel_binding"}
+        ]
+
+        return urlunsplit(
+            (
+                "postgresql+asyncpg",
+                parts.netloc,
+                parts.path,
+                urlencode(query_items),
+                parts.fragment,
+            )
+        )
+
+    @property
+    def db_ssl_required(self) -> bool:
+        parts = urlsplit(self.db_url_str)
+        params = dict(parse_qsl(parts.query, keep_blank_values=True))
+        return params.get("sslmode") in {"require", "verify-ca", "verify-full"}
 
 
 @lru_cache(maxsize=1)
