@@ -11,7 +11,7 @@ from temporalio.contrib.pydantic import pydantic_data_converter
 from activities.indexing import FaissIndexManager
 from shared.config import settings
 from shared.db import get_db
-from shared.services.api_storage import ApiStorage, BotoApiStorage
+from shared.services.api_storage import ApiStorage, ApiStorageProbe, BotoApiStorage
 from shared.services.storage import get_storage_service
 
 DbSession = Annotated[Session, Depends(get_db)]
@@ -22,6 +22,10 @@ def get_storage() -> ApiStorage:
 
 
 StorageDep = Annotated[ApiStorage, Depends(get_storage)]
+
+
+def get_storage_probe() -> ApiStorageProbe:
+    return BotoApiStorage(get_storage_service())
 
 
 @lru_cache(maxsize=1)

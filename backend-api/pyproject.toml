@@ -132,6 +132,7 @@ executionEnvironments = [
 ]
 typeCheckingMode = "basic"
 strict = [
+    "src/shared/services/api_storage.py",
     "src/domain/job_rules.py",
     "src/domain/job_store.py",
     "src/domain/image_catalog.py",

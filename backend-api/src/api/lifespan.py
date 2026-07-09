@@ -11,7 +11,7 @@ import structlog
 from fastapi import FastAPI
 from sqlalchemy import select
 
-from api.deps import get_index_manager
+from api.deps import get_index_manager, get_storage_probe
 from api.services.text_encoder import SearchTextEncoder
 from domain.search_index import (
     SearchEncoderIncompatibleError,
@@ -21,7 +21,6 @@ from shared.config import settings
 from shared.db import get_db
 from shared.logging import setup_logging
 from shared.models import IndexBuild
-from shared.services.storage import get_storage_service
 
 
 def _startup_env_snapshot() -> dict[str, object]:
@@ -83,7 +82,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     settings.index_cache_dir.mkdir(parents=True, exist_ok=True)
 
-    storage = get_storage_service()
+    storage = get_storage_probe()
     try:
         storage.ensure_bucket_exists()
         log.info("s3_bucket_ready", bucket=storage.bucket)

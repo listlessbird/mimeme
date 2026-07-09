@@ -6,11 +6,10 @@ import structlog
 from fastapi import APIRouter, Response, status
 from sqlalchemy import text
 
-from api.deps import get_temporal_client
+from api.deps import get_storage_probe, get_temporal_client
 from api.models.errors import error_responses
 from api.models.health import HealthResponse
 from shared.db import get_engine
-from shared.services.storage import get_storage_service
 
 router = APIRouter(tags=["Health"], responses=error_responses(429, 500))
 log = structlog.get_logger()
@@ -29,9 +28,7 @@ def _check_postgres() -> bool:
 
 def _check_s3() -> bool:
     try:
-        storage = get_storage_service()
-        storage.client.head_bucket(Bucket=storage.bucket)
-        return True
+        return get_storage_probe().bucket_exists()
     except Exception as e:
         log.warning("healthcheck_s3_failed", error=str(e))
         return False

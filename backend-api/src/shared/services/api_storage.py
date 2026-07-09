@@ -8,11 +8,22 @@ class ApiStorage(Protocol):
     def exists(self, key: str) -> bool: ...
 
 
+class ApiStorageProbe(Protocol):
+    @property
+    def bucket(self) -> str: ...
+    def ensure_bucket_exists(self) -> None: ...
+    def bucket_exists(self) -> bool: ...
+
+
 class ApiStorageAdapter(Protocol):
+    @property
+    def bucket(self) -> str: ...
     def generate_presigned_url(self, key: str, expiration: int = 3600) -> str: ...
     def upload_bytes(self, data: bytes | BinaryIO, key: str, content_type: str) -> str: ...
     def delete(self, key: str) -> None: ...
     def exists(self, key: str) -> bool: ...
+    def ensure_bucket_exists(self) -> None: ...
+    def bucket_exists(self) -> bool: ...
 
 
 class BotoApiStorage:
@@ -22,6 +33,10 @@ class BotoApiStorage:
     def presign(self, key: str, expiration: int = 3600) -> str:
         return self._storage.generate_presigned_url(key, expiration=expiration)
 
+    @property
+    def bucket(self) -> str:
+        return self._storage.bucket
+
     def upload_bytes(self, data: bytes | BinaryIO, key: str, content_type: str) -> str:
         return self._storage.upload_bytes(data, key, content_type)
 
@@ -30,3 +45,9 @@ class BotoApiStorage:
 
     def exists(self, key: str) -> bool:
         return self._storage.exists(key)
+
+    def ensure_bucket_exists(self) -> None:
+        self._storage.ensure_bucket_exists()
+
+    def bucket_exists(self) -> bool:
+        return self._storage.bucket_exists()
