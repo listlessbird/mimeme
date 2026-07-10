@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "visible_text",
+    "visual_description",
+    "sequence_description",
+    "suggested_visual_queries",
+    "suggested_caption_queries",
+    "suggested_natural_queries",
+    "uncertainty",
+    "supporting_frame_numbers"
+  ],
+  "properties": {
+    "visible_text": {
+      "type": "array",
+      "items": { "type": "string" },
+      "maxItems": 12
+    },
+    "visual_description": { "type": "string" },
+    "sequence_description": { "type": "string" },
+    "suggested_visual_queries": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "maxItems": 3
+    },
+    "suggested_caption_queries": {
+      "type": "array",
+      "items": { "type": "string" },
+      "maxItems": 3
+    },
+    "suggested_natural_queries": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "maxItems": 3
+    },
+    "uncertainty": { "type": "string" },
+    "supporting_frame_numbers": {
+      "type": "array",
+      "items": { "type": "integer", "minimum": 1, "maximum": 8 },
+      "minItems": 1,
+      "maxItems": 8
+    }
+  }
+}
