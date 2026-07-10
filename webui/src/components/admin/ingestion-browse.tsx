@@ -62,6 +62,7 @@ export function IngestionBrowse() {
 	const { data, isPending, isFetching } = useQuery({
 		...ingestionQueryOptions(params, { poll: live }),
 		placeholderData: keepPreviousData,
+		throwOnError: true,
 	});
 
 	const { data: sources } = useQuery(sourcesQueryOptions());

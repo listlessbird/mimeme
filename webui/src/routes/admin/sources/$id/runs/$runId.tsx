@@ -1,8 +1,10 @@
+import { AdminSectionError } from "@/components/admin/admin-section-error";
 import { RunItemsGallery } from "@/components/admin/run-items-gallery";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { ChevronLeft } from "lucide-react";
 
 export const Route = createFileRoute("/admin/sources/$id/runs/$runId")({
+	errorComponent: AdminSectionError,
 	component: RunDetailPage,
 });
 

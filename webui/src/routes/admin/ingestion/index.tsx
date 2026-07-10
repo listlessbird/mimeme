@@ -1,7 +1,9 @@
+import { AdminSectionError } from "@/components/admin/admin-section-error";
 import { IngestionBrowse } from "@/components/admin/ingestion-browse";
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/admin/ingestion/")({
+	errorComponent: AdminSectionError,
 	component: IngestionPage,
 });
 

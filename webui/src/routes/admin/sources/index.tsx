@@ -1,3 +1,4 @@
+import { AdminSectionError } from "@/components/admin/admin-section-error";
 import { SourceFormSheet } from "@/components/admin/source-form-sheet";
 import { SourcesTable } from "@/components/admin/sources-table";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ import { useState } from "react";
 export const Route = createFileRoute("/admin/sources/")({
 	loader: ({ context }) => context.queryClient.ensureQueryData(sourcesQueryOptions()),
 	pendingComponent: SourcesPending,
+	errorComponent: AdminSectionError,
 	component: SourcesPage,
 });
 
