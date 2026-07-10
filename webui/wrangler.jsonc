@@ -2,10 +2,24 @@
 	"$schema": "node_modules/wrangler/config-schema.json",
 	"name": "memes",
 	"compatibility_date": "2025-09-02",
-	"compatibility_flags": [
-		"nodejs_compat"
-	],
+	"compatibility_flags": ["nodejs_compat"],
 	"main": "@tanstack/react-start/server-entry",
+	"vars": {
+		"GIF_ANNOTATION_PUBLIC_BASE_URL": "https://pub-8e70169e442a48869877cd51c44abc2f.r2.dev",
+	},
+	"r2_buckets": [
+		{
+			"binding": "GIF_ANNOTATION_BUCKET",
+			"bucket_name": "mimeme-gif-annotation",
+		},
+	],
+	"d1_databases": [
+		{
+			"binding": "GIF_ANNOTATION_DB",
+			"database_name": "mimeme-gif-annotation",
+			"database_id": "05f2860e-1b70-4310-9981-442ca2da4b64",
+		},
+	],
 	"placement": {
 		"mode": "smart",
 	},
@@ -16,12 +30,12 @@
 			"enabled": true,
 			"head_sampling_rate": 1,
 			"persist": true,
-			"invocation_logs": true
+			"invocation_logs": true,
 		},
 		"traces": {
 			"enabled": true,
 			"persist": true,
-			"head_sampling_rate": 1
-		}
-	}
+			"head_sampling_rate": 1,
+		},
+	},
 }
