@@ -11,7 +11,6 @@ import {
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
 	emptyAnnotation,
 	gifAnnotationsQueryOptions,
@@ -26,7 +25,6 @@ import { buildEvalExport } from "@/lib/admin/gif-annotation-export";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	AlertTriangle,
-	Check,
 	ChevronLeft,
 	ChevronRight,
 	Download,
@@ -36,7 +34,6 @@ import {
 	Save,
 	SkipForward,
 	Sparkles,
-	X,
 } from "lucide-react";
 import { parseAsString, useQueryState } from "nuqs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -117,6 +114,35 @@ function parseLines(value: string): string[] {
 		.filter(Boolean);
 }
 
+function parseQueries(value: string): string[] {
+	return value
+		.split(/[\n,]/)
+		.map((query) => query.trim())
+		.filter(Boolean);
+}
+
+function isEmptyValue(value: string | string[]): boolean {
+	return Array.isArray(value) ? value.length === 0 : value.trim().length === 0;
+}
+
+function valuesMatch(left: string | string[], right: string | string[]): boolean {
+	return textValue(left).trim() === textValue(right).trim();
+}
+
+function withSuggestionDefaults(
+	item: GifAnnotationItem,
+	annotation: GifAnnotationDocument,
+): GifAnnotationDocument {
+	if (!item.suggestion) return annotation;
+	const next = structuredClone(annotation);
+	for (const { field } of FIELD_CONFIG) {
+		if (next.decisions[field] !== "pending" || !isEmptyValue(next[field])) continue;
+		next[field] = suggestionValue(item, field) as never;
+		next.decisions[field] = "accepted";
+	}
+	return next;
+}
+
 function fallbackKey(sha256: string): string {
 	return `mimeme:gif-annotation:${sha256}`;
 }
@@ -147,6 +173,7 @@ export function GifAnnotationWorkspace() {
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const changeVersion = useRef(0);
 	const saving = useRef<Promise<boolean> | null>(null);
+	const loadedSha = useRef<string | null>(null);
 
 	const activeIndex = useMemo(() => {
 		if (!data?.items.length) return -1;
@@ -158,10 +185,11 @@ export function GifAnnotationWorkspace() {
 	const item = activeIndex >= 0 ? data?.items[activeIndex] : undefined;
 
 	useEffect(() => {
-		if (!item) return;
+		if (!item || loadedSha.current === item.sha256) return;
+		loadedSha.current = item.sha256;
 		if (activeSha !== item.sha256) void setActiveSha(item.sha256, { history: "replace" });
 		const fallback = loadFallback(item);
-		setDraft(fallback?.annotation ?? item.annotation);
+		setDraft(withSuggestionDefaults(item, fallback?.annotation ?? item.annotation));
 		setStatus(fallback?.status ?? item.status);
 		setRevision(item.revision);
 		setSaveState(fallback ? "dirty" : "idle");
@@ -179,54 +207,60 @@ export function GifAnnotationWorkspace() {
 		[],
 	);
 
-	const persist = useCallback(async (): Promise<boolean> => {
-		if (!item || !["dirty", "error"].includes(saveState)) return saveState !== "error";
-		if (saving.current) return saving.current;
-		const savedVersion = changeVersion.current;
-		setSaveState("saving");
-		const promise = saveGifAnnotation({
-			data: { sha256: item.sha256, annotation: draft, status, revision },
-		})
-			.then((result) => {
-				setRevision(result.revision);
-				queryClient.setQueryData<GifAnnotationListResponse>(
-					gifAnnotationsQueryOptions().queryKey,
-					(current) => {
-						if (!current) return current;
-						const items = current.items.map((candidate) =>
-							candidate.sha256 === item.sha256
-								? {
-										...candidate,
-										annotation: draft,
-										status,
-										revision: result.revision,
-										updatedAt: result.updatedAt,
-									}
-								: candidate,
-						);
-						return {
-							...current,
-							items,
-							completed: items.filter((candidate) => candidate.status === "complete").length,
-							skipped: items.filter((candidate) => candidate.status === "skipped").length,
-						};
-					},
-				);
-				window.localStorage.removeItem(fallbackKey(item.sha256));
-				setSaveState(changeVersion.current === savedVersion ? "saved" : "dirty");
-				return true;
+	const persist = useCallback(
+		async (force = false, statusOverride?: GifAnnotationStatus): Promise<boolean> => {
+			if (!item || (!force && !["dirty", "error"].includes(saveState))) {
+				return saveState !== "error";
+			}
+			if (saving.current) return saving.current;
+			const savedVersion = changeVersion.current;
+			const savedStatus = statusOverride ?? status;
+			setSaveState("saving");
+			const promise = saveGifAnnotation({
+				data: { sha256: item.sha256, annotation: draft, status: savedStatus, revision },
 			})
-			.catch((cause: unknown) => {
-				setSaveState("error");
-				setSaveError(cause instanceof Error ? cause.message : "annotation save failed");
-				return false;
-			})
-			.finally(() => {
-				saving.current = null;
-			});
-		saving.current = promise;
-		return promise;
-	}, [draft, item, queryClient, revision, saveState, status]);
+				.then((result) => {
+					setRevision(result.revision);
+					queryClient.setQueryData<GifAnnotationListResponse>(
+						gifAnnotationsQueryOptions().queryKey,
+						(current) => {
+							if (!current) return current;
+							const items = current.items.map((candidate) =>
+								candidate.sha256 === item.sha256
+									? {
+											...candidate,
+											annotation: draft,
+											status: savedStatus,
+											revision: result.revision,
+											updatedAt: result.updatedAt,
+										}
+									: candidate,
+							);
+							return {
+								...current,
+								items,
+								completed: items.filter((candidate) => candidate.status === "complete").length,
+								skipped: items.filter((candidate) => candidate.status === "skipped").length,
+							};
+						},
+					);
+					window.localStorage.removeItem(fallbackKey(item.sha256));
+					setSaveState(changeVersion.current === savedVersion ? "saved" : "dirty");
+					return true;
+				})
+				.catch((cause: unknown) => {
+					setSaveState("error");
+					setSaveError(cause instanceof Error ? cause.message : "annotation save failed");
+					return false;
+				})
+				.finally(() => {
+					saving.current = null;
+				});
+			saving.current = promise;
+			return promise;
+		},
+		[draft, item, queryClient, revision, saveState, status],
+	);
 
 	useEffect(() => {
 		if (!item || saveState !== "dirty") return;
@@ -234,19 +268,17 @@ export function GifAnnotationWorkspace() {
 			fallbackKey(item.sha256),
 			JSON.stringify({ annotation: draft, status }),
 		);
-		const timeout = window.setTimeout(() => void persist(), 900);
-		return () => window.clearTimeout(timeout);
-	}, [draft, item, persist, saveState, status]);
+	}, [draft, item, saveState, status]);
 
 	const navigateTo = useCallback(
-		async (nextIndex: number) => {
-			if (!data?.items[nextIndex] || !(await persist())) return;
+		(nextIndex: number) => {
+			if (!data?.items[nextIndex]) return;
 			void setActiveSha(data.items[nextIndex].sha256);
 		},
-		[data, persist, setActiveSha],
+		[data, setActiveSha],
 	);
 
-	const setNextPending = useCallback(async () => {
+	const setNextPending = useCallback(() => {
 		if (!data || activeIndex < 0) return;
 		const after = data.items
 			.slice(activeIndex + 1)
@@ -255,17 +287,26 @@ export function GifAnnotationWorkspace() {
 			.slice(0, activeIndex)
 			.find((candidate) => candidate.status === "draft");
 		const next = after ?? before;
-		if (!next || !(await persist())) return;
+		if (!next) return;
 		void setActiveSha(next.sha256);
-	}, [activeIndex, data, persist, setActiveSha]);
+	}, [activeIndex, data, setActiveSha]);
 
-	const exportAnnotations = useCallback(async () => {
-		if (!(await persist())) return;
+	const exportAnnotations = useCallback(() => {
 		const current = queryClient.getQueryData<GifAnnotationListResponse>(
 			gifAnnotationsQueryOptions().queryKey,
 		);
 		if (current) downloadExport(current.items);
-	}, [persist, queryClient]);
+	}, [queryClient]);
+
+	const submitAnnotation = useCallback(
+		async (nextStatus: "complete" | "skipped") => {
+			setStatus(nextStatus);
+			changeVersion.current += 1;
+			setSaveState("dirty");
+			await persist(true, nextStatus);
+		},
+		[persist],
+	);
 
 	if (query.isPending) return <WorkspaceSkeleton />;
 	if (query.error || !data) {
@@ -284,36 +325,24 @@ export function GifAnnotationWorkspace() {
 	const progress = data.total ? (data.completed / data.total) * 100 : 0;
 	const setField = (field: GifAnnotationField, value: string) => {
 		const kind = FIELD_CONFIG.find((config) => config.field === field)?.kind;
+		const parsed =
+			kind === "list" ? (field === "visibleText" ? parseLines(value) : parseQueries(value)) : value;
+		const suggested = suggestionValue(item, field);
 		updateDraft((current) => ({
 			...current,
-			[field]: kind === "list" ? parseLines(value) : value,
-			decisions: { ...current.decisions, [field]: "edited" },
+			[field]: parsed,
+			decisions: {
+				...current.decisions,
+				[field]: isEmptyValue(parsed)
+					? "rejected"
+					: valuesMatch(parsed, suggested)
+						? "accepted"
+						: "edited",
+			},
 		}));
 	};
-	const acceptField = (field: GifAnnotationField) => {
-		updateDraft((current) => ({
-			...current,
-			[field]: suggestionValue(item, field),
-			decisions: { ...current.decisions, [field]: "accepted" },
-		}));
-	};
-	const rejectField = (field: GifAnnotationField) => {
-		const kind = FIELD_CONFIG.find((config) => config.field === field)?.kind;
-		updateDraft((current) => ({
-			...current,
-			[field]: kind === "list" ? [] : "",
-			decisions: { ...current.decisions, [field]: "rejected" },
-		}));
-	};
-	const changeStatus = (value: string) => {
-		if (value !== "draft" && value !== "complete" && value !== "skipped") return;
-		setStatus(value);
-		changeVersion.current += 1;
-		setSaveState("dirty");
-	};
-
 	return (
-		<div className="flex flex-col gap-5">
+		<div className="flex min-w-0 flex-col gap-5 pb-[env(safe-area-inset-bottom)]">
 			<header className="flex flex-col gap-3 border-b pb-4">
 				<div className="flex flex-wrap items-start justify-between gap-4">
 					<div className="flex flex-col gap-1">
@@ -326,12 +355,17 @@ export function GifAnnotationWorkspace() {
 							<span>{data.total} total</span>
 						</div>
 					</div>
-					<div className="flex flex-wrap items-center gap-2">
-						<Button variant="outline" size="sm" onClick={() => void exportAnnotations()}>
+					<div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+						<Button
+							className="w-full sm:w-auto"
+							variant="outline"
+							size="sm"
+							onClick={exportAnnotations}
+						>
 							<Download data-icon="inline-start" />
 							export
 						</Button>
-						<Button size="sm" onClick={() => void setNextPending()}>
+						<Button className="w-full sm:w-auto" size="sm" onClick={setNextPending}>
 							<SkipForward data-icon="inline-start" />
 							next pending
 						</Button>
@@ -343,7 +377,7 @@ export function GifAnnotationWorkspace() {
 			<div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(320px,0.9fr)_minmax(460px,1.1fr)]">
 				<section className="flex min-w-0 flex-col gap-4 xl:sticky xl:top-4 xl:self-start">
 					<div className="flex items-center justify-between gap-3">
-						<div className="flex items-center gap-2">
+						<div className="flex flex-wrap items-center gap-2">
 							<Badge variant="outline">
 								{activeIndex + 1} / {data.total}
 							</Badge>
@@ -355,7 +389,7 @@ export function GifAnnotationWorkspace() {
 								variant="outline"
 								size="icon-sm"
 								disabled={activeIndex <= 0}
-								onClick={() => void navigateTo(activeIndex - 1)}
+								onClick={() => navigateTo(activeIndex - 1)}
 								aria-label="Previous GIF"
 							>
 								<ChevronLeft />
@@ -364,14 +398,14 @@ export function GifAnnotationWorkspace() {
 								variant="outline"
 								size="icon-sm"
 								disabled={activeIndex >= data.total - 1}
-								onClick={() => void navigateTo(activeIndex + 1)}
+								onClick={() => navigateTo(activeIndex + 1)}
 								aria-label="Next GIF"
 							>
 								<ChevronRight />
 							</Button>
 						</div>
 					</div>
-					<div className="flex min-h-[320px] items-center justify-center overflow-hidden rounded-md border bg-black sm:min-h-[460px]">
+					<div className="flex min-h-[240px] items-center justify-center overflow-hidden rounded-md border bg-black sm:min-h-[460px]">
 						<img
 							key={item.sha256}
 							src={item.gifUrl}
@@ -391,20 +425,9 @@ export function GifAnnotationWorkspace() {
 					<div className="font-mono text-[11px] break-all text-muted-foreground">{item.sha256}</div>
 				</section>
 
-				<section className="min-w-0 rounded-md border bg-card p-4 sm:p-5">
-					<div className="flex flex-wrap items-center justify-between gap-3 border-b pb-4">
-						<ToggleGroup
-							type="single"
-							variant="outline"
-							size="sm"
-							value={status}
-							onValueChange={changeStatus}
-							aria-label="Annotation status"
-						>
-							<ToggleGroupItem value="draft">draft</ToggleGroupItem>
-							<ToggleGroupItem value="complete">complete</ToggleGroupItem>
-							<ToggleGroupItem value="skipped">skipped</ToggleGroupItem>
-						</ToggleGroup>
+				<section className="-mx-4 min-w-0 border-y bg-card p-4 sm:mx-0 sm:rounded-md sm:border sm:p-5">
+					<div className="flex flex-wrap items-center justify-end gap-3 border-b pb-4">
+						<Badge variant="secondary">{status}</Badge>
 						<SaveIndicator state={saveState} error={saveError} onRetry={() => void persist()} />
 					</div>
 
@@ -441,13 +464,10 @@ export function GifAnnotationWorkspace() {
 						{FIELD_CONFIG.map((config) => (
 							<SuggestionField
 								key={config.field}
-								item={item}
 								config={config}
 								value={textValue(draft[config.field])}
 								decision={draft.decisions[config.field]}
 								onChange={(value) => setField(config.field, value)}
-								onAccept={() => acceptField(config.field)}
-								onReject={() => rejectField(config.field)}
 							/>
 						))}
 						<Field>
@@ -464,6 +484,27 @@ export function GifAnnotationWorkspace() {
 							</FieldContent>
 						</Field>
 					</FieldGroup>
+					<div className="mt-6 grid grid-cols-2 gap-2 border-t pt-4 sm:flex sm:justify-end">
+						<Button
+							className="w-full sm:w-auto"
+							type="button"
+							variant="outline"
+							onClick={() => void submitAnnotation("skipped")}
+							disabled={saveState === "saving"}
+						>
+							<SkipForward data-icon="inline-start" />
+							skip GIF
+						</Button>
+						<Button
+							className="w-full sm:w-auto"
+							type="button"
+							onClick={() => void submitAnnotation("complete")}
+							disabled={saveState === "saving"}
+						>
+							<Save data-icon="inline-start" />
+							submit annotation
+						</Button>
+					</div>
 				</section>
 			</div>
 		</div>
@@ -471,23 +512,16 @@ export function GifAnnotationWorkspace() {
 }
 
 function SuggestionField({
-	item,
 	config,
 	value,
 	decision,
 	onChange,
-	onAccept,
-	onReject,
 }: {
-	item: GifAnnotationItem;
 	config: (typeof FIELD_CONFIG)[number];
 	value: string;
 	decision: GifAnnotationDocument["decisions"][GifAnnotationField];
 	onChange: (value: string) => void;
-	onAccept: () => void;
-	onReject: () => void;
 }) {
-	const suggested = textValue(suggestionValue(item, config.field));
 	return (
 		<Field>
 			<div className="flex flex-wrap items-start justify-between gap-3">
@@ -495,40 +529,21 @@ function SuggestionField({
 					<FieldLabel htmlFor={`annotation-${config.field}`}>{config.label}</FieldLabel>
 					<FieldDescription>{config.description}</FieldDescription>
 				</div>
-				<div className="flex items-center gap-1">
-					<Badge variant="outline">{decision}</Badge>
-					<Button
-						type="button"
-						variant="outline"
-						size="icon-xs"
-						onClick={onAccept}
-						disabled={!suggested}
-						aria-label={`Accept suggested ${config.label}`}
-					>
-						<Check />
-					</Button>
-					<Button
-						type="button"
-						variant="outline"
-						size="icon-xs"
-						onClick={onReject}
-						aria-label={`Reject suggested ${config.label}`}
-					>
-						<X />
-					</Button>
-				</div>
+				<Badge variant="outline">{decision}</Badge>
 			</div>
-			{suggested ? (
-				<div className="rounded-md bg-muted/50 px-3 py-2 text-sm leading-relaxed whitespace-pre-wrap text-muted-foreground">
-					{suggested}
-				</div>
-			) : null}
 			<FieldContent>
 				<Textarea
 					id={`annotation-${config.field}`}
 					value={value}
 					onChange={(event) => onChange(event.target.value)}
 					rows={config.kind === "list" ? 3 : 4}
+					placeholder={
+						config.kind === "list"
+							? config.field === "visibleText"
+								? "One transcription per line"
+								: "One query per line, or separate queries with commas"
+							: undefined
+					}
 				/>
 			</FieldContent>
 		</Field>
