@@ -2,26 +2,47 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
+	Card,
+	CardAction,
+	CardContent,
+	CardDescription,
+	CardFooter,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
+import {
 	Field,
 	FieldContent,
 	FieldDescription,
+	FieldError,
 	FieldGroup,
 	FieldLabel,
 } from "@/components/ui/field";
+import {
+	InputGroup,
+	InputGroupAddon,
+	InputGroupButton,
+	InputGroupInput,
+} from "@/components/ui/input-group";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Spinner } from "@/components/ui/spinner";
 import { Textarea } from "@/components/ui/textarea";
 import {
 	emptyAnnotation,
+	gifAnnotationSchema,
+	gifAnnotationStatusSchema,
 	gifAnnotationsQueryOptions,
 	type GifAnnotationDocument,
 	type GifAnnotationField,
+	type GifAnnotationFormInput,
 	type GifAnnotationItem,
 	type GifAnnotationListResponse,
 	type GifAnnotationStatus,
 	saveGifAnnotation,
 } from "@/lib/admin/gif-annotation";
 import { buildEvalExport } from "@/lib/admin/gif-annotation-export";
+import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
 	AlertTriangle,
@@ -30,59 +51,78 @@ import {
 	Download,
 	ExternalLink,
 	FileCheck2,
+	Plus,
 	RotateCcw,
 	Save,
 	SkipForward,
 	Sparkles,
+	Trash2,
 } from "lucide-react";
 import { parseAsString, useQueryState } from "nuqs";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Controller, useForm, useWatch, type Control } from "react-hook-form";
+import { z } from "zod";
 
 type SaveState = "idle" | "dirty" | "saving" | "saved" | "error";
+type ListField = "visibleText" | "visualQueries" | "captionQueries" | "naturalQueries";
+type TextField = "visualDescription" | "sequenceDescription";
 
-const FIELD_CONFIG: Array<{
-	field: GifAnnotationField;
+const LIST_FIELDS: Array<{
+	field: ListField;
 	label: string;
 	description: string;
-	kind: "text" | "list";
+	placeholder: string;
 }> = [
 	{
 		field: "visibleText",
 		label: "visible text",
-		description: "one transcription per line",
-		kind: "list",
-	},
-	{
-		field: "visualDescription",
-		label: "visual description",
-		description: "people, objects, expressions, and action",
-		kind: "text",
-	},
-	{
-		field: "sequenceDescription",
-		label: "sequence",
-		description: "what changes through the loop",
-		kind: "text",
+		description: "Transcribe each distinct piece of on-screen text.",
+		placeholder: "Add visible text",
 	},
 	{
 		field: "visualQueries",
 		label: "visual queries",
-		description: "queries based only on visible content",
-		kind: "list",
+		description: "Queries someone could make from the visible content alone.",
+		placeholder: "Add a visual query",
 	},
 	{
 		field: "captionQueries",
 		label: "caption queries",
-		description: "exact or near-exact overlaid text",
-		kind: "list",
+		description: "Exact or near-exact searches for the overlaid text.",
+		placeholder: "Add a caption query",
 	},
 	{
 		field: "naturalQueries",
 		label: "natural queries",
-		description: "phrases you would genuinely search",
-		kind: "list",
+		description: "Phrases a person would genuinely type to find this GIF.",
+		placeholder: "Add a natural query",
 	},
 ];
+
+const TEXT_FIELDS: Array<{
+	field: TextField;
+	label: string;
+	description: string;
+	placeholder: string;
+}> = [
+	{
+		field: "visualDescription",
+		label: "visual description",
+		description: "Describe the people, objects, expressions, setting, and action.",
+		placeholder: "What is visibly happening?",
+	},
+	{
+		field: "sequenceDescription",
+		label: "sequence",
+		description: "Describe what changes from the start of the loop to the end.",
+		placeholder: "How does the GIF progress?",
+	},
+];
+
+const fallbackSchema = z.object({
+	annotation: gifAnnotationSchema,
+	status: gifAnnotationStatusSchema,
+});
 
 function suggestionValue(item: GifAnnotationItem, field: GifAnnotationField): string | string[] {
 	const suggestion = item.suggestion;
@@ -103,46 +143,16 @@ function suggestionValue(item: GifAnnotationItem, field: GifAnnotationField): st
 	}
 }
 
-function textValue(value: string | string[]): string {
-	return Array.isArray(value) ? value.join("\n") : value;
-}
-
-function fieldTextValues(annotation: GifAnnotationDocument): Record<GifAnnotationField, string> {
-	return Object.fromEntries(
-		FIELD_CONFIG.map(({ field }) => [field, textValue(annotation[field])]),
-	) as Record<GifAnnotationField, string>;
-}
-
-function parseLines(value: string): string[] {
-	return value
-		.split("\n")
-		.map((line) => line.trim())
-		.filter(Boolean);
-}
-
-function parseQueries(value: string): string[] {
-	return value
-		.split(/[\n,]/)
-		.map((query) => query.trim())
-		.filter(Boolean);
-}
-
-function isEmptyValue(value: string | string[]): boolean {
-	return Array.isArray(value) ? value.length === 0 : value.trim().length === 0;
-}
-
-function valuesMatch(left: string | string[], right: string | string[]): boolean {
-	return textValue(left).trim() === textValue(right).trim();
-}
-
 function withSuggestionDefaults(
 	item: GifAnnotationItem,
 	annotation: GifAnnotationDocument,
 ): GifAnnotationDocument {
 	if (!item.suggestion) return annotation;
 	const next = structuredClone(annotation);
-	for (const { field } of FIELD_CONFIG) {
-		if (next.decisions[field] !== "pending" || !isEmptyValue(next[field])) continue;
+	for (const field of [...LIST_FIELDS, ...TEXT_FIELDS].map((config) => config.field)) {
+		const value = next[field];
+		const empty = Array.isArray(value) ? value.length === 0 : value.length === 0;
+		if (next.decisions[field] !== "pending" || !empty) continue;
 		next[field] = suggestionValue(item, field) as never;
 		next.decisions[field] = "accepted";
 	}
@@ -153,29 +163,11 @@ function fallbackKey(sha256: string): string {
 	return `mimeme:gif-annotation:${sha256}`;
 }
 
-function loadFallback(item: GifAnnotationItem) {
-	if (typeof window === "undefined") return null;
-	const stored = window.localStorage.getItem(fallbackKey(item.sha256));
-	if (!stored) return null;
-	try {
-		return JSON.parse(stored) as {
-			annotation: GifAnnotationDocument;
-			status: GifAnnotationStatus;
-		};
-	} catch {
-		return null;
-	}
-}
-
 export function GifAnnotationWorkspace() {
 	const queryClient = useQueryClient();
 	const query = useQuery(gifAnnotationsQueryOptions());
 	const data = query.data;
 	const [activeSha, setActiveSha] = useQueryState("gif", parseAsString);
-	const [draft, setDraft] = useState<GifAnnotationDocument>(emptyAnnotation);
-	const [fieldText, setFieldText] = useState<Record<GifAnnotationField, string>>(() =>
-		fieldTextValues(emptyAnnotation()),
-	);
 	const [status, setStatus] = useState<GifAnnotationStatus>("draft");
 	const [revision, setRevision] = useState(0);
 	const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -183,6 +175,12 @@ export function GifAnnotationWorkspace() {
 	const changeVersion = useRef(0);
 	const saving = useRef<Promise<boolean> | null>(null);
 	const loadedSha = useRef<string | null>(null);
+	const form = useForm<GifAnnotationFormInput, unknown, GifAnnotationDocument>({
+		resolver: zodResolver(gifAnnotationSchema),
+		defaultValues: emptyAnnotation(),
+		mode: "onBlur",
+	});
+	const watchedValues = useWatch({ control: form.control });
 
 	const activeIndex = useMemo(() => {
 		if (!data?.items.length) return -1;
@@ -197,29 +195,64 @@ export function GifAnnotationWorkspace() {
 		if (!item || loadedSha.current === item.sha256) return;
 		loadedSha.current = item.sha256;
 		if (activeSha !== item.sha256) void setActiveSha(item.sha256, { history: "replace" });
-		const fallback = loadFallback(item);
-		const nextDraft = withSuggestionDefaults(item, fallback?.annotation ?? item.annotation);
-		setDraft(nextDraft);
-		setFieldText(fieldTextValues(nextDraft));
-		setStatus(fallback?.status ?? item.status);
+
+		const stored = window.localStorage.getItem(fallbackKey(item.sha256));
+		let restored: z.infer<typeof fallbackSchema> | null = null;
+		if (stored) {
+			try {
+				const fallback = fallbackSchema.safeParse(JSON.parse(stored));
+				restored = fallback.success ? fallback.data : null;
+			} catch {
+				window.localStorage.removeItem(fallbackKey(item.sha256));
+			}
+		}
+		form.reset(withSuggestionDefaults(item, restored?.annotation ?? item.annotation));
+		setStatus(restored?.status ?? item.status);
 		setRevision(item.revision);
-		setSaveState(fallback ? "dirty" : "idle");
+		setSaveState(restored ? "dirty" : "idle");
 		setSaveError(null);
 		changeVersion.current += 1;
-	}, [activeSha, item, setActiveSha]);
+	}, [activeSha, form, item, setActiveSha]);
 
-	const updateDraft = useCallback(
-		(next: GifAnnotationDocument | ((current: GifAnnotationDocument) => GifAnnotationDocument)) => {
-			setDraft((current) => (typeof next === "function" ? next(current) : next));
-			changeVersion.current += 1;
-			setSaveState("dirty");
-			setSaveError(null);
+	useEffect(() => {
+		if (!item || !form.formState.isDirty) return;
+		const annotation = gifAnnotationSchema.safeParse(watchedValues);
+		if (!annotation.success) return;
+		window.localStorage.setItem(
+			fallbackKey(item.sha256),
+			JSON.stringify({ annotation: annotation.data, status }),
+		);
+	}, [form.formState.isDirty, item, status, watchedValues]);
+
+	const markDirty = useCallback(() => {
+		changeVersion.current += 1;
+		setSaveState("dirty");
+		setSaveError(null);
+	}, []);
+
+	const updateDecision = useCallback(
+		(field: GifAnnotationField, value: string | string[]) => {
+			if (!item) return;
+			const suggested = suggestionValue(item, field);
+			const empty = Array.isArray(value) ? value.every((entry) => !entry.trim()) : !value.trim();
+			const matches =
+				Array.isArray(value) && Array.isArray(suggested)
+					? JSON.stringify(value) === JSON.stringify(suggested)
+					: value === suggested;
+			form.setValue(`decisions.${field}`, empty ? "rejected" : matches ? "accepted" : "edited", {
+				shouldDirty: true,
+			});
+			markDirty();
 		},
-		[],
+		[form, item, markDirty],
 	);
 
 	const persist = useCallback(
-		async (force = false, statusOverride?: GifAnnotationStatus): Promise<boolean> => {
+		async (
+			annotation: GifAnnotationDocument,
+			force = false,
+			statusOverride?: GifAnnotationStatus,
+		): Promise<boolean> => {
 			if (!item || (!force && !["dirty", "error"].includes(saveState))) {
 				return saveState !== "error";
 			}
@@ -228,7 +261,7 @@ export function GifAnnotationWorkspace() {
 			const savedStatus = statusOverride ?? status;
 			setSaveState("saving");
 			const promise = saveGifAnnotation({
-				data: { sha256: item.sha256, annotation: draft, status: savedStatus, revision },
+				data: { sha256: item.sha256, annotation, status: savedStatus, revision },
 			})
 				.then((result) => {
 					setRevision(result.revision);
@@ -240,7 +273,7 @@ export function GifAnnotationWorkspace() {
 								candidate.sha256 === item.sha256
 									? {
 											...candidate,
-											annotation: draft,
+											annotation,
 											status: savedStatus,
 											revision: result.revision,
 											updatedAt: result.updatedAt,
@@ -256,6 +289,7 @@ export function GifAnnotationWorkspace() {
 						},
 					);
 					window.localStorage.removeItem(fallbackKey(item.sha256));
+					form.reset(annotation);
 					setSaveState(changeVersion.current === savedVersion ? "saved" : "dirty");
 					return true;
 				})
@@ -270,16 +304,8 @@ export function GifAnnotationWorkspace() {
 			saving.current = promise;
 			return promise;
 		},
-		[draft, item, queryClient, revision, saveState, status],
+		[form, item, queryClient, revision, saveState, status],
 	);
-
-	useEffect(() => {
-		if (!item || saveState !== "dirty") return;
-		window.localStorage.setItem(
-			fallbackKey(item.sha256),
-			JSON.stringify({ annotation: draft, status }),
-		);
-	}, [draft, item, saveState, status]);
 
 	const navigateTo = useCallback(
 		(nextIndex: number) => {
@@ -298,27 +324,24 @@ export function GifAnnotationWorkspace() {
 			.slice(0, activeIndex)
 			.find((candidate) => candidate.status === "draft");
 		const next = after ?? before;
-		if (!next) return;
-		void setActiveSha(next.sha256);
+		if (next) void setActiveSha(next.sha256);
 	}, [activeIndex, data, setActiveSha]);
 
-	const exportAnnotations = useCallback(() => {
-		const current = queryClient.getQueryData<GifAnnotationListResponse>(
-			gifAnnotationsQueryOptions().queryKey,
-		);
-		if (current) downloadExport(current.items);
-	}, [queryClient]);
-
 	const submitAnnotation = useCallback(
-		async (nextStatus: "complete" | "skipped") => {
+		async (annotation: GifAnnotationDocument, nextStatus: "complete" | "skipped") => {
 			setStatus(nextStatus);
 			changeVersion.current += 1;
 			setSaveState("dirty");
-			const saved = await persist(true, nextStatus);
+			const saved = await persist(annotation, true, nextStatus);
 			if (saved && nextStatus === "complete") navigateTo(activeIndex + 1);
 		},
 		[activeIndex, navigateTo, persist],
 	);
+
+	const retrySave = useCallback(() => {
+		const annotation = gifAnnotationSchema.safeParse(form.getValues());
+		if (annotation.success) void persist(annotation.data);
+	}, [form, persist]);
 
 	if (query.isPending) return <WorkspaceSkeleton />;
 	if (query.error || !data) {
@@ -335,69 +358,35 @@ export function GifAnnotationWorkspace() {
 	if (!item) return null;
 
 	const progress = data.total ? (data.completed / data.total) * 100 : 0;
-	const setField = (field: GifAnnotationField, value: string) => {
-		setFieldText((current) => ({ ...current, [field]: value }));
-		const kind = FIELD_CONFIG.find((config) => config.field === field)?.kind;
-		const parsed =
-			kind === "list" ? (field === "visibleText" ? parseLines(value) : parseQueries(value)) : value;
-		const suggested = suggestionValue(item, field);
-		updateDraft((current) => ({
-			...current,
-			[field]: parsed,
-			decisions: {
-				...current.decisions,
-				[field]: isEmptyValue(parsed)
-					? "rejected"
-					: valuesMatch(parsed, suggested)
-						? "accepted"
-						: "edited",
-			},
-		}));
-	};
 	return (
-		<div className="flex min-w-0 flex-col gap-5 pb-[env(safe-area-inset-bottom)]">
-			<header className="flex flex-col gap-3 border-b pb-4">
-				<div className="flex flex-wrap items-start justify-between gap-4">
-					<div className="flex flex-col gap-1">
+		<div className="flex min-w-0 flex-col gap-4 pb-[env(safe-area-inset-bottom)] sm:gap-6">
+			<header className="flex flex-col gap-3">
+				<div className="flex items-start justify-between gap-3">
+					<div className="flex min-w-0 flex-col gap-1">
 						<h1 className="text-lg font-semibold">gif annotation</h1>
-						<div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-							<span>{data.completed} complete</span>
-							<span aria-hidden="true">/</span>
-							<span>{data.skipped} skipped</span>
-							<span aria-hidden="true">/</span>
-							<span>{data.total} total</span>
-						</div>
+						<p className="text-sm text-muted-foreground">
+							{data.completed} complete · {data.skipped} skipped · {data.total} total
+						</p>
 					</div>
-					<div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
-						<Button
-							className="w-full sm:w-auto"
-							variant="outline"
-							size="sm"
-							onClick={exportAnnotations}
-						>
-							<Download data-icon="inline-start" />
-							export
-						</Button>
-						<Button className="w-full sm:w-auto" size="sm" onClick={setNextPending}>
-							<SkipForward data-icon="inline-start" />
-							next pending
-						</Button>
-					</div>
+					<Button variant="outline" size="icon-sm" onClick={() => downloadExport(data.items)}>
+						<Download />
+						<span className="sr-only">export annotations</span>
+					</Button>
 				</div>
 				<Progress value={progress} aria-label={`${Math.round(progress)} percent complete`} />
 			</header>
 
-			<div className="grid min-w-0 gap-6 xl:grid-cols-[minmax(320px,0.9fr)_minmax(460px,1.1fr)]">
-				<section className="flex min-w-0 flex-col gap-4 xl:sticky xl:top-4 xl:self-start">
-					<div className="flex items-center justify-between gap-3">
-						<div className="flex flex-wrap items-center gap-2">
+			<div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(280px,0.8fr)_minmax(420px,1.2fr)] lg:gap-6">
+				<Card className="gap-4 py-4 lg:sticky lg:top-4 lg:self-start">
+					<CardHeader className="grid-cols-[1fr_auto] px-4 sm:px-6">
+						<div className="flex min-w-0 flex-wrap items-center gap-2">
 							<Badge variant="outline">
 								{activeIndex + 1} / {data.total}
 							</Badge>
 							<Badge variant="secondary">{item.nFrames} frames</Badge>
 							<Badge variant="secondary">{(item.durationMs / 1000).toFixed(1)}s</Badge>
 						</div>
-						<div className="flex items-center gap-1">
+						<CardAction className="flex gap-1">
 							<Button
 								variant="outline"
 								size="icon-sm"
@@ -416,150 +405,296 @@ export function GifAnnotationWorkspace() {
 							>
 								<ChevronRight />
 							</Button>
-						</div>
-					</div>
-					<div className="flex min-h-[240px] items-center justify-center overflow-hidden rounded-md border bg-black sm:min-h-[460px]">
-						<img
-							key={item.sha256}
-							src={item.gifUrl}
-							alt={`GIF ${activeIndex + 1} for annotation`}
-							className="max-h-[68vh] w-full object-contain"
-						/>
-					</div>
-					<a
-						href={item.contactSheetUrl}
-						target="_blank"
-						rel="noreferrer"
-						className="inline-flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-					>
-						<ExternalLink className="size-3.5" />
-						open sampled frames
-					</a>
-					<div className="font-mono text-[11px] break-all text-muted-foreground">{item.sha256}</div>
-				</section>
-
-				<section className="-mx-4 min-w-0 border-y bg-card p-4 sm:mx-0 sm:rounded-md sm:border sm:p-5">
-					<div className="flex flex-wrap items-center justify-end gap-3 border-b pb-4">
-						<Badge variant="secondary">{status}</Badge>
-						<SaveIndicator state={saveState} error={saveError} onRetry={() => void persist()} />
-					</div>
-
-					{item.suggestion ? (
-						<div className="mt-4 flex flex-col gap-2 text-xs text-muted-foreground">
-							<div className="flex flex-wrap items-center gap-2">
-								<Sparkles className="size-3.5" />
-								<span>{item.suggestionModel}</span>
-								{item.suggestion.supporting_frame_numbers.map((frame) => (
-									<Badge key={frame} variant="outline">
-										frame {frame}
-									</Badge>
-								))}
-							</div>
-							{item.suggestion.uncertainty ? (
-								<Alert>
-									<AlertTriangle />
-									<AlertTitle>model uncertainty</AlertTitle>
-									<AlertDescription>{item.suggestion.uncertainty}</AlertDescription>
-								</Alert>
-							) : null}
-						</div>
-					) : (
-						<Alert className="mt-4">
-							<AlertTriangle />
-							<AlertTitle>suggestion pending</AlertTitle>
-							<AlertDescription>
-								human annotation can continue while this item is generated.
-							</AlertDescription>
-						</Alert>
-					)}
-
-					<FieldGroup className="mt-6">
-						{FIELD_CONFIG.map((config) => (
-							<SuggestionField
-								key={config.field}
-								config={config}
-								value={fieldText[config.field]}
-								decision={draft.decisions[config.field]}
-								onChange={(value) => setField(config.field, value)}
+						</CardAction>
+					</CardHeader>
+					<CardContent className="px-0 sm:px-6">
+						<div className="flex min-h-56 items-center justify-center overflow-hidden bg-black sm:rounded-md sm:border lg:min-h-96">
+							<img
+								key={item.sha256}
+								src={item.gifUrl}
+								alt={`GIF ${activeIndex + 1} for annotation`}
+								className="max-h-[56svh] w-full object-contain lg:max-h-[68vh]"
 							/>
-						))}
-						<Field>
-							<FieldLabel htmlFor="annotation-notes">notes</FieldLabel>
-							<FieldContent>
-								<Textarea
-									id="annotation-notes"
-									value={draft.notes}
-									onChange={(event) =>
-										updateDraft((current) => ({ ...current, notes: event.target.value }))
-									}
-									rows={3}
-								/>
-							</FieldContent>
-						</Field>
-					</FieldGroup>
-					<div className="mt-6 grid grid-cols-2 gap-2 border-t pt-4 sm:flex sm:justify-end">
+						</div>
+					</CardContent>
+					<CardFooter className="flex-col items-stretch gap-2 px-4 sm:px-6">
+						{/* oxlint-disable-next-line jsx-a11y/control-has-associated-label -- The rendered anchor below provides the control label. */}
 						<Button
-							className="w-full sm:w-auto"
-							type="button"
 							variant="outline"
-							onClick={() => void submitAnnotation("skipped")}
-							disabled={saveState === "saving"}
-						>
-							<SkipForward data-icon="inline-start" />
-							skip GIF
-						</Button>
-						<Button
-							className="w-full sm:w-auto"
-							type="button"
-							onClick={() => void submitAnnotation("complete")}
-							disabled={saveState === "saving"}
-						>
-							<Save data-icon="inline-start" />
-							submit annotation
-						</Button>
-					</div>
-				</section>
+							size="sm"
+							render={
+								<a
+									href={item.contactSheetUrl}
+									target="_blank"
+									rel="noreferrer"
+									aria-label="Open sampled frames"
+								>
+									<ExternalLink data-icon="inline-start" />
+									open sampled frames
+								</a>
+							}
+							nativeButton={false}
+						/>
+						<p className="truncate font-mono text-[11px] text-muted-foreground" title={item.sha256}>
+							{item.sha256}
+						</p>
+					</CardFooter>
+				</Card>
+
+				<form
+					className="min-w-0"
+					onSubmit={form.handleSubmit((annotation) => submitAnnotation(annotation, "complete"))}
+				>
+					<Card className="gap-0 py-0">
+						<CardHeader className="border-b px-4 py-4 sm:px-6">
+							<CardTitle>annotation</CardTitle>
+							<CardDescription>
+								Review the suggestion and describe how people would find this GIF.
+							</CardDescription>
+							<CardAction className="flex flex-col items-end gap-1">
+								<Badge variant="secondary">{status}</Badge>
+								<SaveIndicator state={saveState} error={saveError} onRetry={retrySave} />
+							</CardAction>
+						</CardHeader>
+
+						<CardContent className="flex flex-col gap-6 px-4 py-5 sm:px-6">
+							<SuggestionSummary item={item} />
+
+							<FieldGroup>
+								{LIST_FIELDS.map((config) => (
+									<AnnotationListField
+										key={config.field}
+										control={form.control}
+										config={config}
+										decision={watchedValues.decisions?.[config.field] ?? "pending"}
+										onChange={(value) => updateDecision(config.field, value)}
+									/>
+								))}
+
+								{TEXT_FIELDS.map((config) => (
+									<AnnotationTextField
+										key={config.field}
+										control={form.control}
+										config={config}
+										decision={watchedValues.decisions?.[config.field] ?? "pending"}
+										onChange={(value) => updateDecision(config.field, value)}
+									/>
+								))}
+
+								<Controller
+									control={form.control}
+									name="notes"
+									render={({ field, fieldState }) => (
+										<Field data-invalid={fieldState.invalid}>
+											<FieldLabel htmlFor="annotation-notes">notes</FieldLabel>
+											<FieldDescription>
+												Optional context for reviewers or future cleanup.
+											</FieldDescription>
+											<Textarea
+												{...field}
+												id="annotation-notes"
+												rows={3}
+												maxLength={2_000}
+												aria-invalid={fieldState.invalid}
+												onChange={(event) => {
+													field.onChange(event);
+													markDirty();
+												}}
+											/>
+											<FieldError errors={[fieldState.error]} />
+										</Field>
+									)}
+								/>
+							</FieldGroup>
+						</CardContent>
+
+						<CardFooter className="sticky bottom-0 grid grid-cols-2 gap-2 border-t bg-card/95 px-4 py-4 backdrop-blur sm:flex sm:justify-end sm:px-6">
+							<Button
+								className="w-full sm:w-auto"
+								type="button"
+								variant="outline"
+								onClick={() =>
+									void form.handleSubmit((annotation) => submitAnnotation(annotation, "skipped"))()
+								}
+								disabled={saveState === "saving"}
+							>
+								<SkipForward data-icon="inline-start" />
+								skip
+							</Button>
+							<Button className="w-full sm:w-auto" type="submit" disabled={saveState === "saving"}>
+								{saveState === "saving" ? (
+									<Spinner data-icon="inline-start" />
+								) : (
+									<Save data-icon="inline-start" />
+								)}
+								{saveState === "saving" ? "saving" : "submit"}
+							</Button>
+						</CardFooter>
+					</Card>
+				</form>
 			</div>
+
+			<Button className="w-full sm:ml-auto sm:w-auto" variant="outline" onClick={setNextPending}>
+				<SkipForward data-icon="inline-start" />
+				next pending
+			</Button>
 		</div>
 	);
 }
 
-function SuggestionField({
+function AnnotationListField({
+	control,
 	config,
-	value,
 	decision,
 	onChange,
 }: {
-	config: (typeof FIELD_CONFIG)[number];
-	value: string;
+	control: Control<GifAnnotationFormInput, unknown, GifAnnotationDocument>;
+	config: (typeof LIST_FIELDS)[number];
+	decision: GifAnnotationDocument["decisions"][GifAnnotationField];
+	onChange: (value: string[]) => void;
+}) {
+	return (
+		<Controller
+			control={control}
+			name={config.field}
+			render={({ field, fieldState }) => {
+				const values = field.value;
+				return (
+					<Field data-invalid={fieldState.invalid}>
+						<div className="flex items-start justify-between gap-3">
+							<FieldContent>
+								<FieldLabel>{config.label}</FieldLabel>
+								<FieldDescription>{config.description}</FieldDescription>
+							</FieldContent>
+							<Badge variant="outline">{decision}</Badge>
+						</div>
+						<div className="flex flex-col gap-2">
+							{values.map((value, index) => (
+								<InputGroup key={`${config.field}-${index}`}>
+									<InputGroupInput
+										value={value}
+										maxLength={2_000}
+										aria-label={`${config.label} ${index + 1}`}
+										aria-invalid={fieldState.invalid}
+										placeholder={config.placeholder}
+										onChange={(event) => {
+											const next = values.with(index, event.target.value);
+											field.onChange(next);
+											onChange(next);
+										}}
+									/>
+									<InputGroupAddon align="inline-end">
+										<InputGroupButton
+											size="icon-xs"
+											onClick={() => {
+												const next = values.filter((_, itemIndex) => itemIndex !== index);
+												field.onChange(next);
+												onChange(next);
+											}}
+											aria-label={`Remove ${config.label} ${index + 1}`}
+										>
+											<Trash2 />
+										</InputGroupButton>
+									</InputGroupAddon>
+								</InputGroup>
+							))}
+							<Button
+								type="button"
+								variant="outline"
+								size="sm"
+								disabled={values.length >= 12}
+								onClick={() => {
+									const next = [...values, ""];
+									field.onChange(next);
+									onChange(next);
+								}}
+							>
+								<Plus data-icon="inline-start" />
+								add {config.field === "visibleText" ? "text" : "query"}
+							</Button>
+						</div>
+						<FieldError errors={[fieldState.error]} />
+					</Field>
+				);
+			}}
+		/>
+	);
+}
+
+function AnnotationTextField({
+	control,
+	config,
+	decision,
+	onChange,
+}: {
+	control: Control<GifAnnotationFormInput, unknown, GifAnnotationDocument>;
+	config: (typeof TEXT_FIELDS)[number];
 	decision: GifAnnotationDocument["decisions"][GifAnnotationField];
 	onChange: (value: string) => void;
 }) {
 	return (
-		<Field>
-			<div className="flex flex-wrap items-start justify-between gap-3">
-				<div className="flex flex-col gap-1">
-					<FieldLabel htmlFor={`annotation-${config.field}`}>{config.label}</FieldLabel>
-					<FieldDescription>{config.description}</FieldDescription>
-				</div>
-				<Badge variant="outline">{decision}</Badge>
+		<Controller
+			control={control}
+			name={config.field}
+			render={({ field, fieldState }) => (
+				<Field data-invalid={fieldState.invalid}>
+					<div className="flex items-start justify-between gap-3">
+						<FieldContent>
+							<FieldLabel htmlFor={`annotation-${config.field}`}>{config.label}</FieldLabel>
+							<FieldDescription>{config.description}</FieldDescription>
+						</FieldContent>
+						<Badge variant="outline">{decision}</Badge>
+					</div>
+					<Textarea
+						{...field}
+						id={`annotation-${config.field}`}
+						rows={4}
+						maxLength={2_000}
+						placeholder={config.placeholder}
+						aria-invalid={fieldState.invalid}
+						onChange={(event) => {
+							field.onChange(event);
+							onChange(event.target.value);
+						}}
+					/>
+					<FieldError errors={[fieldState.error]} />
+				</Field>
+			)}
+		/>
+	);
+}
+
+function SuggestionSummary({ item }: { item: GifAnnotationItem }) {
+	if (!item.suggestion) {
+		return (
+			<Alert>
+				<AlertTriangle />
+				<AlertTitle>suggestion pending</AlertTitle>
+				<AlertDescription>
+					Human annotation can continue while this item is generated.
+				</AlertDescription>
+			</Alert>
+		);
+	}
+	return (
+		<div className="flex flex-col gap-3">
+			<div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+				<Sparkles />
+				<span>{item.suggestionModel}</span>
+				{item.suggestion.supporting_frame_numbers.map((frame) => (
+					<Badge key={frame} variant="outline">
+						frame {frame}
+					</Badge>
+				))}
 			</div>
-			<FieldContent>
-				<Textarea
-					id={`annotation-${config.field}`}
-					value={value}
-					onChange={(event) => onChange(event.target.value)}
-					rows={config.kind === "list" ? 3 : 4}
-					placeholder={
-						config.kind === "list"
-							? config.field === "visibleText"
-								? "One transcription per line"
-								: "One query per line, or separate queries with commas"
-							: undefined
-					}
-				/>
-			</FieldContent>
-		</Field>
+			{item.suggestion.uncertainty ? (
+				<Alert>
+					<AlertTriangle />
+					<AlertTitle>model uncertainty</AlertTitle>
+					<AlertDescription>{item.suggestion.uncertainty}</AlertDescription>
+				</Alert>
+			) : null}
+		</div>
 	);
 }
 
@@ -574,15 +709,15 @@ function SaveIndicator({
 }) {
 	if (state === "error") {
 		return (
-			<Button variant="destructive" size="sm" onClick={onRetry} title={error ?? undefined}>
+			<Button variant="destructive" size="xs" onClick={onRetry} title={error ?? undefined}>
 				<RotateCcw data-icon="inline-start" />
-				retry save
+				retry
 			</Button>
 		);
 	}
 	return (
-		<div className="flex items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
-			{state === "saved" ? <FileCheck2 className="size-3.5" /> : <Save className="size-3.5" />}
+		<div className="flex items-center gap-1 text-xs text-muted-foreground" aria-live="polite">
+			{state === "saving" ? <Spinner /> : state === "saved" ? <FileCheck2 /> : <Save />}
 			<span>{state === "idle" ? "unchanged" : state}</span>
 		</div>
 	);
@@ -602,8 +737,8 @@ function WorkspaceSkeleton() {
 	return (
 		<div className="flex flex-col gap-5">
 			<Skeleton className="h-16 w-full" />
-			<div className="grid gap-6 xl:grid-cols-2">
-				<Skeleton className="min-h-[520px] w-full" />
+			<div className="grid gap-6 lg:grid-cols-2">
+				<Skeleton className="min-h-96 w-full" />
 				<Skeleton className="min-h-[720px] w-full" />
 			</div>
 		</div>

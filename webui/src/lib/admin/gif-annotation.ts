@@ -2,6 +2,7 @@ import { checkAdminAccess } from "@/lib/admin/guard";
 import { queryOptions } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 import { env } from "cloudflare:workers";
+import { z } from "zod";
 
 export const GIF_ANNOTATION_FIELDS = [
 	"visibleText",
@@ -13,8 +14,11 @@ export const GIF_ANNOTATION_FIELDS = [
 ] as const;
 
 export type GifAnnotationField = (typeof GIF_ANNOTATION_FIELDS)[number];
-export type SuggestionDecision = "pending" | "accepted" | "edited" | "rejected";
-export type GifAnnotationStatus = "draft" | "complete" | "skipped";
+export const suggestionDecisionSchema = z.enum(["pending", "accepted", "edited", "rejected"]);
+export const gifAnnotationStatusSchema = z.enum(["draft", "complete", "skipped"]);
+
+export type SuggestionDecision = z.infer<typeof suggestionDecisionSchema>;
+export type GifAnnotationStatus = z.infer<typeof gifAnnotationStatusSchema>;
 
 export interface GifSuggestion {
 	visible_text: string[];
@@ -27,16 +31,32 @@ export interface GifSuggestion {
 	supporting_frame_numbers: number[];
 }
 
-export interface GifAnnotationDocument {
-	visibleText: string[];
-	visualDescription: string;
-	sequenceDescription: string;
-	visualQueries: string[];
-	captionQueries: string[];
-	naturalQueries: string[];
-	notes: string;
-	decisions: Record<GifAnnotationField, SuggestionDecision>;
-}
+const annotationTextSchema = z.string().trim().max(2_000, "Keep this under 2,000 characters");
+const annotationListSchema = z
+	.array(annotationTextSchema)
+	.max(12, "Use at most 12 entries")
+	.transform((values) => values.filter(Boolean));
+
+export const gifAnnotationSchema = z.object({
+	visibleText: annotationListSchema,
+	visualDescription: annotationTextSchema,
+	sequenceDescription: annotationTextSchema,
+	visualQueries: annotationListSchema,
+	captionQueries: annotationListSchema,
+	naturalQueries: annotationListSchema,
+	notes: annotationTextSchema,
+	decisions: z.object({
+		visibleText: suggestionDecisionSchema,
+		visualDescription: suggestionDecisionSchema,
+		sequenceDescription: suggestionDecisionSchema,
+		visualQueries: suggestionDecisionSchema,
+		captionQueries: suggestionDecisionSchema,
+		naturalQueries: suggestionDecisionSchema,
+	}),
+});
+
+export type GifAnnotationDocument = z.output<typeof gifAnnotationSchema>;
+export type GifAnnotationFormInput = z.input<typeof gifAnnotationSchema>;
 
 export interface GifAnnotationItem {
 	sha256: string;
@@ -104,9 +124,6 @@ interface SavedRow {
 
 const DATASET_KEY = "gif-annotation/v1/dataset.json";
 const SUGGESTIONS_KEY = "gif-annotation/v1/suggestions.json";
-const MAX_TEXT_LENGTH = 2_000;
-const MAX_LIST_ITEMS = 12;
-
 function emptyDecisions(): Record<GifAnnotationField, SuggestionDecision> {
 	return Object.fromEntries(GIF_ANNOTATION_FIELDS.map((field) => [field, "pending"])) as Record<
 		GifAnnotationField,
@@ -125,44 +142,6 @@ export function emptyAnnotation(): GifAnnotationDocument {
 		notes: "",
 		decisions: emptyDecisions(),
 	};
-}
-
-function cleanString(value: unknown): string {
-	return typeof value === "string" ? value.trim().slice(0, MAX_TEXT_LENGTH) : "";
-}
-
-function cleanList(value: unknown): string[] {
-	if (!Array.isArray(value)) return [];
-	return value.map(cleanString).filter(Boolean).slice(0, MAX_LIST_ITEMS);
-}
-
-function parseAnnotation(value: unknown): GifAnnotationDocument {
-	const raw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
-	const decisionsRaw =
-		raw.decisions && typeof raw.decisions === "object"
-			? (raw.decisions as Record<string, unknown>)
-			: {};
-	const decisions = emptyDecisions();
-	for (const field of GIF_ANNOTATION_FIELDS) {
-		const decision = decisionsRaw[field];
-		if (["pending", "accepted", "edited", "rejected"].includes(String(decision))) {
-			decisions[field] = decision as SuggestionDecision;
-		}
-	}
-	return {
-		visibleText: cleanList(raw.visibleText),
-		visualDescription: cleanString(raw.visualDescription),
-		sequenceDescription: cleanString(raw.sequenceDescription),
-		visualQueries: cleanList(raw.visualQueries),
-		captionQueries: cleanList(raw.captionQueries),
-		naturalQueries: cleanList(raw.naturalQueries),
-		notes: cleanString(raw.notes),
-		decisions,
-	};
-}
-
-function parseStatus(value: unknown): GifAnnotationStatus {
-	return value === "complete" || value === "skipped" ? value : "draft";
 }
 
 async function readJsonObject<T>(key: string): Promise<T> {
@@ -200,7 +179,8 @@ export const listGifAnnotations = createServerFn({ method: "GET" }).handler(asyn
 		let annotation = emptyAnnotation();
 		if (row) {
 			try {
-				annotation = parseAnnotation(JSON.parse(row.annotation_json));
+				const savedAnnotation = gifAnnotationSchema.safeParse(JSON.parse(row.annotation_json));
+				annotation = savedAnnotation.success ? savedAnnotation.data : emptyAnnotation();
 			} catch {
 				annotation = emptyAnnotation();
 			}
@@ -232,26 +212,15 @@ export const listGifAnnotations = createServerFn({ method: "GET" }).handler(asyn
 	} satisfies GifAnnotationListResponse;
 });
 
-interface SaveGifAnnotationInput {
-	sha256: string;
-	revision: number;
-	status: GifAnnotationStatus;
-	annotation: GifAnnotationDocument;
-}
-
-function validateSaveInput(input: SaveGifAnnotationInput): SaveGifAnnotationInput {
-	if (!/^[a-f0-9]{64}$/.test(input.sha256)) throw new Error("Invalid GIF sha256");
-	if (!Number.isInteger(input.revision) || input.revision < 0) throw new Error("Invalid revision");
-	return {
-		sha256: input.sha256,
-		revision: input.revision,
-		status: parseStatus(input.status),
-		annotation: parseAnnotation(input.annotation),
-	};
-}
+const saveGifAnnotationSchema = z.object({
+	sha256: z.string().regex(/^[a-f0-9]{64}$/, "Invalid GIF sha256"),
+	revision: z.number().int().nonnegative(),
+	status: gifAnnotationStatusSchema,
+	annotation: gifAnnotationSchema,
+});
 
 export const saveGifAnnotation = createServerFn({ method: "POST" })
-	.inputValidator(validateSaveInput)
+	.inputValidator(saveGifAnnotationSchema)
 	.handler(async ({ data }) => {
 		await assertAdminAccess();
 		const { dataset } = await loadCatalog();
