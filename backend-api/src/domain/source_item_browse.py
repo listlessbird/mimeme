@@ -7,7 +7,7 @@ from typing import Any, TypeGuard
 
 from pydantic import BaseModel
 from sqlalchemy import and_, case, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from domain.source_registry import SourceNotFoundError
 from shared import db
@@ -117,7 +117,7 @@ class SourceItemBrowser:
     def __init__(self, storage: ApiStorage) -> None:
         self.storage = storage
 
-    def list_items(
+    async def list_items(
         self,
         source_id: int,
         *,
@@ -125,30 +125,33 @@ class SourceItemBrowser:
         offset: int,
         status: SourceItemIngestState | None = None,
     ) -> SourceItemsPage:
-        with db.read_session_scope() as session:
-            self._live_source_or_raise(session, source_id)
+        async with db.read_session() as session:
+            await self._live_source_or_raise(session, source_id)
 
             predicates = [SourceItem.source_id == source_id]
             if status is not None:
                 predicates.append(self._ingest_state_predicate(status))
 
-            total = session.scalar(
+            total = await session.scalar(
                 select(func.count(SourceItem.id))
                 .outerjoin(IngestURL, IngestURL.source_item_id == SourceItem.id)
                 .where(*predicates)
             )
 
-            rows = session.execute(
-                select(SourceItem, IngestURL, Image.s3_key)
-                .outerjoin(IngestURL, IngestURL.source_item_id == SourceItem.id)
-                .outerjoin(
-                    Image,
-                    Image.id == func.coalesce(IngestURL.duplicate_of_image_id, IngestURL.image_id),
+            rows = (
+                await session.execute(
+                    select(SourceItem, IngestURL, Image.s3_key)
+                    .outerjoin(IngestURL, IngestURL.source_item_id == SourceItem.id)
+                    .outerjoin(
+                        Image,
+                        Image.id
+                        == func.coalesce(IngestURL.duplicate_of_image_id, IngestURL.image_id),
+                    )
+                    .where(*predicates)
+                    .order_by(SourceItem.last_seen_at.desc(), SourceItem.id.desc())
+                    .limit(limit)
+                    .offset(offset)
                 )
-                .where(*predicates)
-                .order_by(SourceItem.last_seen_at.desc(), SourceItem.id.desc())
-                .limit(limit)
-                .offset(offset)
             ).all()
 
             def presign(key: str) -> str:
@@ -186,38 +189,46 @@ class SourceItemBrowser:
                 total=total or 0,
                 limit=limit,
                 offset=offset,
-                state_counts=self._state_counts(session, source_id),
+                state_counts=(await self._state_counts(session, source_id)),
             )
 
-    def list_run_items(
+    async def list_run_items(
         self, source_id: int, run_id: int, *, limit: int, offset: int
     ) -> RunItemsPage:
-        with db.read_session_scope() as session:
-            self._live_source_or_raise(session, source_id)
 
-            run = session.execute(
-                select(SourceRun.id).where(SourceRun.id == run_id, SourceRun.source_id == source_id)
+        async with db.read_session() as session:
+            await self._live_source_or_raise(session, source_id)
+
+            run = (
+                await session.execute(
+                    select(SourceRun.id).where(
+                        SourceRun.id == run_id, SourceRun.source_id == source_id
+                    )
+                )
             ).scalar_one_or_none()
+
             if run is None:
                 raise RunNotFoundError(run_id)
 
-            total = session.scalar(
+            total = await session.scalar(
                 select(func.count(IngestURL.id)).where(IngestURL.source_run_id == run_id)
             )
 
             rows = (
-                session.execute(
-                    select(IngestURL)
-                    .where(IngestURL.source_run_id == run_id)
-                    .order_by(IngestURL.id.asc())
-                    .limit(limit)
-                    .offset(offset)
+                (
+                    await session.execute(
+                        select(IngestURL)
+                        .where(IngestURL.source_run_id == run_id)
+                        .order_by(IngestURL.id.asc())
+                        .limit(limit)
+                        .offset(offset)
+                    )
                 )
                 .scalars()
                 .all()
             )
 
-            s3_key_by_image_id = self._s3_keys_for(
+            s3_key_by_image_id = await self._s3_keys_for(
                 session,
                 {
                     resolved
@@ -226,7 +237,7 @@ class SourceItemBrowser:
                 },
             )
 
-            item_by_id = self._source_items_for(
+            item_by_id = await self._source_items_for(
                 session, {url.source_item_id for url in rows if url.source_item_id is not None}
             )
 
@@ -266,30 +277,44 @@ class SourceItemBrowser:
 
             return RunItemsPage(items=items, total=total or 0, limit=limit, offset=offset)
 
-    def _live_source_or_raise(self, session: Session, source_id: int) -> None:
-        exists = session.execute(
-            select(IngestionSource.id).where(
-                IngestionSource.id == source_id, IngestionSource.deleted_at.is_(None)
+    async def _live_source_or_raise(self, session: AsyncSession, source_id: int) -> None:
+        exists = (
+            await session.execute(
+                select(IngestionSource.id).where(
+                    IngestionSource.id == source_id, IngestionSource.deleted_at.is_(None)
+                )
             )
         ).scalar_one_or_none()
+
         if exists is None:
             raise SourceNotFoundError(source_id)
 
-    def _s3_keys_for(self, session: Session, image_ids: set[int]) -> dict[int, str | None]:
+    async def _s3_keys_for(
+        self, session: AsyncSession, image_ids: set[int]
+    ) -> dict[int, str | None]:
         if not image_ids:
             return {}
-        rows = session.execute(select(Image.id, Image.s3_key).where(Image.id.in_(image_ids))).all()
+
+        rows = (
+            await session.execute(select(Image.id, Image.s3_key).where(Image.id.in_(image_ids)))
+        ).all()
+
         return {image_id: s3_key for image_id, s3_key in rows}
 
-    def _source_items_for(self, session: Session, item_ids: set[int]) -> dict[int, SourceItem]:
+    async def _source_items_for(
+        self, session: AsyncSession, item_ids: set[int]
+    ) -> dict[int, SourceItem]:
         if not item_ids:
             return {}
+
         rows = (
-            session.execute(select(SourceItem).where(SourceItem.id.in_(item_ids))).scalars().all()
+            (await session.execute(select(SourceItem).where(SourceItem.id.in_(item_ids))))
+            .scalars()
+            .all()
         )
         return {item.id: item for item in rows}
 
-    def _state_counts(self, session: Session, source_id: int) -> dict[str, int]:
+    async def _state_counts(self, session: AsyncSession, source_id: int) -> dict[str, int]:
         state = case(
             (
                 and_(
@@ -314,12 +339,16 @@ class SourceItemBrowser:
             ),
             else_=SourceItemIngestState.UNKNOWN.value,
         )
-        rows = session.execute(
-            select(state, func.count(SourceItem.id))
-            .outerjoin(IngestURL, IngestURL.source_item_id == SourceItem.id)
-            .where(SourceItem.source_id == source_id)
-            .group_by(state)
+
+        rows = (
+            await session.execute(
+                select(state, func.count(SourceItem.id))
+                .outerjoin(IngestURL, IngestURL.source_item_id == SourceItem.id)
+                .where(SourceItem.source_id == source_id)
+                .group_by(state)
+            )
         ).all()
+
         counts = {member.value: 0 for member in SourceItemIngestState}
         for label, count in rows:
             counts[label] = count

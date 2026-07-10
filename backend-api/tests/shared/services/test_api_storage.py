@@ -30,7 +30,7 @@ class RecordingStorage:
         return key in self.keys
 
 
-def test_boto_api_storage_delegates_the_api_storage_surface() -> None:
+async def test_boto_api_storage_delegates_the_api_storage_surface() -> None:
     storage = RecordingStorage()
     api_storage = BotoApiStorage(storage)
 
@@ -38,14 +38,14 @@ def test_boto_api_storage_delegates_the_api_storage_surface() -> None:
         "https://fake/images/source/example.jpg?expires=42"
     )
     assert (
-        api_storage.upload_bytes(b"image", "uploads/staging/example.jpg", "image/jpeg")
+        await api_storage.upload_bytes(b"image", "uploads/staging/example.jpg", "image/jpeg")
         == "etag:uploads/staging/example.jpg"
     )
-    assert api_storage.exists("uploads/staging/example.jpg") is True
+    assert await api_storage.exists("uploads/staging/example.jpg") is True
 
-    api_storage.delete("uploads/staging/example.jpg")
+    await api_storage.delete("uploads/staging/example.jpg")
 
-    assert api_storage.exists("uploads/staging/example.jpg") is False
+    assert await api_storage.exists("uploads/staging/example.jpg") is False
     assert storage.calls == [
         ("generate_presigned_url", "images/source/example.jpg", 42),
         ("upload_bytes", b"image", "uploads/staging/example.jpg", "image/jpeg"),

@@ -27,7 +27,7 @@ class RecordingStorage:
         return key in self.keys
 
 
-def test_get_storage_returns_api_storage_adapter(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_get_storage_returns_api_storage_adapter(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("api.deps.get_storage_service", RecordingStorage)
 
     storage = get_storage()
@@ -35,11 +35,11 @@ def test_get_storage_returns_api_storage_adapter(monkeypatch: pytest.MonkeyPatch
     assert storage.presign("images/source/example.jpg", expiration=42) == (
         "https://fake/images/source/example.jpg?expires=42"
     )
-    assert storage.upload_bytes(b"image", "uploads/staging/example.jpg", "image/jpeg") == (
+    assert await storage.upload_bytes(b"image", "uploads/staging/example.jpg", "image/jpeg") == (
         "etag:uploads/staging/example.jpg"
     )
-    assert storage.exists("uploads/staging/example.jpg") is True
+    assert await storage.exists("uploads/staging/example.jpg") is True
 
-    storage.delete("uploads/staging/example.jpg")
+    await storage.delete("uploads/staging/example.jpg")
 
-    assert storage.exists("uploads/staging/example.jpg") is False
+    assert await storage.exists("uploads/staging/example.jpg") is False

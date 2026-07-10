@@ -5,7 +5,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, false, func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import db
 from shared.config import settings
@@ -91,7 +91,7 @@ class ImageCatalog:
     def __init__(self, storage: ApiStorage) -> None:
         self._storage = storage
 
-    def list_images(
+    async def list_images(
         self,
         *,
         limit: int,
@@ -101,7 +101,7 @@ class ImageCatalog:
         sort: Literal["newest", "oldest"] = "newest",
     ) -> ImageCatalogPage:
 
-        with db.read_session_scope() as session:
+        async with db.read_session() as session:
             id_query = select(Image.id)
 
             if dataset:
@@ -112,18 +112,26 @@ class ImageCatalog:
                     self._status_filter(status)
                 )
 
-            total = (
-                session.execute(select(func.count()).select_from(id_query.subquery())).scalar() or 0
-            )
+            # total = (
+            #     await session.execute(
+            #         select(func.count()).select_from(id_query.subquery())
+            #     ).scalar()
+            #     or 0
+            # )
+
+            row = await session.execute(select(func.count()).select_from(id_query.subquery()))
+
+            total = row.scalar() or 0
 
             order_by = Image.id.desc() if sort == "newest" else Image.id.asc()
-            image_ids = (
-                session.execute(id_query.order_by(order_by).limit(limit).offset(offset))
-                .scalars()
-                .all()
+
+            image_id_rows = await session.execute(
+                id_query.order_by(order_by).limit(limit).offset(offset)
             )
 
-            images = self._load_images(session, list(image_ids))
+            image_ids = image_id_rows.scalars().all()
+
+            images = await self._load_images(session, list(image_ids))
             return ImageCatalogPage(
                 images=images,
                 total=total,
@@ -132,49 +140,62 @@ class ImageCatalog:
                 has_more=(offset + len(images)) < total,
             )
 
-    def get_image(self, image_id: int) -> ImageCatalogImage:
-        with db.read_session_scope() as session:
-            rows = self._load_images(session, [image_id])
+    async def get_image(self, image_id: int) -> ImageCatalogImage:
+        async with db.read_session() as session:
+            rows = await self._load_images(session, [image_id])
 
         if not rows:
             raise ImageCatalogNotFoundError(f"Image {image_id} not found")
         return rows[0]
 
-    def delete_image(self, image_id: int) -> None:
+    async def delete_image(self, image_id: int) -> None:
 
-        with db.session_scope() as session:
-            image = session.get(Image, image_id)
+        async with db.write_session() as session:
+            row = (
+                await session.execute(
+                    select(Image, Processing)
+                    .outerjoin(Processing, Processing.image_id == Image.id)
+                    .where(Image.id == image_id)
+                )
+            ).one_or_none()
 
-            if image is None:
-                raise ImageCatalogNotFoundError(f"Image {image_id} not found")
+            if row is None:
+                raise ImageCatalogNotFoundError()
+
+            image, processing = row
 
             keys_to_delete: list[str] = []
 
             if image.s3_key:
                 keys_to_delete.append(image.s3_key)
 
-            if image.processing and image.processing.embed_s3_key:
-                keys_to_delete.append(image.processing.embed_s3_key)
-                keys_to_delete.append(image.processing.embed_s3_key.replace(".npy", "_text.npy"))
+            if processing and processing.embed_s3_key:
+                keys_to_delete.append(processing.embed_s3_key)
+                keys_to_delete.append(processing.embed_s3_key.replace(".npy", "_text.npy"))
 
             for key in keys_to_delete:
                 try:
-                    self._storage.delete(key)
+                    await self._storage.delete(key)
                 except Exception:
                     pass
 
-            session.delete(image)
+            await session.delete(image)
 
-    def _load_images(self, session: Session, image_ids: list[int]) -> list[ImageCatalogImage]:
+    async def _load_images(
+        self, session: AsyncSession, image_ids: list[int]
+    ) -> list[ImageCatalogImage]:
         if not image_ids:
             return []
 
-        rows = session.execute(
-            select(Image, Processing, Annotation)
-            .outerjoin(Processing, Processing.image_id == Image.id)
-            .outerjoin(Annotation, Annotation.image_id == Image.id)
-            .where(Image.id.in_(image_ids))
+        rows = (
+            await session.execute(
+                select(Image, Processing, Annotation)
+                .outerjoin(Processing, Processing.image_id == Image.id)
+                .outerjoin(Annotation, Annotation.image_id == Image.id)
+                .where(Image.id.in_(image_ids))
+            )
         ).all()
+
         row_by_id = {image.id: (image, proc, ann) for image, proc, ann in rows}
 
         return [

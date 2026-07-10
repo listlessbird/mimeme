@@ -25,7 +25,7 @@ router = APIRouter(prefix="/jobs", tags=["Jobs"], responses=error_responses(403,
 @router.get("/{job_id}", response_model=JobResponse, responses=error_responses(404))
 async def get_job(_auth: AdminRequired, job_id: str) -> JobResponse:
     try:
-        job = ApiJobStore().get_job(job_id)
+        job = await ApiJobStore().get_job(job_id)
     except JobLifecycleNotFoundError:
         raise HTTPException(status_code=404, detail="Job not found")
     return JobResponse.model_validate(job.model_dump())
@@ -39,7 +39,7 @@ async def trigger_rebuild_index(
 ) -> JobResponse:
     request = request or RebuildIndexRequest()
     store = ApiJobStore()
-    rebuild = store.create_rebuild_job(
+    rebuild = await store.create_rebuild_job(
         force=request.force,
         model_name=request.model_name or settings.embed_model,
         index_type=settings.index_type,
@@ -57,7 +57,7 @@ async def trigger_rebuild_index(
         task_queue=settings.temporal_task_queue,
     )
 
-    store.record_workflow_id(rebuild.job.id, rebuild.workflow_id)
+    await store.record_workflow_id(rebuild.job.id, rebuild.workflow_id)
 
     return JobResponse(
         id=rebuild.job.id,
@@ -73,7 +73,7 @@ async def trigger_rebuild_index(
 async def cancel_job(_auth: AdminRequired, job_id: str, temporal: TemporalClientDep) -> None:
     store = ApiJobStore()
     try:
-        cancellation = store.request_cancellation(job_id)
+        cancellation = await store.request_cancellation(job_id)
     except JobLifecycleNotFoundError:
         raise HTTPException(status_code=404, detail="Job not found")
     except JobLifecycleInvalidStateError as exc:
@@ -83,7 +83,7 @@ async def cancel_job(_auth: AdminRequired, job_id: str, temporal: TemporalClient
         handle = temporal.get_workflow_handle(cancellation.workflow_id)
         await handle.cancel()
 
-    store.mark_cancelled(job_id)
+    await store.mark_cancelled(job_id)
 
 
 @router.get("", response_model=JobListResponse)
@@ -93,7 +93,7 @@ async def list_jobs(
     job_type: Annotated[JobType | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> JobListResponse:
-    result = ApiJobStore().list_jobs(status=status, job_type=job_type, limit=limit)
+    result = await ApiJobStore().list_jobs(status=status, job_type=job_type, limit=limit)
 
     return JobListResponse(
         jobs=[JobResponse.model_validate(job.model_dump()) for job in result.jobs],

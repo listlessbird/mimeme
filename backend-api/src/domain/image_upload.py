@@ -36,7 +36,7 @@ class ImageUploadStager:
     def __init__(self, storage: ApiStorage) -> None:
         self._storage = storage
 
-    def stage(
+    async def stage(
         self,
         *,
         content: bytes,
@@ -44,7 +44,7 @@ class ImageUploadStager:
         content_type: str | None,
     ) -> StagedUpload:
         key = staging_key(filename)
-        self._storage.upload_bytes(
+        await self._storage.upload_bytes(
             content, key, content_type=content_type or "application/octet-stream"
         )
         url = self._storage.presign(key, expiration=settings.s3_presigned_url_expiry)

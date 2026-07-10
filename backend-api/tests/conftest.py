@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
-from contextlib import contextmanager
+from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
 from typing import BinaryIO, TypeVar
 from unittest.mock import AsyncMock, MagicMock
@@ -226,6 +226,24 @@ def _patch_domain_session_scope(
     monkeypatch.setattr("shared.db.read_session_scope", _test_session_scope)
 
 
+@pytest.fixture()
+def _patch_async_domain_session_scope(
+    async_db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    @asynccontextmanager
+    async def _test_read_session() -> AsyncIterator[AsyncSession]:
+        yield async_db_session
+
+    @asynccontextmanager
+    async def _test_write_session() -> AsyncIterator[AsyncSession]:
+        yield async_db_session
+        await async_db_session.flush()
+
+    monkeypatch.setattr("shared.db.read_session", _test_read_session)
+    monkeypatch.setattr("shared.db.write_session", _test_write_session)
+
+
 # ---------------------------------------------------------------------------
 # Mock fixtures for external services
 # ---------------------------------------------------------------------------
@@ -249,18 +267,18 @@ class FakeApiStorage:
         self.presigned.append((key, expiration))
         return "https://mock-s3/presigned"
 
-    def upload_bytes(
+    async def upload_bytes(
         self, data: bytes | BinaryIO, key: str, content_type: str = "application/octet-stream"
     ) -> str:
         self.uploaded.append(UploadBytesCall(data=data, key=key, content_type=content_type))
         self.existing_keys.add(key)
         return "mock-etag"
 
-    def delete(self, key: str) -> None:
+    async def delete(self, key: str) -> None:
         self.deleted.append(key)
         self.existing_keys.discard(key)
 
-    def exists(self, key: str) -> bool:
+    async def exists(self, key: str) -> bool:
         return key in self.existing_keys
 
 

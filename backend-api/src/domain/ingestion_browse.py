@@ -112,7 +112,7 @@ class IngestionBrowser:
     def __init__(self, storage: ApiStorage) -> None:
         self.storage = storage
 
-    def list_attempts(
+    async def list_attempts(
         self,
         *,
         limit: int,
@@ -129,7 +129,7 @@ class IngestionBrowser:
         now: datetime.datetime | None = None,
     ) -> IngestionPage:
 
-        with db.read_session_scope() as session:
+        async with db.read_session() as session:
             predicates = self._predicates(
                 view=view,
                 stage=stage,
@@ -143,52 +143,56 @@ class IngestionBrowser:
                 now=now,
             )
 
-            total = session.scalar(
+            total = await session.scalar(
                 self._with_joins(select(func.count(IngestURL.id)).select_from(IngestURL)).where(
                     *predicates
                 )
             )
 
-            rows = session.execute(
-                self._with_joins(
-                    select(
-                        IngestURL,
-                        IngestionSource.name,
-                        SourceRun.trigger_mode,
-                        Image.s3_key,
-                        Image.dataset,
-                        IngestionSource.dataset,
-                        SourceItem.raw_metadata,
-                    ).select_from(IngestURL)
+            rows = (
+                await session.execute(
+                    self._with_joins(
+                        select(
+                            IngestURL,
+                            IngestionSource.name,
+                            SourceRun.trigger_mode,
+                            Image.s3_key,
+                            Image.dataset,
+                            IngestionSource.dataset,
+                            SourceItem.raw_metadata,
+                        ).select_from(IngestURL)
+                    )
+                    .where(*predicates)
+                    .order_by(IngestURL.created_at.desc(), IngestURL.id.desc())
+                    .limit(limit)
+                    .offset(offset)
                 )
-                .where(*predicates)
-                .order_by(IngestURL.created_at.desc(), IngestURL.id.desc())
-                .limit(limit)
-                .offset(offset)
             ).all()
 
-        return IngestionPage(
-            rows=[self._row(*r) for r in rows],
-            total=total or 0,
-            limit=limit,
-            offset=offset,
-        )
+            return IngestionPage(
+                rows=[self._row(*r) for r in rows],
+                total=total or 0,
+                limit=limit,
+                offset=offset,
+            )
 
-    def get_attempt(self, ingest_url_id: int) -> IngestionDetail:
+    async def get_attempt(self, ingest_url_id: int) -> IngestionDetail:
 
-        with db.read_session_scope() as session:
-            row = session.execute(
-                self._with_joins(
-                    select(
-                        IngestURL,
-                        IngestionSource.name,
-                        SourceRun.trigger_mode,
-                        Image.s3_key,
-                        Image.dataset,
-                        IngestionSource.dataset,
-                        SourceItem.raw_metadata,
-                    ).select_from(IngestURL)
-                ).where(IngestURL.id == ingest_url_id)
+        async with db.read_session() as session:
+            row = (
+                await session.execute(
+                    self._with_joins(
+                        select(
+                            IngestURL,
+                            IngestionSource.name,
+                            SourceRun.trigger_mode,
+                            Image.s3_key,
+                            Image.dataset,
+                            IngestionSource.dataset,
+                            SourceItem.raw_metadata,
+                        ).select_from(IngestURL)
+                    ).where(IngestURL.id == ingest_url_id)
+                )
             ).first()
 
         if row is None:

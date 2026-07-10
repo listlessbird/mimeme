@@ -25,7 +25,7 @@ from shared.models import IngestURL, Job, JobStatus, JobType
 
 
 class ApiJobStore:
-    def create_ingest_job(
+    async def create_ingest_job(
         self,
         *,
         urls: list[str],
@@ -38,15 +38,15 @@ class ApiJobStore:
         job_id = f"ingest-{uuid.uuid4().hex[:12]}"
         workflow_id = f"ingest-workflow-{job_id}"
 
-        with db.session_scope() as session:
+        async with db.write_session() as session:
             job = Job(id=job_id, type=JobType.INGEST)
             session.add(job)
-            session.flush()
+            await session.flush()
 
             for url in unique_urls:
                 session.add(IngestURL(job_id=job_id, url=url))
 
-            session.flush()
+            await session.flush()
 
         return IngestJobCreation(
             job_id=job_id,
@@ -58,7 +58,7 @@ class ApiJobStore:
             callback_url=callback_url,
         )
 
-    def create_rebuild_job(
+    async def create_rebuild_job(
         self,
         *,
         force: bool,
@@ -68,10 +68,10 @@ class ApiJobStore:
         job_id = f"rebuild-{uuid.uuid4().hex[:12]}"
         workflow_id = f"rebuild-workflow-{job_id}"
 
-        with db.session_scope() as session:
+        async with db.write_session() as session:
             job = Job(id=job_id, type=JobType.REBUILD_INDEX)
             session.add(job)
-            session.flush()
+            await session.flush()
             view = self._project_job(job)
 
         return RebuildJobCreation(
@@ -82,29 +82,29 @@ class ApiJobStore:
             index_type=index_type,
         )
 
-    def record_workflow_id(self, job_id: str, workflow_id: str) -> None:
-        with db.session_scope() as session:
-            job = session.get(Job, job_id)
+    async def record_workflow_id(self, job_id: str, workflow_id: str) -> None:
+        async with db.write_session() as session:
+            job = await session.get(Job, job_id)
             if job is None:
                 raise JobLifecycleNotFoundError(f"Job {job_id} not found")
             job.workflow_id = workflow_id
-            session.flush()
+            await session.flush()
 
-    def get_job(self, job_id: str) -> JobView:
-        with db.read_session_scope() as session:
-            job = session.get(Job, job_id)
+    async def get_job(self, job_id: str) -> JobView:
+        async with db.read_session() as session:
+            job = await session.get(Job, job_id)
             if job is None:
                 raise JobLifecycleNotFoundError(f"Job {job_id} not found")
             return self._project_job(job)
 
-    def list_jobs(
+    async def list_jobs(
         self,
         *,
         status: JobStatus | None,
         job_type: JobType | None,
         limit: int,
     ) -> JobList:
-        with db.read_session_scope() as session:
+        async with db.read_session() as session:
             stmt = select(Job)
 
             if status:
@@ -112,26 +112,29 @@ class ApiJobStore:
             if job_type:
                 stmt = stmt.where(Job.type == job_type)
 
-            total = session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
-            jobs = session.scalars(stmt.order_by(Job.created_at.desc()).limit(limit)).all()
+            total = await session.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+            rows = await session.scalars(stmt.order_by(Job.created_at.desc()).limit(limit))
+
+            jobs = rows.all()
+
             return JobList(jobs=[self._project_job(job) for job in jobs], total=total)
 
-    def request_cancellation(self, job_id: str) -> JobCancellation:
-        with db.read_session_scope() as session:
-            job = session.get(Job, job_id)
+    async def request_cancellation(self, job_id: str) -> JobCancellation:
+        async with db.read_session() as session:
+            job = await session.get(Job, job_id)
             if job is None:
                 raise JobLifecycleNotFoundError(f"Job {job_id} not found")
             if job.status in (JobStatus.COMPLETED, JobStatus.FAILED):
                 raise JobLifecycleInvalidStateError("Cannot cancel completed job")
             return JobCancellation(workflow_id=job.workflow_id)
 
-    def mark_cancelled(self, job_id: str) -> None:
-        with db.session_scope() as session:
-            job = session.get(Job, job_id)
+    async def mark_cancelled(self, job_id: str) -> None:
+        async with db.write_session() as session:
+            job = await session.get(Job, job_id)
             if job is None:
                 raise JobLifecycleNotFoundError(f"Job {job_id} not found")
             job.status = JobStatus.CANCELLED
-            session.flush()
+            await session.flush()
 
     def _project_job(self, job: Job) -> JobView:
         return JobView(

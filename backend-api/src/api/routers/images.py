@@ -31,7 +31,9 @@ async def _launch_ingest(
     callback_url: str | None,
 ) -> ImageIngestResponse:
     store = ApiJobStore()
-    job = store.create_ingest_job(urls=urls, dataset=dataset, tags=tags, callback_url=callback_url)
+    job = await store.create_ingest_job(
+        urls=urls, dataset=dataset, tags=tags, callback_url=callback_url
+    )
 
     await temporal.start_workflow(
         IngestWorkflow.run,
@@ -44,7 +46,7 @@ async def _launch_ingest(
         id=job.workflow_id,
         task_queue=settings.temporal_task_queue,
     )
-    store.record_workflow_id(job.job_id, job.workflow_id)
+    await store.record_workflow_id(job.job_id, job.workflow_id)
 
     return ImageIngestResponse(
         job_id=job.job_id,
@@ -86,7 +88,7 @@ async def upload_image(
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
-    staged = ImageUploadStager(storage).stage(
+    staged = await ImageUploadStager(storage).stage(
         content=content, filename=file.filename, content_type=file.content_type
     )
 
@@ -111,7 +113,7 @@ async def list_images(
     dataset: Annotated[str | None, Query()] = None,
     sort: Annotated[Literal["newest", "oldest"], Query()] = "newest",
 ) -> ImageListResponse:
-    page = ImageCatalog(storage).list_images(
+    page = await ImageCatalog(storage).list_images(
         limit=limit,
         offset=offset,
         status=status.value if status else None,
@@ -141,7 +143,7 @@ async def get_image(
     storage: StorageDep,
 ) -> ImageResponse:
     try:
-        image = ImageCatalog(storage).get_image(image_id)
+        image = await ImageCatalog(storage).get_image(image_id)
     except ImageCatalogNotFoundError:
         raise HTTPException(status_code=404, detail="Image not found")
     payload = image.model_dump()
@@ -156,6 +158,6 @@ async def delete_image(
     storage: StorageDep,
 ) -> None:
     try:
-        ImageCatalog(storage).delete_image(image_id)
+        await ImageCatalog(storage).delete_image(image_id)
     except ImageCatalogNotFoundError:
         raise HTTPException(status_code=404, detail="Image not found")

@@ -4,14 +4,13 @@ from typing import BinaryIO
 from unittest.mock import MagicMock
 
 import pytest
-from sqlalchemy.orm import Session
 from tests.factories import create_image, create_ingest_url, create_job
 
 from domain.ingestion_browse import IngestionBrowser, IngestionView
 from shared.config import settings
 from shared.models.orm import ProcessingStatus
 
-pytestmark = pytest.mark.usefixtures("_patch_domain_session_scope")
+pytestmark = pytest.mark.usefixtures("_patch_domain_session_scope", "_patch_async_domain_session_scope")
 
 
 class FakeApiStorage:
@@ -22,18 +21,18 @@ class FakeApiStorage:
         self.presigned_keys.append((key, expiration))
         return f"https://fake/{key}"
 
-    def upload_bytes(self, data: bytes | BinaryIO, key: str, content_type: str) -> str:
+    async def upload_bytes(self, data: bytes | BinaryIO, key: str, content_type: str) -> str:
         return f"etag:{key}"
 
-    def delete(self, key: str) -> None:
+    async def delete(self, key: str) -> None:
         pass
 
-    def exists(self, key: str) -> bool:
+    async def exists(self, key: str) -> bool:
         return True
 
 
-def test_list_attempts_empty(mock_storage: MagicMock) -> None:
-    page = IngestionBrowser(mock_storage).list_attempts(
+async def test_list_attempts_empty(mock_storage: MagicMock) -> None:
+    page = await IngestionBrowser(mock_storage).list_attempts(
         limit=20,
         offset=0,
         view=IngestionView.ALL,
@@ -45,20 +44,23 @@ def test_list_attempts_empty(mock_storage: MagicMock) -> None:
     assert page.offset == 0
 
 
-def test_list_attempts_uses_api_storage_presign_surface(db_session: Session) -> None:
+async def test_list_attempts_uses_api_storage_presign_surface(run_sync_seed) -> None:
     storage = FakeApiStorage()
-    image = create_image(session=db_session, s3_key="images/test/example.jpg")
-    job = create_job(session=db_session)
-    create_ingest_url(
-        session=db_session,
-        job=job,
-        job_id=job.id,
-        image_id=image.id,
-        status=ProcessingStatus.DONE,
-    )
-    db_session.flush()
 
-    page = IngestionBrowser(storage).list_attempts(
+    def seed(session) -> None:
+        image = create_image(session=session, s3_key="images/test/example.jpg")
+        job = create_job(session=session)
+        create_ingest_url(
+            session=session,
+            job=job,
+            job_id=job.id,
+            image_id=image.id,
+            status=ProcessingStatus.DONE,
+        )
+
+    await run_sync_seed(seed)
+
+    page = await IngestionBrowser(storage).list_attempts(
         limit=20,
         offset=0,
         view=IngestionView.ALL,
