@@ -107,6 +107,12 @@ function textValue(value: string | string[]): string {
 	return Array.isArray(value) ? value.join("\n") : value;
 }
 
+function fieldTextValues(annotation: GifAnnotationDocument): Record<GifAnnotationField, string> {
+	return Object.fromEntries(
+		FIELD_CONFIG.map(({ field }) => [field, textValue(annotation[field])]),
+	) as Record<GifAnnotationField, string>;
+}
+
 function parseLines(value: string): string[] {
 	return value
 		.split("\n")
@@ -167,6 +173,9 @@ export function GifAnnotationWorkspace() {
 	const data = query.data;
 	const [activeSha, setActiveSha] = useQueryState("gif", parseAsString);
 	const [draft, setDraft] = useState<GifAnnotationDocument>(emptyAnnotation);
+	const [fieldText, setFieldText] = useState<Record<GifAnnotationField, string>>(() =>
+		fieldTextValues(emptyAnnotation()),
+	);
 	const [status, setStatus] = useState<GifAnnotationStatus>("draft");
 	const [revision, setRevision] = useState(0);
 	const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -189,7 +198,9 @@ export function GifAnnotationWorkspace() {
 		loadedSha.current = item.sha256;
 		if (activeSha !== item.sha256) void setActiveSha(item.sha256, { history: "replace" });
 		const fallback = loadFallback(item);
-		setDraft(withSuggestionDefaults(item, fallback?.annotation ?? item.annotation));
+		const nextDraft = withSuggestionDefaults(item, fallback?.annotation ?? item.annotation);
+		setDraft(nextDraft);
+		setFieldText(fieldTextValues(nextDraft));
 		setStatus(fallback?.status ?? item.status);
 		setRevision(item.revision);
 		setSaveState(fallback ? "dirty" : "idle");
@@ -303,9 +314,10 @@ export function GifAnnotationWorkspace() {
 			setStatus(nextStatus);
 			changeVersion.current += 1;
 			setSaveState("dirty");
-			await persist(true, nextStatus);
+			const saved = await persist(true, nextStatus);
+			if (saved && nextStatus === "complete") navigateTo(activeIndex + 1);
 		},
-		[persist],
+		[activeIndex, navigateTo, persist],
 	);
 
 	if (query.isPending) return <WorkspaceSkeleton />;
@@ -324,6 +336,7 @@ export function GifAnnotationWorkspace() {
 
 	const progress = data.total ? (data.completed / data.total) * 100 : 0;
 	const setField = (field: GifAnnotationField, value: string) => {
+		setFieldText((current) => ({ ...current, [field]: value }));
 		const kind = FIELD_CONFIG.find((config) => config.field === field)?.kind;
 		const parsed =
 			kind === "list" ? (field === "visibleText" ? parseLines(value) : parseQueries(value)) : value;
@@ -465,7 +478,7 @@ export function GifAnnotationWorkspace() {
 							<SuggestionField
 								key={config.field}
 								config={config}
-								value={textValue(draft[config.field])}
+								value={fieldText[config.field]}
 								decision={draft.decisions[config.field]}
 								onChange={(value) => setField(config.field, value)}
 							/>
