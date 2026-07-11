@@ -10,18 +10,27 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
 DEFAULT_MODEL = "gpt-5.4-mini"
+PROMPT_VERSION = 2
 PROMPT = """You are annotating a meme GIF for a semantic retrieval evaluation.
 The attached contact sheet contains time-ordered, deduplicated samples from one GIF. The labels
 under each tile identify sample numbers; use those sample numbers in supporting_frame_numbers.
+Only cite the numbered contact-sheet samples (1 through the number of tiles), never original GIF
+frame indices or timestamps.
 
 Return only the requested JSON. Follow these rules:
 - Transcribe visible text exactly. Do not invent obscured or unreadable words.
 - Describe concrete people, objects, actions, expressions, and scene changes.
 - visual queries describe visible content without relying on overlaid text.
 - caption queries use exact or near-exact visible text and may be empty when no text is visible.
-- natural queries are short phrases a person might genuinely type to find this reaction or meme.
-- Do not identify actors, shows, characters, or meme names unless the frames make it unambiguous.
-- State uncertainty briefly instead of guessing.
+- natural queries are short phrases a person might genuinely type, including identity-aware searches
+  such as "SpongeBob confused", "Michael Scott no", or "Jim Carrey typing" when supported.
+- Actively infer recognizable actors, public figures, characters, shows, movies, meme templates, and
+  commonly known scenes from the frames, and include useful names in natural queries and descriptions.
+- Calibrate uncertainty: use likely identity phrasing for plausible recognition instead of withholding
+  it, but do not confidently fabricate a name from weak visual evidence.
+- Do not name unknown or private people; describe them generically.
+- Never use filenames, collection provenance, or other hidden hints. Base every claim on the frames.
+- State remaining uncertainty briefly instead of guessing.
 """
 
 
@@ -63,7 +72,7 @@ def run_codex(
 
 def generate(args: argparse.Namespace) -> None:
     dataset = json.loads((args.data / "dataset.json").read_text())
-    suggestion_dir = args.data / "suggestions"
+    suggestion_dir = args.data / f"suggestions-v{PROMPT_VERSION}"
     jobs = []
     with ThreadPoolExecutor(max_workers=args.workers) as executor:
         for item in dataset["items"]:
@@ -86,7 +95,8 @@ def generate(args: argparse.Namespace) -> None:
             print(f"[{completed}/{len(jobs)}] {sha256[:10]} {status}")
 
     suggestions = {
-        "version": 1,
+        "version": PROMPT_VERSION,
+        "prompt_version": PROMPT_VERSION,
         "model": args.model,
         "items": {
             item["sha256"]: json.loads(
