@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import time
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any
 
@@ -62,6 +62,20 @@ def _index_files_snapshot(version: str | None) -> dict[str, object]:
         "cache_text_mapping_exists": (cache_path / "text_mapping.json").exists(),
         "cache_text_metadata_exists": (cache_path / "text_metadata.json").exists(),
     }
+
+
+async def loop_lag_probe(interval_s: float = 0.1) -> None:
+    log = structlog.get_logger()
+    while True:
+        started = time.monotonic()
+        await asyncio.sleep(interval_s)
+        lag_ms = (time.monotonic() - started - interval_s) * 1000
+        if lag_ms > settings.loop_lag_threshold_ms:
+            log.warning(
+                "event_loop_lag",
+                lag_ms=round(lag_ms, 2),
+                threshold_ms=settings.loop_lag_threshold_ms,
+            )
 
 
 def _preload_and_warm_text_encoder() -> None:
@@ -163,6 +177,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         **_index_files_snapshot(active_version),
     )
 
-    yield
+    lag_probe_task = asyncio.create_task(loop_lag_probe())
+
+    try:
+        yield
+    finally:
+        lag_probe_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await lag_probe_task
 
     log.info("shutting_down_app")

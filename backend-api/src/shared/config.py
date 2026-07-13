@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     db_pool_timeout_s: float = Field(default=5.0)
     db_statement_cache_size: int = Field(default=100)
 
+    request_timeout_s: float = Field(default=30.0)
+    loop_lag_threshold_ms: float = Field(default=50.0)
+    rate_limit_enabled: bool = Field(default=True)
+
     # redis_url: RedisDsn = cast(RedisDsn, "redis://localhost:6379/0")
 
     api_key_admin: str | None = None
