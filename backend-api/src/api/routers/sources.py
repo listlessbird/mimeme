@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 from activities.scheduling.reconcile import reconcile
 from activities.scheduling.temporal_store import TemporalScheduleStore
 from api.auth import AdminRequired
-from api.deps import DbSession, StorageDep, TemporalClientDep
+from api.deps import StorageDep, TemporalClientDep
 from api.models.errors import error_responses
 from api.models.sources import (
     CreateSourceRequest,
@@ -187,11 +187,10 @@ async def _start_retry(temporal: TemporalClientDep, plan: RetryPlan) -> RetryRes
 async def retry_source(
     _auth: AdminRequired,
     source_id: int,
-    db: DbSession,
     temporal: TemporalClientDep,
 ) -> RetryResponse:
     try:
-        plan = SourceRetry().retry_source(source_id)
+        plan = await SourceRetry().retry_source(source_id)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
     except NothingToRetryError:
@@ -210,11 +209,10 @@ async def retry_source_run(
     _auth: AdminRequired,
     source_id: int,
     run_id: int,
-    db: DbSession,
     temporal: TemporalClientDep,
 ) -> RetryResponse:
     try:
-        plan = SourceRetry().retry_run(source_id, run_id)
+        plan = await SourceRetry().retry_run(source_id, run_id)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
     except RunNotFoundError:
@@ -235,11 +233,10 @@ async def retry_source_item(
     _auth: AdminRequired,
     source_id: int,
     item_id: int,
-    db: DbSession,
     temporal: TemporalClientDep,
 ) -> RetryResponse:
     try:
-        plan = SourceRetry().retry_item(source_id, item_id)
+        plan = await SourceRetry().retry_item(source_id, item_id)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
     except SourceItemNotFoundError:
