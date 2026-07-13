@@ -178,9 +178,9 @@ class TestCancelJob:
         _patch_async_domain_session_scope: None,
     ) -> None:
         job_id = await run_sync_seed(
-            lambda session: create_job(
-                session=session, status=JobStatus.RUNNING, workflow_id="wf-123"
-            ).id
+            lambda session: (
+                create_job(session=session, status=JobStatus.RUNNING, workflow_id="wf-123").id
+            )
         )
 
         resp = await async_client.delete(f"/jobs/{job_id}")
@@ -242,9 +242,7 @@ class TestRebuildIndex:
         data = resp.json()
         assert data["type"] == JobType.REBUILD_INDEX.value
         assert data["status"] == JobStatus.PENDING.value
-        job_status = await async_db_session.scalar(
-            select(Job.status).where(Job.id == data["id"])
-        )
+        job_status = await async_db_session.scalar(select(Job.status).where(Job.id == data["id"]))
         assert job_status == JobStatus.PENDING
         mock_temporal.start_workflow.assert_called_once()
 

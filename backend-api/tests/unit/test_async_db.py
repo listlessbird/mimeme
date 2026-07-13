@@ -106,4 +106,3 @@ async def test_write_session_rolls_back_database_work_on_exception(
             raise RuntimeError("boom")
 
     assert _build_count(db_engine, version) == 0
-

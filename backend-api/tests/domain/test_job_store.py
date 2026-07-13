@@ -10,7 +10,9 @@ from domain.job_rules import IngestJobResultPayload, RawJobResultPayload, Rebuil
 from domain.job_store import ApiJobStore
 from shared.models import IngestURL, Job, JobStatus, JobType
 
-pytestmark = pytest.mark.usefixtures("_patch_domain_session_scope", "_patch_async_domain_session_scope")
+pytestmark = pytest.mark.usefixtures(
+    "_patch_domain_session_scope", "_patch_async_domain_session_scope"
+)
 
 
 async def test_create_ingest_job_deduplicates_urls_and_preserves_order(
@@ -159,9 +161,9 @@ async def test_cancel_pending_job_without_workflow_id(
 
 async def test_cancel_running_job_with_workflow_id(run_sync_seed) -> None:
     job_id = await run_sync_seed(
-        lambda session: create_job(
-            session=session, status=JobStatus.RUNNING, workflow_id="wf-123"
-        ).id
+        lambda session: (
+            create_job(session=session, status=JobStatus.RUNNING, workflow_id="wf-123").id
+        )
     )
 
     cancellation = await ApiJobStore().request_cancellation(job_id)

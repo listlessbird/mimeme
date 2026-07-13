@@ -16,7 +16,9 @@ from tests.factories import (
 from domain.image_catalog import ImageCatalog, ImageCatalogNotFoundError
 from shared.models.orm import Annotation, Artifact, Image, Processing, ProcessingStatus
 
-pytestmark = pytest.mark.usefixtures("_patch_domain_session_scope", "_patch_async_domain_session_scope")
+pytestmark = pytest.mark.usefixtures(
+    "_patch_domain_session_scope", "_patch_async_domain_session_scope"
+)
 
 
 class FakeApiStorage:
@@ -224,7 +226,9 @@ async def test_delete_image_removes_database_rows_and_storage_artifacts(
     assert (
         await async_db_session.scalar(select(Annotation).where(Annotation.image_id == image_id))
     ) is None
-    assert (await async_db_session.scalar(select(Artifact).where(Artifact.image_id == image_id))) is None
+    assert (
+        await async_db_session.scalar(select(Artifact).where(Artifact.image_id == image_id))
+    ) is None
     assert storage.delete.await_args_list[0].args == ("images/test/example.jpg",)
     assert storage.delete.await_args_list[1].args == ("embeddings/test/example.npy",)
     assert storage.delete.await_args_list[2].args == ("embeddings/test/example_text.npy",)

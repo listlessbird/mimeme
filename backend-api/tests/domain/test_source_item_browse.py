@@ -17,7 +17,9 @@ from domain.source_item_browse import SourceItemBrowser
 from shared.config import settings
 from shared.models.orm import ProcessingStatus
 
-pytestmark = pytest.mark.usefixtures("_patch_domain_session_scope", "_patch_async_domain_session_scope")
+pytestmark = pytest.mark.usefixtures(
+    "_patch_domain_session_scope", "_patch_async_domain_session_scope"
+)
 
 
 class FakeApiStorage:
