@@ -1,24 +1,20 @@
 from __future__ import annotations
 
-import uuid
-
-from pydantic import ValidationError
 from sqlalchemy import func, select
 
-from domain.job_lifecycle import (
+from domain.job_rules import (
     IngestJobCreation,
     JobCancellation,
-    JobLifecycleInvalidStateError,
     JobLifecycleNotFoundError,
     JobList,
+    JobRowData,
     JobView,
     RebuildJobCreation,
-)
-from domain.job_rules import (
-    IngestJobResultPayload,
-    JobResultPayload,
-    RawJobResultPayload,
-    RebuildJobResultPayload,
+    dedup_urls,
+    ensure_cancellable,
+    mint_ingest_job,
+    mint_rebuild_job,
+    project_job,
 )
 from shared import db
 from shared.models import IngestURL, Job, JobStatus, JobType
@@ -33,10 +29,8 @@ class ApiJobStore:
         tags: list[str],
         callback_url: str | None,
     ) -> IngestJobCreation:
-        unique_urls = list(dict.fromkeys(urls))
-        duplicates = len(urls) - len(unique_urls)
-        job_id = f"ingest-{uuid.uuid4().hex[:12]}"
-        workflow_id = f"ingest-workflow-{job_id}"
+        unique_urls, duplicates = dedup_urls(urls)
+        job_id, workflow_id = mint_ingest_job()
 
         async with db.write_session() as session:
             job = Job(id=job_id, type=JobType.INGEST)
@@ -65,14 +59,13 @@ class ApiJobStore:
         model_name: str,
         index_type: str,
     ) -> RebuildJobCreation:
-        job_id = f"rebuild-{uuid.uuid4().hex[:12]}"
-        workflow_id = f"rebuild-workflow-{job_id}"
+        job_id, workflow_id = mint_rebuild_job()
 
         async with db.write_session() as session:
             job = Job(id=job_id, type=JobType.REBUILD_INDEX)
             session.add(job)
             await session.flush()
-            view = self._project_job(job)
+            view = project_job(JobRowData.model_validate(job))
 
         return RebuildJobCreation(
             job=view,
@@ -95,7 +88,7 @@ class ApiJobStore:
             job = await session.get(Job, job_id)
             if job is None:
                 raise JobLifecycleNotFoundError(f"Job {job_id} not found")
-            return self._project_job(job)
+            return project_job(JobRowData.model_validate(job))
 
     async def list_jobs(
         self,
@@ -117,15 +110,15 @@ class ApiJobStore:
 
             jobs = rows.all()
 
-            return JobList(jobs=[self._project_job(job) for job in jobs], total=total)
+            views = [project_job(JobRowData.model_validate(job)) for job in jobs]
+            return JobList(jobs=views, total=total)
 
     async def request_cancellation(self, job_id: str) -> JobCancellation:
         async with db.read_session() as session:
             job = await session.get(Job, job_id)
             if job is None:
                 raise JobLifecycleNotFoundError(f"Job {job_id} not found")
-            if job.status in (JobStatus.COMPLETED, JobStatus.FAILED):
-                raise JobLifecycleInvalidStateError("Cannot cancel completed job")
+            ensure_cancellable(job.status)
             return JobCancellation(workflow_id=job.workflow_id)
 
     async def mark_cancelled(self, job_id: str) -> None:
@@ -135,27 +128,3 @@ class ApiJobStore:
                 raise JobLifecycleNotFoundError(f"Job {job_id} not found")
             job.status = JobStatus.CANCELLED
             await session.flush()
-
-    def _project_job(self, job: Job) -> JobView:
-        return JobView(
-            id=job.id,
-            type=job.type,
-            status=job.status,
-            progress=job.progress,
-            message=job.message,
-            created_at=job.created_at,
-            started_at=job.started_at,
-            completed_at=job.completed_at,
-            result=self._parse_result(job.type, job.result),
-        )
-
-    def _parse_result(self, job_type: JobType, result: str | None) -> JobResultPayload | None:
-        if result is None:
-            return None
-
-        try:
-            if job_type == JobType.REBUILD_INDEX:
-                return RebuildJobResultPayload.model_validate_json(result)
-            return IngestJobResultPayload.model_validate_json(result)
-        except ValidationError:
-            return RawJobResultPayload(raw=result)

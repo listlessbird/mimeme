@@ -10,11 +10,8 @@ from api.deps import DbSession, TemporalClientDep
 from api.models.errors import error_responses
 from api.models.health import IndexVersionResponse, IndexVersionsResponse
 from api.models.jobs import JobListResponse, JobResponse, RebuildIndexRequest
-from domain.job_store import (
-    ApiJobStore,
-    JobLifecycleInvalidStateError,
-    JobLifecycleNotFoundError,
-)
+from domain.job_rules import JobLifecycleInvalidStateError, JobLifecycleNotFoundError
+from domain.job_store import ApiJobStore
 from shared.config import settings
 from shared.models import IndexBuild, JobStatus, JobType
 from workflows import RebuildIndexWorkflow, RebuildIndexWorkflowInput

@@ -1,18 +1,25 @@
 from __future__ import annotations
 
-import uuid
 from datetime import UTC, datetime
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from domain.job_rules import (
+    INGEST_URL_ERROR_LIMIT,
+    JOB_ERROR_LIMIT,
+    IngestJobCreation,
     IngestJobResultPayload,
-    JobResultPayload,
-    RawJobResultPayload,
+    JobLifecycleNotFoundError,
+    JobRowData,
+    RebuildJobCreation,
     RebuildJobResultPayload,
     derive_completion_status,
+    mint_ingest_job,
+    mint_rebuild_job,
+    project_job,
+    truncate_error,
 )
 from shared.models import (
     DuplicateReason,
@@ -24,49 +31,6 @@ from shared.models import (
     ProcessingStatus,
 )
 from shared.models import ORMImage as Image
-
-
-class JobLifecycleNotFoundError(Exception):
-    pass
-
-
-class JobLifecycleInvalidStateError(Exception):
-    pass
-
-
-class JobView(BaseModel, frozen=True):
-    id: str
-    type: JobType
-    status: JobStatus
-    progress: float
-    message: str | None
-    created_at: datetime
-    started_at: datetime | None
-    completed_at: datetime | None
-    result: JobResultPayload | None
-
-
-class JobList(BaseModel, frozen=True):
-    jobs: list[JobView]
-    total: int
-
-
-class IngestJobCreation(BaseModel, frozen=True):
-    job_id: str
-    workflow_id: str
-    queued: int
-    duplicates: int
-    dataset: str | None
-    tags: list[str]
-    callback_url: str | None
-
-
-class RebuildJobCreation(BaseModel, frozen=True):
-    job: JobView
-    workflow_id: str
-    force: bool
-    model_name: str
-    index_type: str
 
 
 class SourceIngestItem(BaseModel, frozen=True):
@@ -90,10 +54,6 @@ class IngestUrlDoneResult(BaseModel, frozen=True):
     image_exists: bool | None
 
 
-class JobCancellation(BaseModel, frozen=True):
-    workflow_id: str | None
-
-
 class JobLifecycle:
     def __init__(self, db: Session) -> None:
         self._db = db
@@ -104,8 +64,7 @@ class JobLifecycle:
         dataset: str | None,
         items: list[SourceIngestItem],
     ) -> IngestJobCreation:
-        job_id = f"ingest-{uuid.uuid4().hex[:12]}"
-        workflow_id = f"ingest-workflow-{job_id}"
+        job_id, workflow_id = mint_ingest_job()
 
         job = Job(id=job_id, type=JobType.INGEST)
         self._db.add(job)
@@ -140,14 +99,13 @@ class JobLifecycle:
         model_name: str,
         index_type: str,
     ) -> RebuildJobCreation:
-        job_id = f"rebuild-{uuid.uuid4().hex[:12]}"
-        workflow_id = f"rebuild-workflow-{job_id}"
+        job_id, workflow_id = mint_rebuild_job()
         job = Job(id=job_id, type=JobType.REBUILD_INDEX)
         self._db.add(job)
         self._db.commit()
 
         return RebuildJobCreation(
-            job=self._project_job(job),
+            job=project_job(JobRowData.model_validate(job)),
             workflow_id=workflow_id,
             force=force,
             model_name=model_name,
@@ -209,7 +167,7 @@ class JobLifecycle:
         if job is None:
             return False
         job.status = JobStatus.FAILED
-        job.message = error[:2000] if error else error
+        job.message = truncate_error(error, JOB_ERROR_LIMIT)
         job.completed_at = datetime.now(UTC)
         self._db.flush()
         return True
@@ -254,7 +212,7 @@ class JobLifecycle:
         if url is None:
             return False
         url.status = ProcessingStatus.FAILED
-        url.error_message = error[:1000] if error else error
+        url.error_message = truncate_error(error, INGEST_URL_ERROR_LIMIT)
         self._db.flush()
         return True
 
@@ -281,28 +239,3 @@ class JobLifecycle:
             url.error_message = f"Image {image_id} not found while marking ingest URL done"
         self._db.flush()
         return IngestUrlDoneResult(found=True, image_exists=image_exists)
-
-    def _project_job(self, job: Job) -> JobView:
-        return JobView(
-            id=job.id,
-            type=job.type,
-            status=job.status,
-            progress=job.progress,
-            message=job.message,
-            created_at=job.created_at,
-            started_at=job.started_at,
-            completed_at=job.completed_at,
-            result=self._parse_result(job.type, job.result),
-        )
-
-    def _parse_result(self, job_type: JobType, result: str | None) -> JobResultPayload | None:
-        if result is None:
-            return None
-
-        try:
-            if job_type == JobType.REBUILD_INDEX:
-                return RebuildJobResultPayload.model_validate_json(result)
-
-            return IngestJobResultPayload.model_validate_json(result)
-        except ValidationError:
-            return RawJobResultPayload(raw=result)
