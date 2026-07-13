@@ -353,7 +353,7 @@ async def test_source_items_preserve_metadata_paging_and_state_filters(
     assert ingested["resolved_image_id"] == ids["ingested_image"]
     assert ingested["attempt_source_run_id"] == ids["run"]
     assert ingested["media_url"] == "https://media/ingested.jpg"
-    assert ingested["thumbnail_url"] == "https://mock-s3/presigned"
+    assert ingested["thumbnail_url"].startswith("https://assets.mimeme.dev/images/")
     assert ingested["first_seen_at"] is not None
     assert ingested["last_seen_at"] is not None
     assert by_id[ids["deduped"]]["ingest_state"] == "deduped"
@@ -421,7 +421,7 @@ async def test_run_items_preserve_status_thumbnail_paging_and_errors(
     attempt = next(item for item in first.json()["items"] if item["id"] == attempt_id)
     assert attempt["status"] == ProcessingStatus.DONE.value
     assert attempt["duplicate_reason"] is None
-    assert attempt["thumbnail_url"] == "https://mock-s3/presigned"
+    assert attempt["thumbnail_url"].startswith("https://assets.mimeme.dev/images/")
     assert (await async_client.get("/sources/999999/runs/1/items")).status_code == 404
     assert (
         await async_client.get(f"/sources/{source_id}/runs/{foreign_run_id}/items")

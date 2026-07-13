@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from api.auth import ReadonlyRequired
-from api.deps import IndexManagerDep
+from api.deps import IndexManagerDep, MediaUrlResolverDep
 from api.models.errors import error_responses
 from api.models.search import SearchResponse
 from api.rate_limit import SEARCH_LIMIT, limiter
@@ -28,6 +28,7 @@ async def search(
     request: Request,
     _auth: ReadonlyRequired,
     index_manager: IndexManagerDep,
+    media_urls: MediaUrlResolverDep,
     q: Annotated[str, Query(min_length=1, max_length=200, description="Search query")],
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -41,7 +42,7 @@ async def search(
     resolved_mode: Literal["image", "hybrid"] = "hybrid" if mode == "hybrid" else "image"
     try:
         page = await asyncio.to_thread(
-            SearchIndexExecution(index_manager).search,
+            SearchIndexExecution(index_manager, media_urls=media_urls).search,
             query=q,
             limit=limit,
             offset=offset,
@@ -81,11 +82,12 @@ async def find_similar(
     _auth: ReadonlyRequired,
     image_id: int,
     index_manager: IndexManagerDep,
+    media_urls: MediaUrlResolverDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> SearchResponse:
     try:
         page = await asyncio.to_thread(
-            SearchIndexExecution(index_manager).find_similar,
+            SearchIndexExecution(index_manager, media_urls=media_urls).find_similar,
             image_id=image_id,
             limit=limit,
         )

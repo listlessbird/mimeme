@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 from activities.scheduling.reconcile import reconcile
 from activities.scheduling.temporal_store import TemporalScheduleStore
 from api.auth import AdminRequired
-from api.deps import StorageDep, TemporalClientDep
+from api.deps import MediaUrlResolverDep, TemporalClientDep
 from api.models.errors import error_responses
 from api.models.sources import (
     CreateSourceRequest,
@@ -255,13 +255,13 @@ async def retry_source_item(
 async def list_source_items(
     _auth: AdminRequired,
     source_id: int,
-    storage: StorageDep,
+    media_urls: MediaUrlResolverDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
     status: SourceItemIngestState | None = None,
 ) -> SourceItemListResponse:
     try:
-        page = await SourceItemBrowser(storage).list_items(
+        page = await SourceItemBrowser(media_urls).list_items(
             source_id, limit=limit, offset=offset, status=status
         )
     except SourceNotFoundError:
@@ -285,12 +285,12 @@ async def list_run_items(
     _auth: AdminRequired,
     source_id: int,
     run_id: int,
-    storage: StorageDep,
+    media_urls: MediaUrlResolverDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> RunItemListResponse:
     try:
-        page = await SourceItemBrowser(storage).list_run_items(
+        page = await SourceItemBrowser(media_urls).list_run_items(
             source_id, run_id, limit=limit, offset=offset
         )
     except SourceNotFoundError:

@@ -14,22 +14,17 @@ from tests.factories import (
 )
 
 from domain.source_item_browse import SourceItemBrowser
-from shared.config import settings
 from shared.models.orm import ProcessingStatus
+from shared.services.media_url import MediaUrlResolver
 
 pytestmark = pytest.mark.usefixtures(
     "_patch_domain_session_scope", "_patch_async_domain_session_scope"
 )
 
+MEDIA_URLS = MediaUrlResolver("https://assets.mimeme.dev")
+
 
 class FakeApiStorage:
-    def __init__(self) -> None:
-        self.presigned_keys: list[tuple[str, int]] = []
-
-    def presign(self, key: str, expiration: int = 3600) -> str:
-        self.presigned_keys.append((key, expiration))
-        return f"https://fake/{key}"
-
     async def upload_bytes(self, data: bytes | BinaryIO, key: str, content_type: str) -> str:
         return f"etag:{key}"
 
@@ -43,7 +38,7 @@ class FakeApiStorage:
 async def test_list_items_empty_for_source(run_sync_seed, mock_storage: MagicMock) -> None:
     source_id = await run_sync_seed(lambda session: create_ingestion_source(session=session).id)
 
-    page = await SourceItemBrowser(mock_storage).list_items(source_id, limit=20, offset=0)
+    page = await SourceItemBrowser(MEDIA_URLS).list_items(source_id, limit=20, offset=0)
 
     assert page.items == []
     assert page.total == 0
@@ -51,9 +46,7 @@ async def test_list_items_empty_for_source(run_sync_seed, mock_storage: MagicMoc
     assert page.offset == 0
 
 
-async def test_list_items_uses_api_storage_presign_surface(run_sync_seed) -> None:
-    storage = FakeApiStorage()
-
+async def test_list_items_uses_public_media_url(run_sync_seed) -> None:
     def seed(session) -> int:
         source = create_ingestion_source(session=session)
         item = create_source_item(session=session, source=source, source_id=source.id)
@@ -72,17 +65,12 @@ async def test_list_items_uses_api_storage_presign_surface(run_sync_seed) -> Non
 
     source_id = await run_sync_seed(seed)
 
-    page = await SourceItemBrowser(storage).list_items(source_id, limit=20, offset=0)
+    page = await SourceItemBrowser(MEDIA_URLS).list_items(source_id, limit=20, offset=0)
 
-    assert page.items[0].thumbnail_url == "https://fake/images/test/source-item.jpg"
-    assert storage.presigned_keys == [
-        ("images/test/source-item.jpg", settings.s3_presigned_url_expiry)
-    ]
+    assert page.items[0].thumbnail_url == ("https://assets.mimeme.dev/images/test/source-item.jpg")
 
 
-async def test_list_run_items_uses_api_storage_presign_surface(run_sync_seed) -> None:
-    storage = FakeApiStorage()
-
+async def test_list_run_items_uses_public_media_url(run_sync_seed) -> None:
     def seed(session) -> tuple[int, int]:
         source = create_ingestion_source(session=session)
         run = create_source_run(session=session, source=source, source_id=source.id)
@@ -103,9 +91,6 @@ async def test_list_run_items_uses_api_storage_presign_surface(run_sync_seed) ->
 
     source_id, run_id = await run_sync_seed(seed)
 
-    page = await SourceItemBrowser(storage).list_run_items(source_id, run_id, limit=20, offset=0)
+    page = await SourceItemBrowser(MEDIA_URLS).list_run_items(source_id, run_id, limit=20, offset=0)
 
-    assert page.items[0].thumbnail_url == "https://fake/images/test/run-item.jpg"
-    assert storage.presigned_keys == [
-        ("images/test/run-item.jpg", settings.s3_presigned_url_expiry)
-    ]
+    assert page.items[0].thumbnail_url == ("https://assets.mimeme.dev/images/test/run-item.jpg")

@@ -5,6 +5,7 @@ from typing import Annotated, NotRequired, TypedDict
 
 from pydantic import BaseModel, Field
 
+from domain.image_ingest_input import ImageIngestInput
 from domain.source_item_browse import SourceItemIngestState
 from shared.models import ProcessingStatus, SourceRunStatus, SourceRunTrigger
 from shared.models.orm import DuplicateReason
@@ -135,7 +136,7 @@ class SourceItemListResponse(BaseModel):
 
 class RunItemResponse(BaseModel):
     id: int
-    url: str
+    input: ImageIngestInput
     source_item_id: int | None
     external_item_id: str | None
     title: str | None

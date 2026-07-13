@@ -4,6 +4,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
+from domain.image_ingest_input import ImageIngestInput
 from domain.ingestion_browse import IngestOutcome
 from shared.models import IngestStage, ProcessingStatus, SourceRunTrigger
 from shared.models.orm import DuplicateReason
@@ -11,7 +12,7 @@ from shared.models.orm import DuplicateReason
 
 class IngestionRowResponse(BaseModel):
     ingest_url_id: int
-    url: str
+    input: ImageIngestInput
     job_id: str
     source_run_id: int | None
     source_id: int | None

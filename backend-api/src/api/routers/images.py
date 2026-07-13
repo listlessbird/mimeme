@@ -3,7 +3,12 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 
 from api.auth import AdminRequired
-from api.deps import StorageDep, TemporalClientDep
+from api.deps import (
+    ArtifactStorageDep,
+    MediaStorageDep,
+    MediaUrlResolverDep,
+    TemporalClientDep,
+)
 from api.models.errors import error_responses
 from api.models.images import (
     ImageIngestRequest,
@@ -14,6 +19,7 @@ from api.models.images import (
 )
 from api.rate_limit import ADMIN_LIMIT, limiter
 from domain.image_catalog import ImageCatalog, ImageCatalogNotFoundError
+from domain.image_ingest_input import ImageIngestInput, RemoteImageUrlInput
 from domain.image_upload import ImageUploadStager
 from domain.job_store import ApiJobStore
 from shared.config import settings
@@ -25,14 +31,14 @@ router = APIRouter(prefix="/images", tags=["Images"], responses=error_responses(
 async def _launch_ingest(
     temporal: TemporalClientDep,
     *,
-    urls: list[str],
+    inputs: list[ImageIngestInput],
     dataset: str | None,
     tags: list[str],
     callback_url: str | None,
 ) -> ImageIngestResponse:
     store = ApiJobStore()
     job = await store.create_ingest_job(
-        urls=urls, dataset=dataset, tags=tags, callback_url=callback_url
+        inputs=inputs, dataset=dataset, tags=tags, callback_url=callback_url
     )
 
     await temporal.start_workflow(
@@ -66,7 +72,7 @@ async def ingest_images(
 ) -> ImageIngestResponse:
     return await _launch_ingest(
         temporal,
-        urls=[str(url) for url in ingest_request.urls],
+        inputs=[RemoteImageUrlInput(url=str(url)) for url in ingest_request.urls],
         dataset=ingest_request.dataset,
         tags=ingest_request.tags,
         callback_url=str(ingest_request.callback_url) if ingest_request.callback_url else None,
@@ -78,7 +84,7 @@ async def ingest_images(
 async def upload_image(
     request: Request,
     _auth: AdminRequired,
-    storage: StorageDep,
+    artifact_storage: ArtifactStorageDep,
     temporal: TemporalClientDep,
     file: Annotated[UploadFile, File()],
     dataset: Annotated[str | None, Form()] = None,
@@ -88,13 +94,13 @@ async def upload_image(
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
-    staged = await ImageUploadStager(storage).stage(
+    staged = await ImageUploadStager(artifact_storage).stage(
         content=content, filename=file.filename, content_type=file.content_type
     )
 
     return await _launch_ingest(
         temporal,
-        urls=[staged.url],
+        inputs=[staged],
         dataset=dataset,
         tags=tags or [],
         callback_url=None,
@@ -106,14 +112,16 @@ async def upload_image(
 async def list_images(
     request: Request,
     _auth: AdminRequired,
-    storage: StorageDep,
+    media_storage: MediaStorageDep,
+    artifact_storage: ArtifactStorageDep,
+    media_urls: MediaUrlResolverDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
     status: Annotated[ImageStatus | None, Query()] = None,
     dataset: Annotated[str | None, Query()] = None,
     sort: Annotated[Literal["newest", "oldest"], Query()] = "newest",
 ) -> ImageListResponse:
-    page = await ImageCatalog(storage).list_images(
+    page = await ImageCatalog(media_storage, artifact_storage, media_urls).list_images(
         limit=limit,
         offset=offset,
         status=status.value if status else None,
@@ -140,10 +148,12 @@ async def list_images(
 async def get_image(
     _auth: AdminRequired,
     image_id: int,
-    storage: StorageDep,
+    media_storage: MediaStorageDep,
+    artifact_storage: ArtifactStorageDep,
+    media_urls: MediaUrlResolverDep,
 ) -> ImageResponse:
     try:
-        image = await ImageCatalog(storage).get_image(image_id)
+        image = await ImageCatalog(media_storage, artifact_storage, media_urls).get_image(image_id)
     except ImageCatalogNotFoundError:
         raise HTTPException(status_code=404, detail="Image not found")
     payload = image.model_dump()
@@ -155,9 +165,11 @@ async def get_image(
 async def delete_image(
     _auth: AdminRequired,
     image_id: int,
-    storage: StorageDep,
+    media_storage: MediaStorageDep,
+    artifact_storage: ArtifactStorageDep,
+    media_urls: MediaUrlResolverDep,
 ) -> None:
     try:
-        await ImageCatalog(storage).delete_image(image_id)
+        await ImageCatalog(media_storage, artifact_storage, media_urls).delete_image(image_id)
     except ImageCatalogNotFoundError:
         raise HTTPException(status_code=404, detail="Image not found")

@@ -7,9 +7,9 @@ from typing import Any
 from pydantic import BaseModel
 from sqlalchemy import ColumnElement, and_, func, or_, select
 
+from domain.image_ingest_input import ImageIngestInput, restore_image_ingest_input
 from domain.source_item_browse import preview_from_metadata, resolve_thumbnail_url
 from shared import db
-from shared.config import settings
 from shared.models.orm import (
     DuplicateReason,
     Image,
@@ -21,7 +21,7 @@ from shared.models.orm import (
     SourceRun,
     SourceRunTrigger,
 )
-from shared.services.api_storage import ApiStorage
+from shared.services.media_url import MediaUrlResolver
 
 DEFAULT_LIVE_WINDOW = datetime.timedelta(minutes=5)
 
@@ -46,7 +46,7 @@ class IngestOutcome(StrEnum):
 
 class IngestionRow(BaseModel, frozen=True):
     ingest_url_id: int
-    url: str
+    input: ImageIngestInput
     job_id: str
     source_run_id: int | None
     source_id: int | None
@@ -74,7 +74,7 @@ class IngestionPage(BaseModel, frozen=True):
 
 class IngestionDetail(BaseModel, frozen=True):
     ingest_url_id: int
-    url: str
+    input: ImageIngestInput
     job_id: str
     source_run_id: int | None
     source_id: int | None
@@ -109,8 +109,8 @@ _DEDUPED = and_(
 
 
 class IngestionBrowser:
-    def __init__(self, storage: ApiStorage) -> None:
-        self.storage = storage
+    def __init__(self, media_urls: MediaUrlResolver) -> None:
+        self.media_urls = media_urls
 
     async def list_attempts(
         self,
@@ -305,12 +305,13 @@ class IngestionBrowser:
         source_dataset: str | None,
         raw_metadata: dict[str, Any] | None,
     ) -> IngestionRow:
-        def presign(key: str) -> str:
-            return self.storage.presign(key, expiration=settings.s3_presigned_url_expiry)
-
         return IngestionRow(
             ingest_url_id=attempt.id,
-            url=attempt.url,
+            input=restore_image_ingest_input(
+                kind=attempt.input_kind,
+                url=attempt.url,
+                artifact_key=attempt.artifact_key,
+            ),
             job_id=attempt.job_id,
             source_run_id=attempt.source_run_id,
             source_id=attempt.source_id,
@@ -326,7 +327,7 @@ class IngestionBrowser:
             thumbnail_url=resolve_thumbnail_url(
                 image_s3_key=image_s3_key,
                 preview_url=preview_from_metadata(raw_metadata),
-                presign=presign,
+                media_urls=self.media_urls,
             ),
             error_message=attempt.error_message,
             created_at=attempt.created_at,

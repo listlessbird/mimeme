@@ -71,7 +71,8 @@ async def test_list_row_carries_grouping_and_derived_fields(
     assert row["outcome"] == "ingested"
     assert row["resolved_image_id"] == image_id
     assert row["dataset"] == "memes"
-    assert row["thumbnail_url"] == "https://mock-s3/presigned"
+    assert row["thumbnail_url"].startswith("https://assets.mimeme.dev/images/")
+    assert "?" not in row["thumbnail_url"]
 
 
 async def test_list_derives_manual_and_deduped_outcomes(

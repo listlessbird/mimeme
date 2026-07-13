@@ -15,20 +15,20 @@ from tests.factories import (
 
 from domain.image_catalog import ImageCatalog, ImageCatalogNotFoundError
 from shared.models.orm import Annotation, Artifact, Image, Processing, ProcessingStatus
+from shared.services.media_url import MediaUrlResolver
 
 pytestmark = pytest.mark.usefixtures(
     "_patch_domain_session_scope", "_patch_async_domain_session_scope"
 )
 
+MEDIA_URLS = MediaUrlResolver("https://assets.mimeme.dev")
+
+
+def catalog(media_storage, artifact_storage=None) -> ImageCatalog:
+    return ImageCatalog(media_storage, artifact_storage or media_storage, MEDIA_URLS)
+
 
 class FakeApiStorage:
-    def __init__(self) -> None:
-        self.presigned_keys: list[tuple[str, int]] = []
-
-    def presign(self, key: str, expiration: int = 3600) -> str:
-        self.presigned_keys.append((key, expiration))
-        return f"https://fake/{key}"
-
     async def upload_bytes(self, data: bytes | BinaryIO, key: str, content_type: str) -> str:
         return f"etag:{key}"
 
@@ -40,7 +40,7 @@ class FakeApiStorage:
 
 
 async def test_list_images_empty(mock_storage: MagicMock) -> None:
-    page = await ImageCatalog(mock_storage).list_images(limit=20, offset=0)
+    page = await catalog(mock_storage).list_images(limit=20, offset=0)
 
     assert page.images == []
     assert page.total == 0
@@ -50,7 +50,7 @@ async def test_list_images_empty(mock_storage: MagicMock) -> None:
 async def test_list_images_with_pagination(run_sync_seed, mock_storage: MagicMock) -> None:
     await run_sync_seed(lambda session: [create_image(session=session) for _ in range(3)])
 
-    page = await ImageCatalog(mock_storage).list_images(limit=2, offset=0)
+    page = await catalog(mock_storage).list_images(limit=2, offset=0)
 
     assert len(page.images) == 2
     assert page.total == 3
@@ -64,7 +64,7 @@ async def test_list_images_filters_by_dataset(run_sync_seed, mock_storage: Magic
 
     await run_sync_seed(seed)
 
-    page = await ImageCatalog(mock_storage).list_images(
+    page = await catalog(mock_storage).list_images(
         limit=20,
         offset=0,
         dataset="cats",
@@ -82,7 +82,7 @@ async def test_list_images_sorts_oldest(run_sync_seed, mock_storage: MagicMock) 
 
     first_id, second_id = await run_sync_seed(seed)
 
-    page = await ImageCatalog(mock_storage).list_images(
+    page = await catalog(mock_storage).list_images(
         limit=20,
         offset=0,
         sort="oldest",
@@ -113,7 +113,7 @@ async def test_list_images_projects_status(
 
     await run_sync_seed(seed)
 
-    page = await ImageCatalog(mock_storage).list_images(limit=20, offset=0)
+    page = await catalog(mock_storage).list_images(limit=20, offset=0)
 
     assert page.images[0].status == expected_status
 
@@ -131,7 +131,7 @@ async def test_list_images_filters_by_projected_status(
 
     failed_id = await run_sync_seed(seed)
 
-    page = await ImageCatalog(mock_storage).list_images(
+    page = await catalog(mock_storage).list_images(
         limit=20,
         offset=0,
         status="failed",
@@ -149,7 +149,7 @@ async def test_get_image_with_annotation(run_sync_seed, mock_storage: MagicMock)
 
     image_id = await run_sync_seed(seed)
 
-    result = await ImageCatalog(mock_storage).get_image(image_id)
+    result = await catalog(mock_storage).get_image(image_id)
 
     assert result.id == image_id
     assert result.caption == "A cat"
@@ -159,7 +159,7 @@ async def test_get_image_with_annotation(run_sync_seed, mock_storage: MagicMock)
 async def test_get_image_without_annotation(run_sync_seed, mock_storage: MagicMock) -> None:
     image_id = await run_sync_seed(lambda session: create_image(session=session).id)
 
-    result = await ImageCatalog(mock_storage).get_image(image_id)
+    result = await catalog(mock_storage).get_image(image_id)
 
     assert result.id == image_id
     assert result.caption is None
@@ -168,10 +168,10 @@ async def test_get_image_without_annotation(run_sync_seed, mock_storage: MagicMo
 
 async def test_get_image_missing(mock_storage: MagicMock) -> None:
     with pytest.raises(ImageCatalogNotFoundError):
-        await ImageCatalog(mock_storage).get_image(999999)
+        await catalog(mock_storage).get_image(999999)
 
 
-async def test_presigned_url_attached_when_storage_key_exists(
+async def test_public_media_url_attached_when_storage_key_exists(
     run_sync_seed,
     mock_storage: MagicMock,
 ) -> None:
@@ -179,30 +179,30 @@ async def test_presigned_url_attached_when_storage_key_exists(
         lambda session: create_image(session=session, s3_key="images/test/example.jpg").id
     )
 
-    result = await ImageCatalog(mock_storage).get_image(image_id)
+    result = await catalog(mock_storage).get_image(image_id)
 
-    assert result.url == "https://mock-s3/presigned"
-    mock_storage.presign.assert_called_once()
+    assert result.url == "https://assets.mimeme.dev/images/test/example.jpg"
 
 
-async def test_image_catalog_uses_api_storage_presign_surface(run_sync_seed) -> None:
+async def test_image_catalog_encodes_public_media_key(run_sync_seed) -> None:
     storage = FakeApiStorage()
     image_id = await run_sync_seed(
-        lambda session: create_image(session=session, s3_key="images/test/example.jpg").id
+        lambda session: create_image(session=session, s3_key="images/test/my example.jpg").id
     )
 
-    result = await ImageCatalog(storage).get_image(image_id)
+    result = await catalog(storage).get_image(image_id)
 
-    assert result.url == "https://fake/images/test/example.jpg"
-    assert storage.presigned_keys == [("images/test/example.jpg", 3600)]
+    assert result.url == "https://assets.mimeme.dev/images/test/my%20example.jpg"
 
 
 async def test_delete_image_removes_database_rows_and_storage_artifacts(
     async_db_session: AsyncSession,
     run_sync_seed,
 ) -> None:
-    storage = MagicMock()
-    storage.delete = AsyncMock()
+    media_storage = MagicMock()
+    media_storage.delete = AsyncMock()
+    artifact_storage = MagicMock()
+    artifact_storage.delete = AsyncMock()
 
     def seed(session) -> int:
         image = create_image(session=session, s3_key="images/test/example.jpg")
@@ -217,7 +217,7 @@ async def test_delete_image_removes_database_rows_and_storage_artifacts(
 
     image_id = await run_sync_seed(seed)
 
-    await ImageCatalog(storage).delete_image(image_id)
+    await catalog(media_storage, artifact_storage).delete_image(image_id)
 
     assert await async_db_session.get(Image, image_id) is None
     assert (
@@ -229,14 +229,14 @@ async def test_delete_image_removes_database_rows_and_storage_artifacts(
     assert (
         await async_db_session.scalar(select(Artifact).where(Artifact.image_id == image_id))
     ) is None
-    assert storage.delete.await_args_list[0].args == ("images/test/example.jpg",)
-    assert storage.delete.await_args_list[1].args == ("embeddings/test/example.npy",)
-    assert storage.delete.await_args_list[2].args == ("embeddings/test/example_text.npy",)
+    media_storage.delete.assert_awaited_once_with("images/test/example.jpg")
+    assert artifact_storage.delete.await_args_list[0].args == ("embeddings/test/example.npy",)
+    assert artifact_storage.delete.await_args_list[1].args == ("embeddings/test/example_text.npy",)
 
 
 async def test_delete_image_missing(mock_storage: MagicMock) -> None:
     with pytest.raises(ImageCatalogNotFoundError):
-        await ImageCatalog(mock_storage).delete_image(999999)
+        await catalog(mock_storage).delete_image(999999)
 
 
 async def test_delete_image_storage_failure_does_not_block_database_deletion(
@@ -249,6 +249,6 @@ async def test_delete_image_storage_failure_does_not_block_database_deletion(
         lambda session: create_image(session=session, s3_key="images/test/example.jpg").id
     )
 
-    await ImageCatalog(storage).delete_image(image_id)
+    await catalog(storage).delete_image(image_id)
 
     assert await async_db_session.get(Image, image_id) is None

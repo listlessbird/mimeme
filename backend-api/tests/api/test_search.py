@@ -20,7 +20,7 @@ def _make_search_result(
     id: int = 1,
     sha256: str = "abc123",
     score: float = 0.95,
-    url: str | None = "https://mock-s3/presigned",
+    url: str | None = "https://assets.mimeme.dev/images/test/meme.jpg",
     caption: str | None = "A meme",
     ocr_text: str | None = None,
     width: int | None = 800,
