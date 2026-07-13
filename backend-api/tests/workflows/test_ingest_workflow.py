@@ -34,6 +34,7 @@ from activities.workflow_state.models import (
     SaveEmbeddingInfoInput,
     UpdateJobProgressInput,
 )
+from domain.image_ingest_input import RemoteImageUrlInput
 from workflows.ingest import IngestWorkflow
 from workflows.models import IngestWorkflowInput
 
@@ -49,8 +50,8 @@ async def mock_ingest_initialize(job_id: str) -> IngestInitOutput:
     _activity_calls.append("ingest_initialize_activity")
     return IngestInitOutput(
         urls=[
-            IngestUrlItem(id=1, url="https://example.com/img1.jpg"),
-            IngestUrlItem(id=2, url="https://example.com/img2.png"),
+            IngestUrlItem(id=1, input=RemoteImageUrlInput(url="https://example.com/img1.jpg")),
+            IngestUrlItem(id=2, input=RemoteImageUrlInput(url="https://example.com/img2.png")),
         ]
     )
 

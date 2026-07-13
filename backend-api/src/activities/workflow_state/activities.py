@@ -43,7 +43,7 @@ def ingest_initialize_activity(job_id: str) -> IngestInitOutput:
         with session_scope() as session:
             init = JobLifecycle(session).initialize_ingest(job_id)
             output = IngestInitOutput(
-                urls=[IngestUrlItem(id=url.id, url=url.url) for url in init.urls]
+                urls=[IngestUrlItem(id=row.id, input=row.input) for row in init.urls]
             )
         emit_activity_event(
             log=log,

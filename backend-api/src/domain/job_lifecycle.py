@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from domain.image_ingest_input import ImageIngestInput, restore_image_ingest_input
 from domain.job_rules import (
     INGEST_URL_ERROR_LIMIT,
     JOB_ERROR_LIMIT,
@@ -42,7 +43,7 @@ class SourceIngestItem(BaseModel, frozen=True):
 
 class IngestUrlRef(BaseModel, frozen=True):
     id: int
-    url: str
+    input: ImageIngestInput
 
 
 class IngestInitialization(BaseModel, frozen=True):
@@ -74,6 +75,7 @@ class JobLifecycle:
             self._db.add(
                 IngestURL(
                     job_id=job_id,
+                    input_kind="remote_image_url",
                     url=item.url,
                     source_id=item.source_id,
                     source_run_id=item.source_run_id,
@@ -122,7 +124,19 @@ class JobLifecycle:
     def initialize_ingest(self, job_id: str) -> IngestInitialization:
         self.start_job(job_id)
         urls = self._db.scalars(select(IngestURL).where(IngestURL.job_id == job_id)).all()
-        return IngestInitialization(urls=[IngestUrlRef(id=url.id, url=url.url) for url in urls])
+        return IngestInitialization(
+            urls=[
+                IngestUrlRef(
+                    id=row.id,
+                    input=restore_image_ingest_input(
+                        kind=row.input_kind,
+                        url=row.url,
+                        artifact_key=row.artifact_key,
+                    ),
+                )
+                for row in urls
+            ]
+        )
 
     def start_job(self, job_id: str) -> None:
         job = self._db.get(Job, job_id)

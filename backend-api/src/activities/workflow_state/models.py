@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from domain.image_ingest_input import ImageIngestInput
 from shared.models import DuplicateReason, IngestStage
 
 
 class IngestUrlItem(BaseModel):
     id: int
-    url: str
+    input: ImageIngestInput
 
 
 class RecordIngestStageInput(BaseModel):

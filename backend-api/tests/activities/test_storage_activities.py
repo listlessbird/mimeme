@@ -24,6 +24,7 @@ from activities.storage.models import (
     DownloadImageInput,
     ProcessImageInput,
 )
+from domain.image_ingest_input import RemoteImageUrlInput, StagedUploadInput
 from shared.models.orm import (
     Annotation,
     Artifact,
@@ -50,6 +51,28 @@ def activity_env() -> ActivityEnvironment:
 
 
 class TestDownloadImageActivity:
+    async def test_staged_upload_is_downloaded_through_artifact_storage(
+        self, activity_env: ActivityEnvironment
+    ) -> None:
+        artifact_storage = MagicMock()
+        artifact_storage.download_bytes.return_value = b"private-image"
+        inp = DownloadImageInput(
+            input=StagedUploadInput(artifact_key="uploads/staging/private.jpg"),
+            job_id="test-job",
+            ingest_url_id=10,
+        )
+
+        with patch(
+            "activities.storage.activities.get_artifact_storage_service",
+            return_value=artifact_storage,
+        ):
+            result = activity_env.run(download_image_activity, inp)
+
+        assert result.success is True
+        assert Path(result.local_path).read_bytes() == b"private-image"
+        artifact_storage.download_bytes.assert_called_once_with("uploads/staging/private.jpg")
+        Path(result.local_path).unlink(missing_ok=True)
+
     async def test_successful_download(self, activity_env: ActivityEnvironment) -> None:
         """A successful HTTP download returns a local temp file path."""
         fake_response = MagicMock()
@@ -64,7 +87,7 @@ class TestDownloadImageActivity:
         fake_client.__exit__ = MagicMock(return_value=False)
 
         inp = DownloadImageInput(
-            url="https://example.com/cat.jpg",
+            input=RemoteImageUrlInput(url="https://example.com/cat.jpg"),
             job_id="test-job",
             ingest_url_id=1,
         )
@@ -94,7 +117,7 @@ class TestDownloadImageActivity:
         fake_client.__exit__ = MagicMock(return_value=False)
 
         inp = DownloadImageInput(
-            url="https://example.com/page.html",
+            input=RemoteImageUrlInput(url="https://example.com/page.html"),
             job_id="test-job",
             ingest_url_id=2,
         )
@@ -125,7 +148,7 @@ class TestDownloadImageActivity:
         fake_client.__exit__ = MagicMock(return_value=False)
 
         inp = DownloadImageInput(
-            url="https://example.com/missing.jpg",
+            input=RemoteImageUrlInput(url="https://example.com/missing.jpg"),
             job_id="test-job",
             ingest_url_id=3,
         )
@@ -153,7 +176,7 @@ class TestDownloadImageActivity:
         fake_client.__exit__ = MagicMock(return_value=False)
 
         inp = DownloadImageInput(
-            url="https://example.com/error.jpg",
+            input=RemoteImageUrlInput(url="https://example.com/error.jpg"),
             job_id="test-job",
             ingest_url_id=4,
         )
@@ -176,7 +199,7 @@ class TestDownloadImageActivity:
         fake_client.__exit__ = MagicMock(return_value=False)
 
         inp = DownloadImageInput(
-            url="https://unreachable.example.com/img.jpg",
+            input=RemoteImageUrlInput(url="https://unreachable.example.com/img.jpg"),
             job_id="test-job",
             ingest_url_id=5,
         )
@@ -217,7 +240,9 @@ class TestProcessImageActivity:
         )
 
         with (
-            patch("activities.storage.activities.get_storage_service", return_value=mock_storage),
+            patch(
+                "activities.storage.activities.get_media_storage_service", return_value=mock_storage
+            ),
             patch(
                 "activities.storage.activities.compute_sha256", return_value="unique-sha256-hash"
             ),
@@ -264,7 +289,9 @@ class TestProcessImageActivity:
         )
 
         with (
-            patch("activities.storage.activities.get_storage_service", return_value=mock_storage),
+            patch(
+                "activities.storage.activities.get_media_storage_service", return_value=mock_storage
+            ),
             patch("activities.storage.activities.compute_sha256", return_value="existing-hash"),
         ):
             result = activity_env.run(process_image_activity, inp)
@@ -314,7 +341,9 @@ class TestProcessImageActivity:
         )
 
         with (
-            patch("activities.storage.activities.get_storage_service", return_value=mock_storage),
+            patch(
+                "activities.storage.activities.get_media_storage_service", return_value=mock_storage
+            ),
             patch("activities.storage.activities.compute_sha256", return_value="processed-hash"),
         ):
             result = activity_env.run(process_image_activity, inp)

@@ -6,6 +6,7 @@ from typing import Any
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     Float,
     ForeignKey,
@@ -62,6 +63,11 @@ class IngestStage(StrEnum):
     DEDUPED = "DEDUPED"
 
 
+class IngestInputKind(StrEnum):
+    REMOTE_IMAGE_URL = "remote_image_url"
+    STAGED_UPLOAD = "staged_upload"
+
+
 class SourceType(StrEnum):
     API = "api"
     # `html` (scraping) is reserved for a future Adapter and intentionally not wired.
@@ -109,12 +115,25 @@ class Job(Base):
 
 class IngestURL(Base):
     __tablename__ = "ingest_urls"
+    __table_args__ = (
+        CheckConstraint(
+            "(input_kind = 'remote_image_url' AND url IS NOT NULL AND artifact_key IS NULL) OR "
+            "(input_kind = 'staged_upload' AND url IS NULL AND artifact_key IS NOT NULL)",
+            name="ck_ingest_urls_input_payload",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     job_id: Mapped[str] = mapped_column(
         String(64), ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    url: Mapped[str] = mapped_column(Text, nullable=False)
+    input_kind: Mapped[IngestInputKind] = mapped_column(
+        SAEnum(IngestInputKind, values_callable=lambda enum: [member.value for member in enum]),
+        default=IngestInputKind.REMOTE_IMAGE_URL,
+        nullable=False,
+    )
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    artifact_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[ProcessingStatus] = mapped_column(
         SAEnum(ProcessingStatus), default=ProcessingStatus.PENDING, nullable=False
     )

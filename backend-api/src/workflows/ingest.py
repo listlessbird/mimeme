@@ -8,8 +8,13 @@ from temporalio.common import RetryPolicy
 with workflow.unsafe.imports_passed_through():
     from activities.embedding.activity import embed_batch_activity
     from activities.embedding.models import EmbedBatchInput, EmbedBatchOutput, EmbedImageInput
-    from activities.storage.activities import download_image_activity, process_image_activity
+    from activities.storage.activities import (
+        cleanup_staged_upload_activity,
+        download_image_activity,
+        process_image_activity,
+    )
     from activities.storage.models import (
+        CleanupStagedUploadInput,
         DownloadImageInput,
         DownloadImageOutput,
         ProcessImageInput,
@@ -37,6 +42,7 @@ with workflow.unsafe.imports_passed_through():
         SaveEmbeddingInfoInput,
         UpdateJobProgressInput,
     )
+    from domain.image_ingest_input import ImageIngestInput, StagedUploadInput
     from domain.ingest_policy import IngestPolicy
     from shared.models import IngestStage
     from workflows.models import IngestWorkflowInput, IngestWorkflowOutput
@@ -88,8 +94,8 @@ class IngestWorkflow:
                 retry_policy=RETRY_DB,
             )
 
-            url_data = [(u.id, u.url) for u in init.urls]
-            policy = IngestPolicy(total=len(url_data))
+            ingest_data = [(row.id, row.input) for row in init.urls]
+            policy = IngestPolicy(total=len(ingest_data))
             total = policy.total
 
             async def record_stage(ingest_url_id: int, stage: IngestStage) -> None:
@@ -100,7 +106,17 @@ class IngestWorkflow:
                     retry_policy=RETRY_DB,
                 )
 
-            for ingest_url_id, url in url_data:
+            async def cleanup_staged(ingest_input: ImageIngestInput) -> None:
+                if not isinstance(ingest_input, StagedUploadInput):
+                    return
+                await workflow.execute_activity(
+                    cleanup_staged_upload_activity,
+                    CleanupStagedUploadInput(artifact_key=ingest_input.artifact_key),
+                    start_to_close_timeout=timedelta(minutes=1),
+                    retry_policy=RETRY_NETWORK,
+                )
+
+            for ingest_url_id, ingest_input in ingest_data:
                 try:
                     last_step = "download"
                     workflow.logger.info(
@@ -116,7 +132,7 @@ class IngestWorkflow:
                     download_result: DownloadImageOutput = await workflow.execute_activity(
                         download_image_activity,
                         DownloadImageInput(
-                            url=url,
+                            input=ingest_input,
                             job_id=input.job_id,
                             ingest_url_id=ingest_url_id,
                         ),
@@ -265,6 +281,7 @@ class IngestWorkflow:
                                 start_to_close_timeout=timedelta(minutes=1),
                                 retry_policy=RETRY_DB,
                             )
+                            await cleanup_staged(ingest_input)
                         else:
                             last_step = "annotate_image"
                             workflow.logger.info(
@@ -391,6 +408,7 @@ class IngestWorkflow:
                                 retry_policy=RETRY_DB,
                             )
                             await record_stage(ingest_url_id, IngestStage.COMPLETE)
+                            await cleanup_staged(ingest_input)
                             policy.record_success(process_result.image_id)
 
                 except Exception as e:

@@ -62,7 +62,7 @@ def _run(
     storage.build_image_key.return_value = "images/test/new.jpg"
     storage.upload_file.return_value = "etag"
     with (
-        patch("activities.storage.activities.get_storage_service", return_value=storage),
+        patch("activities.storage.activities.get_media_storage_service", return_value=storage),
         patch("activities.storage.activities.get_phash_index", return_value=index),
         patch("activities.storage.activities.compute_sha256", return_value=sha256),
         patch("activities.storage.activities.compute_phash", return_value=phash),

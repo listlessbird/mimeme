@@ -12,6 +12,7 @@ from activities.ingestion import (
     start_source_run_activity,
 )
 from activities.storage import (
+    cleanup_staged_upload_activity,
     cleanup_temp_file_activity,
     download_image_activity,
     process_image_activity,
@@ -39,6 +40,7 @@ ACTIVITIES = [
     finalize_source_run_activity,
     fail_source_run_activity,
     download_image_activity,
+    cleanup_staged_upload_activity,
     process_image_activity,
     cleanup_temp_file_activity,
     annotate_image_activity,
@@ -69,6 +71,7 @@ __all__ = [
     "finalize_source_run_activity",
     "fail_source_run_activity",
     "download_image_activity",
+    "cleanup_staged_upload_activity",
     "process_image_activity",
     "cleanup_temp_file_activity",
     "annotate_image_activity",

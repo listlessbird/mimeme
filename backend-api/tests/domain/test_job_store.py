@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests.factories import create_job
 
+from domain.image_ingest_input import RemoteImageUrlInput
 from domain.job_rules import (
     IngestJobResultPayload,
     JobLifecycleInvalidStateError,
@@ -24,10 +25,10 @@ async def test_create_ingest_job_deduplicates_urls_and_preserves_order(
     async_db_session: AsyncSession,
 ) -> None:
     result = await ApiJobStore().create_ingest_job(
-        urls=[
-            "https://example.com/1.jpg",
-            "https://example.com/1.jpg",
-            "https://example.com/2.jpg",
+        inputs=[
+            RemoteImageUrlInput(url="https://example.com/1.jpg"),
+            RemoteImageUrlInput(url="https://example.com/1.jpg"),
+            RemoteImageUrlInput(url="https://example.com/2.jpg"),
         ],
         dataset="memes",
         tags=["funny"],
@@ -65,7 +66,7 @@ async def test_create_rebuild_job_returns_pending_rebuild_view() -> None:
 async def test_create_ingest_job_records_workflow_id() -> None:
     store = ApiJobStore()
     result = await store.create_ingest_job(
-        urls=["https://example.com/1.jpg"],
+        inputs=[RemoteImageUrlInput(url="https://example.com/1.jpg")],
         dataset=None,
         tags=[],
         callback_url=None,
