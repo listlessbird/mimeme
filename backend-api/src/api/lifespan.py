@@ -11,7 +11,7 @@ import structlog
 from fastapi import FastAPI
 from sqlalchemy import select
 
-from api.deps import get_index_manager, get_storage_probe
+from api.deps import get_index_manager
 from api.services.text_encoder import SearchTextEncoder
 from domain.search_index import (
     SearchEncoderIncompatibleError,
@@ -21,6 +21,7 @@ from shared.config import settings
 from shared.db import get_db
 from shared.logging import setup_logging
 from shared.models import IndexBuild
+from shared.services.storage import get_artifact_storage_service, get_media_storage_service
 
 
 def _startup_env_snapshot() -> dict[str, object]:
@@ -41,9 +42,12 @@ def _startup_env_snapshot() -> dict[str, object]:
         "temporal_host": settings.temporal_host,
         "temporal_namespace": settings.temporal_namespace,
         "temporal_task_queue": settings.temporal_task_queue,
-        "s3_endpoint_url": settings.s3_endpoint_url,
-        "s3_region": settings.s3_region,
-        "s3_bucket": settings.s3_bucket,
+        "media_s3_endpoint_url": settings.media_s3_endpoint_url,
+        "media_s3_region": settings.media_s3_region,
+        "media_s3_bucket": settings.media_s3_bucket,
+        "artifact_s3_endpoint_url": settings.artifact_s3_endpoint_url,
+        "artifact_s3_region": settings.artifact_s3_region,
+        "artifact_s3_bucket": settings.artifact_s3_bucket,
     }
 
 
@@ -96,12 +100,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     settings.index_cache_dir.mkdir(parents=True, exist_ok=True)
 
-    storage = get_storage_probe()
-    try:
-        storage.ensure_bucket_exists()
-        log.info("s3_bucket_ready", bucket=storage.bucket)
-    except Exception as e:
-        log.warning("s3_bucket_init_failed", error=str(e))
+    for role, storage in (
+        ("media", get_media_storage_service()),
+        ("artifact", get_artifact_storage_service()),
+    ):
+        try:
+            if storage.bucket_exists():
+                log.info("storage_bucket_ready", role=role, bucket=storage.bucket)
+            else:
+                log.warning("storage_bucket_unavailable", role=role, bucket=storage.bucket)
+        except Exception as e:
+            log.warning("storage_bucket_check_failed", role=role, error=str(e))
 
     index_manager = get_index_manager()
     db_active_version: str | None = None

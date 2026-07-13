@@ -11,7 +11,7 @@ from api.models.errors import error_responses
 from api.models.health import HealthResponse
 from shared.db import get_async_engine
 from shared.services.api_storage import AsyncApiStorage
-from shared.services.storage import get_storage_service
+from shared.services.storage import S3Config, get_artifact_s3_config, get_media_s3_config
 
 router = APIRouter(tags=["Health"], responses=error_responses(429, 500))
 log = structlog.get_logger()
@@ -28,11 +28,11 @@ async def _check_postgres() -> bool:
         return False
 
 
-async def _check_s3() -> bool:
+async def _check_storage(role: str, config: S3Config) -> bool:
     try:
-        return await AsyncApiStorage(get_storage_service()).bucket_exists()
+        return await AsyncApiStorage(config).bucket_exists()
     except Exception as e:
-        log.warning("healthcheck_s3_failed", error=str(e))
+        log.warning("healthcheck_storage_failed", role=role, error=str(e))
         return False
 
 
@@ -52,17 +52,22 @@ async def _check_temporal() -> bool:
     responses={503: {"model": HealthResponse, "description": "Dependency unavailable"}},
 )
 async def check_readiness(response: Response) -> HealthResponse:
-    pg_ok, s3_ok = await asyncio.gather(_check_postgres(), _check_s3())
+    pg_ok, media_ok, artifact_ok = await asyncio.gather(
+        _check_postgres(),
+        _check_storage("media", get_media_s3_config()),
+        _check_storage("artifact", get_artifact_s3_config()),
+    )
 
     temporal_ok = await _check_temporal()
 
-    healthy = pg_ok and s3_ok and temporal_ok
+    healthy = pg_ok and media_ok and artifact_ok and temporal_ok
 
     if not healthy:
         log.warning(
             "healthcheck_degraded",
             postgres=pg_ok,
-            s3=s3_ok,
+            media_storage=media_ok,
+            artifact_storage=artifact_ok,
             temporal=temporal_ok,
         )
 

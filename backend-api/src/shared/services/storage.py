@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import io
+import os
 import tempfile
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING, BinaryIO, ClassVar, cast
+from typing import TYPE_CHECKING, BinaryIO, ClassVar
 
 import boto3
 import numpy as np
@@ -13,7 +14,7 @@ from botocore.client import ClientError
 from botocore.config import Config as BotoConfig
 from pydantic import BaseModel
 
-from shared.config import settings
+from shared.config import Settings, settings
 
 if TYPE_CHECKING:
     from types_boto3_s3 import S3Client
@@ -30,34 +31,25 @@ class S3Config(BaseModel):
     model_config = {"frozen": True}
 
 
-def get_s3_config() -> S3Config:
+def get_media_s3_config(app_settings: Settings = settings) -> S3Config:
     return S3Config(
-        endpoint_url=settings.s3_endpoint_url,
-        region=settings.s3_region,
-        access_key=settings.s3_access_key_id,
-        secret_key=settings.s3_secret_access_key,
-        bucket=settings.s3_bucket,
-        force_path_style=settings.s3_force_path_style,
+        endpoint_url=app_settings.media_s3_endpoint_url,
+        region=app_settings.media_s3_region,
+        access_key=app_settings.media_s3_access_key_id,
+        secret_key=app_settings.media_s3_secret_access_key,
+        bucket=app_settings.media_s3_bucket,
+        force_path_style=app_settings.media_s3_force_path_style,
     )
 
 
-@lru_cache(maxsize=1)
-def get_s3_client() -> S3Client:
-    config = get_s3_config()
-
-    session = boto3.Session(
-        aws_access_key_id=config.access_key,
-        aws_secret_access_key=config.secret_key,
-        region_name=config.region,
-    )
-
-    return session.client(
-        "s3",
-        endpoint_url=config.endpoint_url,
-        config=BotoConfig(
-            s3={"addressing_style": "path" if config.force_path_style else "auto"},
-            signature_version="s3v4",
-        ),
+def get_artifact_s3_config(app_settings: Settings = settings) -> S3Config:
+    return S3Config(
+        endpoint_url=app_settings.artifact_s3_endpoint_url,
+        region=app_settings.artifact_s3_region,
+        access_key=app_settings.artifact_s3_access_key_id,
+        secret_key=app_settings.artifact_s3_secret_access_key,
+        bucket=app_settings.artifact_s3_bucket,
+        force_path_style=app_settings.artifact_s3_force_path_style,
     )
 
 
@@ -66,7 +58,8 @@ class StorageService:
     EMBEGGINGS_PREFIX = "embeddings"
     INDEXES_PREFIX: ClassVar[str] = "indexes"
 
-    def __init__(self) -> None:
+    def __init__(self, config: S3Config) -> None:
+        self._config = config
         self._client: S3Client | None = None
         self._transfer_config = TransferConfig(
             multipart_threshold=8 * 1024 * 1024,
@@ -78,21 +71,24 @@ class StorageService:
     @property
     def client(self) -> S3Client:
         if self._client is None:
-            self._client = cast("S3Client", get_s3_client())
+            session = boto3.Session(
+                aws_access_key_id=self._config.access_key,
+                aws_secret_access_key=self._config.secret_key,
+                region_name=self._config.region,
+            )
+            self._client = session.client(
+                "s3",
+                endpoint_url=self._config.endpoint_url,
+                config=BotoConfig(
+                    s3={"addressing_style": ("path" if self._config.force_path_style else "auto")},
+                    signature_version="s3v4",
+                ),
+            )
         return self._client
 
     @property
     def bucket(self) -> str:
-        return get_s3_config().bucket
-
-    def ensure_bucket_exists(self) -> None:
-        try:
-            self.client.head_bucket(Bucket=self.bucket)
-        except ClientError as e:
-            error_code = e.response.get("Error", {}).get("Code")
-
-            if error_code in ("404", "NoSuchBucket"):
-                self.client.create_bucket(Bucket=self.bucket)
+        return self._config.bucket
 
     def bucket_exists(self) -> bool:
         try:
@@ -161,6 +157,7 @@ class StorageService:
 
     def download_to_temp(self, key: str, suffix: str = "") -> Path:
         fd, path = tempfile.mkstemp(suffix=suffix)
+        os.close(fd)
         try:
             self.client.download_file(Bucket=self.bucket, Key=key, Filename=path)
             return Path(path)
@@ -190,16 +187,6 @@ class StorageService:
 
         return result
 
-    def generate_presigned_url(
-        self, key: str, expiration: int = 3600, response_content_type: str | None = None
-    ) -> str:
-        params = {"Bucket": self.bucket, "Key": key}
-
-        if response_content_type:
-            params["ResponseContentType"] = response_content_type
-
-        return self.client.generate_presigned_url("get_object", Params=params, ExpiresIn=expiration)
-
     def _guess_content_type(self, path: Path) -> str:
         ext = path.suffix.lower()
         return {
@@ -224,5 +211,10 @@ class StorageService:
 
 
 @lru_cache(maxsize=1)
-def get_storage_service() -> StorageService:
-    return StorageService()
+def get_media_storage_service() -> StorageService:
+    return StorageService(get_media_s3_config())
+
+
+@lru_cache(maxsize=1)
+def get_artifact_storage_service() -> StorageService:
+    return StorageService(get_artifact_s3_config())

@@ -140,6 +140,10 @@ typeCheckingMode = "basic"
 strict = [
     "src/shared/db.py",
     "src/shared/services/api_storage.py",
+    "src/shared/services/api_storage_client.py",
+    "src/shared/services/media_url.py",
+    "src/shared/services/storage.py",
+    "src/domain/image_ingest_input.py",
     "src/domain/job_rules.py",
     "src/domain/job_store.py",
     "src/domain/image_catalog.py",

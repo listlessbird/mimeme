@@ -36,13 +36,20 @@ class Settings(BaseSettings):
     temporal_namespace: str = Field(default="default")
     temporal_task_queue: str = Field(default="findmeme-tasks")
 
-    s3_endpoint_url: str = Field(default="http://localhost:9000")
-    s3_region: str = Field(default="us-east-1")
-    s3_access_key_id: str = Field(default="minioadmin")
-    s3_secret_access_key: str = Field(default="minioadmin")
-    s3_bucket: str = Field(default="mimeme")
-    s3_force_path_style: bool = Field(default=True)
-    s3_presigned_url_expiry: int = Field(default=3600)
+    media_s3_endpoint_url: str = Field(default="http://localhost:9000")
+    media_s3_region: str = Field(default="us-east-1")
+    media_s3_access_key_id: str = Field(default="minioadmin")
+    media_s3_secret_access_key: str = Field(default="minioadmin")
+    media_s3_bucket: str = Field(default="mimeme-media")
+    media_s3_force_path_style: bool = Field(default=True)
+    media_public_base_url: str = Field(default="http://localhost:9000/mimeme-media")
+
+    artifact_s3_endpoint_url: str = Field(default="http://localhost:9000")
+    artifact_s3_region: str = Field(default="us-east-1")
+    artifact_s3_access_key_id: str = Field(default="minioadmin")
+    artifact_s3_secret_access_key: str = Field(default="minioadmin")
+    artifact_s3_bucket: str = Field(default="mimeme-artifacts")
+    artifact_s3_force_path_style: bool = Field(default=True)
 
     vision_model: str = Field(default="vikhyatk/moondream2")
     vision_model_revision: str | None = Field(default="2025-06-21")
@@ -56,6 +63,8 @@ class Settings(BaseSettings):
     # modal integration in prod
     gpu_backend: Literal["local", "modal"] = Field(default="local")
     modal_app_name: str = Field(default="findmeme-gpu")
+    modal_hf_cache_volume_name: str = Field(default="findmeme-hf-cache")
+    modal_s3_secret_name: str = Field(default="findmeme-s3")
 
     onnx_text_encoder_repo: str = Field(
         default="listlessbird/siglip2-base-patch16-naflex-text-onnx"

@@ -258,14 +258,9 @@ class UploadBytesCall:
 
 class FakeApiStorage:
     def __init__(self) -> None:
-        self.presigned: list[tuple[str, int]] = []
         self.uploaded: list[UploadBytesCall] = []
         self.deleted: list[str] = []
         self.existing_keys: set[str] = set()
-
-    def presign(self, key: str, expiration: int = 3600) -> str:
-        self.presigned.append((key, expiration))
-        return "https://mock-s3/presigned"
 
     async def upload_bytes(
         self, data: bytes | BinaryIO, key: str, content_type: str = "application/octet-stream"
@@ -291,8 +286,6 @@ def api_storage() -> FakeApiStorage:
 def mock_storage() -> MagicMock:
     """Mock StorageService — no real S3 calls."""
     storage = MagicMock()
-    storage.presign.return_value = "https://mock-s3/presigned"
-    storage.generate_presigned_url.return_value = "https://mock-s3/presigned"
     storage.upload_file.return_value = "mock-etag"
     storage.upload_bytes.return_value = "mock-etag"
     storage.delete.return_value = None
@@ -355,7 +348,13 @@ def client(
     """
     from contextlib import asynccontextmanager
 
-    from api.deps import get_index_manager, get_storage, get_temporal_client
+    from api.deps import (
+        get_artifact_storage,
+        get_index_manager,
+        get_media_storage,
+        get_media_url_resolver,
+        get_temporal_client,
+    )
     from api.main import create_app
 
     @asynccontextmanager
@@ -376,8 +375,15 @@ def client(
     def _override_index_manager() -> MagicMock:
         return mock_index_manager
 
+    def _override_media_urls():
+        from shared.services.media_url import MediaUrlResolver
+
+        return MediaUrlResolver("https://assets.mimeme.dev")
+
     app.dependency_overrides[get_temporal_client] = _override_temporal
-    app.dependency_overrides[get_storage] = _override_storage
+    app.dependency_overrides[get_media_storage] = _override_storage
+    app.dependency_overrides[get_artifact_storage] = _override_storage
+    app.dependency_overrides[get_media_url_resolver] = _override_media_urls
     app.dependency_overrides[get_index_manager] = _override_index_manager
 
     with TestClient(app, raise_server_exceptions=False) as tc:
@@ -394,7 +400,13 @@ async def async_client(
 ) -> AsyncIterator[AsyncClient]:
     from contextlib import asynccontextmanager
 
-    from api.deps import get_index_manager, get_storage, get_temporal_client
+    from api.deps import (
+        get_artifact_storage,
+        get_index_manager,
+        get_media_storage,
+        get_media_url_resolver,
+        get_temporal_client,
+    )
     from api.main import create_app
 
     @asynccontextmanager
@@ -413,8 +425,15 @@ async def async_client(
     def _override_index_manager() -> MagicMock:
         return mock_index_manager
 
+    def _override_media_urls():
+        from shared.services.media_url import MediaUrlResolver
+
+        return MediaUrlResolver("https://assets.mimeme.dev")
+
     app.dependency_overrides[get_temporal_client] = _override_temporal
-    app.dependency_overrides[get_storage] = _override_storage
+    app.dependency_overrides[get_media_storage] = _override_storage
+    app.dependency_overrides[get_artifact_storage] = _override_storage
+    app.dependency_overrides[get_media_url_resolver] = _override_media_urls
     app.dependency_overrides[get_index_manager] = _override_index_manager
 
     transport = ASGITransport(app=app, raise_app_exceptions=False)

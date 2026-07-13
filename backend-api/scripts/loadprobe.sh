@@ -58,7 +58,9 @@ PY
 
 APP_ENV=development DEBUG=false LOG_LEVEL=INFO \
 RATE_LIMIT_ENABLED=false PRELOAD_TEXT_ENCODER_ON_STARTUP=false GPU_BACKEND=local \
-AXIOM_API_TOKEN= AXIOM_DATASET= S3_ENDPOINT_URL=http://127.0.0.1:9 \
+AXIOM_API_TOKEN= AXIOM_DATASET= \
+MEDIA_S3_ENDPOINT_URL=http://127.0.0.1:9 \
+ARTIFACT_S3_ENDPOINT_URL=http://127.0.0.1:9 \
 uv run uvicorn api.main:app --host 127.0.0.1 --port "$API_PORT" --log-level warning \
   >"$API_LOG" 2>&1 &
 API_PID=$!

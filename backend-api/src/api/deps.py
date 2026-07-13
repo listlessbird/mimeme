@@ -9,24 +9,34 @@ from temporalio.contrib.pydantic import pydantic_data_converter
 
 from activities.indexing import FaissIndexManager
 from shared.config import settings
-from shared.services.api_storage import (
-    ApiStorage,
-    ApiStorageProbe,
-    AsyncApiStorage,
-    BotoApiStorage,
+from shared.services.api_storage import ApiStorage, AsyncApiStorage
+from shared.services.media_url import MediaUrlResolver
+from shared.services.storage import (
+    get_artifact_s3_config,
+    get_media_s3_config,
 )
-from shared.services.storage import get_storage_service
 
 
-def get_storage() -> ApiStorage:
-    return AsyncApiStorage(get_storage_service())
+def get_media_storage() -> ApiStorage:
+    return AsyncApiStorage(get_media_s3_config())
 
 
-StorageDep = Annotated[ApiStorage, Depends(get_storage)]
+MediaStorageDep = Annotated[ApiStorage, Depends(get_media_storage)]
 
 
-def get_storage_probe() -> ApiStorageProbe:
-    return BotoApiStorage(get_storage_service())
+def get_artifact_storage() -> ApiStorage:
+    return AsyncApiStorage(get_artifact_s3_config())
+
+
+ArtifactStorageDep = Annotated[ApiStorage, Depends(get_artifact_storage)]
+
+
+@lru_cache(maxsize=1)
+def get_media_url_resolver() -> MediaUrlResolver:
+    return MediaUrlResolver(settings.media_public_base_url)
+
+
+MediaUrlResolverDep = Annotated[MediaUrlResolver, Depends(get_media_url_resolver)]
 
 
 @lru_cache(maxsize=1)
