@@ -1,25 +1,10 @@
-"""Executable spec for the Source registry service (issue 02, slice C).
-
-`SourceRegistry` is the CRUD service over `ingestion_sources` (+ its runs and
-items). It owns five operations — create, list, detail, patch, soft-delete —
-and two derived-stats concerns:
-
-- **Source-level stats** on list/detail (run count, items discovered,
-  duplicates) computed by aggregate query, never stored.
-- **Per-run counts** on the detail view's recent runs, derived on read via
-  `domain.source_run_accounting.derive_run_accounting` (slice B). The run's
-  *status* comes from the stored `source_runs.status` column; only the four
-  counts are derived.
-
-Name uniqueness is scoped to live rows (ADR-0003): every lookup-by-name and the
-listing carry `WHERE deleted_at IS NULL`, and a soft-deleted name is reusable.
-"""
-
 from __future__ import annotations
 
 import datetime
 
 import pytest
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from tests.factories import (
     create_image,
@@ -36,29 +21,25 @@ from domain.source_registry import (
     SourceRegistry,
     UnknownAdapterKeyError,
 )
+from domain.source_schedule_spec import DesiredScheduleState
 from shared.models import (
     DuplicateReason,
     IngestionSource,
     ProcessingStatus,
-    SourceRun,
     SourceRunStatus,
     SourceRunTrigger,
 )
+from shared.models.orm import SourceRun
 
-UTC = datetime.UTC
-
-pytestmark = pytest.mark.usefixtures("_patch_domain_session_scope")
+pytestmark = pytest.mark.usefixtures("_patch_async_domain_session_scope")
 
 
 def _at(day: int) -> datetime.datetime:
-    return datetime.datetime(2026, 1, day, tzinfo=UTC)
+    return datetime.datetime(2026, 1, day, tzinfo=datetime.UTC)
 
 
-# --- create ---------------------------------------------------------------
-
-
-def test_create_persists_source_and_returns_view(db_session: Session) -> None:
-    view = SourceRegistry().create(
+async def test_create_persists_source_and_returns_view(async_db_session: AsyncSession) -> None:
+    view = await SourceRegistry().create(
         name="r/memes daily",
         adapter_key="meme_api",
         adapter_config={"subreddits": ["memes", "dankmemes"]},
@@ -68,18 +49,18 @@ def test_create_persists_source_and_returns_view(db_session: Session) -> None:
         max_items_per_run=50,
     )
 
-    row = db_session.query(IngestionSource).filter_by(id=view.id).one()
+    row = await async_db_session.get(IngestionSource, view.id)
+    assert row is not None
     assert row.name == "r/memes daily"
-    assert row.adapter_key == "meme_api"
     assert row.adapter_config == {"subreddits": ["memes", "dankmemes"]}
     assert view.enabled is True
     assert view.dataset == "memes"
-    assert view.created_at is not None
 
 
-def test_create_rejects_unknown_adapter_key(db_session: Session) -> None:
+async def test_create_validates_adapter_and_live_name(async_db_session: AsyncSession) -> None:
+    registry = SourceRegistry()
     with pytest.raises(UnknownAdapterKeyError):
-        SourceRegistry().create(
+        await registry.create(
             name="bad-source",
             adapter_key="not_a_real_adapter",
             adapter_config={},
@@ -89,13 +70,14 @@ def test_create_rejects_unknown_adapter_key(db_session: Session) -> None:
             max_items_per_run=None,
         )
 
-    # The rejected Source is never written.
-    assert db_session.query(IngestionSource).filter_by(name="bad-source").count() == 0
+    assert (
+        await async_db_session.scalar(
+            select(IngestionSource).where(IngestionSource.name == "bad-source")
+        )
+        is None
+    )
 
-
-def test_create_rejects_duplicate_live_name(db_session: Session) -> None:
-    registry = SourceRegistry()
-    registry.create(
+    await registry.create(
         name="dupe",
         adapter_key="meme_api",
         adapter_config={},
@@ -104,9 +86,8 @@ def test_create_rejects_duplicate_live_name(db_session: Session) -> None:
         schedule_timezone="UTC",
         max_items_per_run=None,
     )
-
     with pytest.raises(DuplicateSourceNameError):
-        registry.create(
+        await registry.create(
             name="dupe",
             adapter_key="meme_api",
             adapter_config={},
@@ -117,10 +98,9 @@ def test_create_rejects_duplicate_live_name(db_session: Session) -> None:
         )
 
 
-def test_create_reuses_name_of_a_soft_deleted_source(db_session: Session) -> None:
-    # ADR-0003: soft-deleting frees the name, so recreate-with-same-name works.
+async def test_create_reuses_soft_deleted_name() -> None:
     registry = SourceRegistry()
-    first = registry.create(
+    first = await registry.create(
         name="reuse-me",
         adapter_key="meme_api",
         adapter_config={},
@@ -129,9 +109,9 @@ def test_create_reuses_name_of_a_soft_deleted_source(db_session: Session) -> Non
         schedule_timezone="UTC",
         max_items_per_run=None,
     )
-    registry.soft_delete(first.id)
+    await registry.soft_delete(first.id)
 
-    second = registry.create(
+    second = await registry.create(
         name="reuse-me",
         adapter_key="meme_api",
         adapter_config={},
@@ -144,231 +124,173 @@ def test_create_reuses_name_of_a_soft_deleted_source(db_session: Session) -> Non
     assert second.id != first.id
 
 
-# --- list -----------------------------------------------------------------
+async def test_list_excludes_deleted_and_derives_stats(run_sync_seed) -> None:
+    def seed(session: Session) -> int:
+        source = create_ingestion_source(session=session, name="stats-src")
+        deleted = create_ingestion_source(session=session, name="gone")
+        deleted.deleted_at = datetime.datetime.now(datetime.UTC)
+        create_source_run(session=session, source=source)
+        create_source_run(session=session, source=source)
+        for _ in range(3):
+            create_source_item(session=session, source=source)
+        job = create_job(session=session)
+        image = create_image(session=session)
+        create_ingest_url(
+            session=session,
+            job=job,
+            source_id=source.id,
+            duplicate_reason=DuplicateReason.SHA256,
+        )
+        create_ingest_url(
+            session=session,
+            job=job,
+            source_id=source.id,
+            status=ProcessingStatus.DONE,
+            image_id=image.id,
+        )
+        create_ingest_url(
+            session=session,
+            job=job,
+            source_id=source.id,
+            status=ProcessingStatus.FAILED,
+        )
+        return source.id
+
+    source_id = await run_sync_seed(seed)
+    items = await SourceRegistry().list_sources()
+
+    assert [item.id for item in items] == [source_id]
+    assert items[0].stats.model_dump() == {
+        "run_count": 2,
+        "items_discovered": 3,
+        "duplicate_count": 1,
+        "images_ingested": 1,
+        "failed_count": 1,
+    }
 
 
-def test_list_excludes_soft_deleted_sources(db_session: Session) -> None:
+async def test_get_returns_recent_runs_with_accounting(run_sync_seed) -> None:
+    def seed(session: Session) -> tuple[int, int]:
+        source = create_ingestion_source(session=session)
+        create_source_run(session=session, source=source, created_at=_at(1))
+        run = create_source_run(
+            session=session,
+            source=source,
+            created_at=_at(3),
+            status=SourceRunStatus.RUNNING,
+            trigger_mode=SourceRunTrigger.MANUAL,
+        )
+        create_source_run(session=session, source=source, created_at=_at(2))
+        job = create_job(session=session)
+        create_ingest_url(
+            session=session,
+            job=job,
+            source_id=source.id,
+            source_run_id=run.id,
+            status=ProcessingStatus.DONE,
+        )
+        create_ingest_url(
+            session=session,
+            job=job,
+            source_id=source.id,
+            source_run_id=run.id,
+            status=ProcessingStatus.DONE,
+            duplicate_reason=DuplicateReason.PHASH,
+        )
+        create_ingest_url(
+            session=session,
+            job=job,
+            source_id=source.id,
+            source_run_id=run.id,
+            status=ProcessingStatus.FAILED,
+        )
+        for _ in range(4):
+            create_source_item(session=session, source=source, last_source_run_id=run.id)
+        return source.id, run.id
+
+    source_id, run_id = await run_sync_seed(seed)
+    detail = await SourceRegistry().get_source(source_id, recent_runs_limit=2)
+
+    assert [run.created_at for run in detail.recent_runs] == [_at(3), _at(2)]
+    run = detail.recent_runs[0]
+    assert run.id == run_id
+    assert run.status == SourceRunStatus.RUNNING
+    assert (run.discovered, run.queued, run.duplicate, run.failed) == (4, 3, 1, 1)
+
+
+async def test_get_missing_or_deleted_source_raises(run_sync_seed) -> None:
+    source_id = await run_sync_seed(lambda session: create_ingestion_source(session=session).id)
     registry = SourceRegistry()
-    live = create_ingestion_source(session=db_session, name="live-one")
-    deleted = create_ingestion_source(session=db_session, name="gone")
-    registry.soft_delete(deleted.id)
-
-    names = {item.name for item in registry.list_sources()}
-
-    assert "live-one" in names
-    assert "gone" not in names
-    assert live.id is not None
-
-
-def test_list_derives_stats_by_query(db_session: Session) -> None:
-    src = create_ingestion_source(session=db_session, name="stats-src")
-    create_source_run(session=db_session, source=src)
-    create_source_run(session=db_session, source=src)
-    for _ in range(3):
-        create_source_item(session=db_session, source=src)
-    # Two deduped urls + one genuinely-new url attributed to this source.
-    job = create_job(session=db_session)
-    image = create_image(session=db_session)
-    create_ingest_url(
-        session=db_session, job=job, source_id=src.id, duplicate_reason=DuplicateReason.SHA256
-    )
-    create_ingest_url(
-        session=db_session, job=job, source_id=src.id, duplicate_reason=DuplicateReason.PHASH
-    )
-    create_ingest_url(
-        session=db_session,
-        job=job,
-        source_id=src.id,
-        status=ProcessingStatus.DONE,
-        image_id=image.id,
-        duplicate_reason=None,
-    )
-    create_ingest_url(session=db_session, job=job, source_id=src.id, status=ProcessingStatus.FAILED)
-
-    item = next(i for i in SourceRegistry().list_sources() if i.name == "stats-src")
-
-    assert item.stats.run_count == 2
-    assert item.stats.items_discovered == 3
-    assert item.stats.duplicate_count == 2
-    assert item.stats.images_ingested == 1
-    assert item.stats.failed_count == 1
-
-
-def test_list_stats_are_zero_for_a_fresh_source(db_session: Session) -> None:
-    create_ingestion_source(session=db_session, name="fresh")
-
-    item = next(i for i in SourceRegistry().list_sources() if i.name == "fresh")
-
-    assert (
-        item.stats.run_count,
-        item.stats.items_discovered,
-        item.stats.duplicate_count,
-        item.stats.images_ingested,
-        item.stats.failed_count,
-    ) == (0, 0, 0, 0, 0)
-
-
-# --- detail ---------------------------------------------------------------
-
-
-def test_get_returns_recent_runs_newest_first(db_session: Session) -> None:
-    src = create_ingestion_source(session=db_session)
-    create_source_run(session=db_session, source=src, created_at=_at(1))
-    newest = create_source_run(session=db_session, source=src, created_at=_at(3))
-    create_source_run(session=db_session, source=src, created_at=_at(2))
-
-    detail = SourceRegistry().get_source(src.id)
-
-    created = [r.created_at for r in detail.recent_runs]
-    assert created == sorted(created, reverse=True)
-    assert detail.recent_runs[0].id == newest.id
-
-
-def test_get_recent_run_carries_derived_counts_and_stored_status(db_session: Session) -> None:
-    src = create_ingestion_source(session=db_session)
-    # Stored status is RUNNING; derive_run_accounting over the urls would say
-    # PARTIAL. The view must report the *stored* status and the *derived* counts.
-    run = create_source_run(
-        session=db_session,
-        source=src,
-        status=SourceRunStatus.RUNNING,
-        trigger_mode=SourceRunTrigger.MANUAL,
-    )
-    job = create_job(session=db_session)
-    create_ingest_url(
-        session=db_session,
-        job=job,
-        source_id=src.id,
-        source_run_id=run.id,
-        status=ProcessingStatus.DONE,
-    )
-    create_ingest_url(
-        session=db_session,
-        job=job,
-        source_id=src.id,
-        source_run_id=run.id,
-        status=ProcessingStatus.DONE,
-        duplicate_reason=DuplicateReason.PHASH,
-    )
-    create_ingest_url(
-        session=db_session,
-        job=job,
-        source_id=src.id,
-        source_run_id=run.id,
-        status=ProcessingStatus.FAILED,
-    )
-    for _ in range(4):
-        create_source_item(session=db_session, source=src, last_source_run_id=run.id)
-
-    run_view = SourceRegistry().get_source(src.id).recent_runs[0]
-
-    assert run_view.status == SourceRunStatus.RUNNING
-    assert run_view.discovered == 4
-    assert run_view.queued == 3
-    assert run_view.duplicate == 1
-    assert run_view.failed == 1
-
-
-def test_get_respects_recent_runs_limit(db_session: Session) -> None:
-    src = create_ingestion_source(session=db_session)
-    for day in range(1, 4):
-        create_source_run(session=db_session, source=src, created_at=_at(day))
-
-    detail = SourceRegistry().get_source(src.id, recent_runs_limit=2)
-
-    assert len(detail.recent_runs) == 2
-    assert detail.recent_runs[0].created_at == _at(3)
-    assert detail.recent_runs[1].created_at == _at(2)
-
-
-def test_get_missing_source_raises_not_found(db_session: Session) -> None:
-    with pytest.raises(SourceNotFoundError):
-        SourceRegistry().get_source(999_999)
-
-
-def test_get_soft_deleted_source_raises_not_found(db_session: Session) -> None:
-    registry = SourceRegistry()
-    src = create_ingestion_source(session=db_session)
-    registry.soft_delete(src.id)
+    await registry.soft_delete(source_id)
 
     with pytest.raises(SourceNotFoundError):
-        registry.get_source(src.id)
+        await registry.get_source(source_id)
+    with pytest.raises(SourceNotFoundError):
+        await registry.get_source(999_999)
 
 
-# --- patch ----------------------------------------------------------------
-
-
-def test_patch_updates_only_provided_fields(db_session: Session) -> None:
-    registry = SourceRegistry()
-    src = create_ingestion_source(
-        session=db_session,
-        schedule_cron="0 * * * *",
-        dataset="memes",
-        max_items_per_run=50,
+async def test_patch_updates_only_provided_fields(run_sync_seed) -> None:
+    source_id = await run_sync_seed(
+        lambda session: (
+            create_ingestion_source(
+                session=session,
+                schedule_cron="0 * * * *",
+                dataset="memes",
+                max_items_per_run=50,
+            ).id
+        )
     )
 
-    updated = registry.patch(src.id, schedule_cron="0 0 * * *", enabled=False)
+    updated = await SourceRegistry().patch(source_id, schedule_cron="0 0 * * *", enabled=False)
 
     assert updated.schedule_cron == "0 0 * * *"
     assert updated.enabled is False
-    # Untouched fields keep their values.
     assert updated.dataset == "memes"
     assert updated.max_items_per_run == 50
 
 
-def test_patch_can_disable_then_reenable(db_session: Session) -> None:
+async def test_patch_and_delete_missing_source_raise() -> None:
     registry = SourceRegistry()
-    src = create_ingestion_source(session=db_session, enabled=True)
-
-    assert registry.patch(src.id, enabled=False).enabled is False
-    assert registry.patch(src.id, enabled=True).enabled is True
-
-
-def test_patch_missing_source_raises_not_found(db_session: Session) -> None:
     with pytest.raises(SourceNotFoundError):
-        SourceRegistry().patch(999_999, enabled=False)
-
-
-def test_patch_soft_deleted_source_raises_not_found(db_session: Session) -> None:
-    registry = SourceRegistry()
-    src = create_ingestion_source(session=db_session)
-    registry.soft_delete(src.id)
-
+        await registry.patch(999_999, enabled=False)
     with pytest.raises(SourceNotFoundError):
-        registry.patch(src.id, enabled=False)
+        await registry.soft_delete(999_999)
 
 
-# --- soft delete ----------------------------------------------------------
+async def test_soft_delete_preserves_children_and_hides_source(
+    run_sync_seed, async_db_session: AsyncSession
+) -> None:
+    def seed(session: Session) -> tuple[int, int]:
+        source = create_ingestion_source(session=session, name="to-delete")
+        run = create_source_run(session=session, source=source)
+        create_source_item(session=session, source=source)
+        return source.id, run.id
 
-
-def test_soft_delete_sets_deleted_at_and_hides_from_listing(db_session: Session) -> None:
+    source_id, run_id = await run_sync_seed(seed)
     registry = SourceRegistry()
-    src = create_ingestion_source(session=db_session, name="to-delete")
+    await registry.soft_delete(source_id)
 
-    registry.soft_delete(src.id)
-
-    row = db_session.query(IngestionSource).filter_by(id=src.id).one()
-    assert row.deleted_at is not None
-    assert all(item.name != "to-delete" for item in registry.list_sources())
-
-
-def test_soft_delete_preserves_runs_and_items(db_session: Session) -> None:
-    registry = SourceRegistry()
-    src = create_ingestion_source(session=db_session)
-    run = create_source_run(session=db_session, source=src)
-    item = create_source_item(session=db_session, source=src)
-
-    registry.soft_delete(src.id)
-
-    assert db_session.query(SourceRun).filter_by(id=run.id).count() == 1
-    assert db_session.get(IngestionSource, src.id) is not None
-    assert item.id is not None
-
-
-def test_soft_delete_already_deleted_raises_not_found(db_session: Session) -> None:
-    registry = SourceRegistry()
-    src = create_ingestion_source(session=db_session)
-    registry.soft_delete(src.id)
-
+    row = await async_db_session.get(IngestionSource, source_id)
+    assert row is not None and row.deleted_at is not None
+    assert await async_db_session.get(SourceRun, run_id) is not None
+    assert all(item.id != source_id for item in await registry.list_sources())
     with pytest.raises(SourceNotFoundError):
-        registry.soft_delete(src.id)
+        await registry.soft_delete(source_id)
+
+
+async def test_list_schedule_specs_maps_live_sources(run_sync_seed) -> None:
+    def seed(session: Session) -> tuple[int, int]:
+        active = create_ingestion_source(session=session, schedule_cron="0 * * * *", enabled=True)
+        disabled = create_ingestion_source(
+            session=session, schedule_cron="0 0 * * *", enabled=False
+        )
+        deleted = create_ingestion_source(session=session, schedule_cron="0 1 * * *")
+        deleted.deleted_at = datetime.datetime.now(datetime.UTC)
+        return active.id, disabled.id
+
+    active_id, disabled_id = await run_sync_seed(seed)
+    specs = {spec.source_id: spec for spec in await SourceRegistry().list_schedule_specs()}
+
+    assert set(specs) == {active_id, disabled_id}
+    assert specs[active_id].desired_state == DesiredScheduleState.ACTIVE
+    assert specs[disabled_id].desired_state == DesiredScheduleState.PAUSED

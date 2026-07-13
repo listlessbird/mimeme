@@ -6,7 +6,7 @@ from typing import Annotated
 import structlog
 from fastapi import APIRouter, HTTPException, Query
 
-from activities.scheduling.reconcile import run_reconciliation
+from activities.scheduling.reconcile import reconcile
 from activities.scheduling.temporal_store import TemporalScheduleStore
 from api.auth import AdminRequired
 from api.deps import DbSession, StorageDep, TemporalClientDep
@@ -51,9 +51,10 @@ router = APIRouter(prefix="/sources", tags=["Sources"], responses=error_response
 log = structlog.get_logger()
 
 
-async def _sync_schedules(db: DbSession, temporal: TemporalClientDep) -> None:
+async def _sync_schedules(temporal: TemporalClientDep) -> None:
     try:
-        await run_reconciliation(db, TemporalScheduleStore(temporal))
+        desired = await SourceRegistry().list_schedule_specs()
+        await reconcile(TemporalScheduleStore(temporal), desired=desired)
     except Exception as exc:
         log.warning(
             "inline_schedule_sync_failed",
@@ -69,10 +70,10 @@ async def _sync_schedules(db: DbSession, temporal: TemporalClientDep) -> None:
     responses=error_responses(400, 409),
 )
 async def create_source(
-    _auth: AdminRequired, body: CreateSourceRequest, db: DbSession, temporal: TemporalClientDep
+    _auth: AdminRequired, body: CreateSourceRequest, temporal: TemporalClientDep
 ) -> SourceResponse:
     try:
-        view = SourceRegistry().create(
+        view = await SourceRegistry().create(
             name=body.name,
             adapter_key=body.adapter_key,
             adapter_config=dict(body.adapter_config),
@@ -87,14 +88,14 @@ async def create_source(
     except DuplicateSourceNameError as exc:
         raise HTTPException(status_code=409, detail=f"Source name already in use: {exc}")
 
-    await _sync_schedules(db, temporal)
+    await _sync_schedules(temporal)
 
     return SourceResponse.model_validate(view.model_dump())
 
 
 @router.get("", response_model=SourceListResponse)
 async def list_sources(_auth: AdminRequired) -> SourceListResponse:
-    items = SourceRegistry().list_sources()
+    items = await SourceRegistry().list_sources()
     return SourceListResponse(
         sources=[SourceListItemResponse.model_validate(item.model_dump()) for item in items],
         total=len(items),
@@ -104,7 +105,7 @@ async def list_sources(_auth: AdminRequired) -> SourceListResponse:
 @router.get("/{source_id}", response_model=SourceDetailResponse, responses=error_responses(404))
 async def get_source(_auth: AdminRequired, source_id: int) -> SourceDetailResponse:
     try:
-        detail = SourceRegistry().get_source(source_id)
+        detail = await SourceRegistry().get_source(source_id)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
 
@@ -116,18 +117,17 @@ async def update_source(
     _auth: AdminRequired,
     source_id: int,
     body: UpdateSourceRequest,
-    db: DbSession,
     temporal: TemporalClientDep,
 ) -> SourceResponse:
     try:
         patch = body.model_dump(exclude_unset=True)
         if patch.get("adapter_config") is None:
             patch.pop("adapter_config", None)
-        view = SourceRegistry().patch(source_id, **patch)
+        view = await SourceRegistry().patch(source_id, **patch)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
 
-    await _sync_schedules(db, temporal)
+    await _sync_schedules(temporal)
 
     return SourceResponse.model_validate(view.model_dump())
 
@@ -142,7 +142,7 @@ async def trigger_source_run(
     _auth: AdminRequired, source_id: int, temporal: TemporalClientDep
 ) -> TriggerRunResponse:
     try:
-        SourceRegistry().get_source(source_id)
+        await SourceRegistry().get_source(source_id)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
 
@@ -264,7 +264,7 @@ async def list_source_items(
     status: SourceItemIngestState | None = None,
 ) -> SourceItemListResponse:
     try:
-        page = SourceItemBrowser(storage).list_items(
+        page = await SourceItemBrowser(storage).list_items(
             source_id, limit=limit, offset=offset, status=status
         )
     except SourceNotFoundError:
@@ -293,7 +293,7 @@ async def list_run_items(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> RunItemListResponse:
     try:
-        page = SourceItemBrowser(storage).list_run_items(
+        page = await SourceItemBrowser(storage).list_run_items(
             source_id, run_id, limit=limit, offset=offset
         )
     except SourceNotFoundError:
@@ -310,12 +310,10 @@ async def list_run_items(
 
 
 @router.delete("/{source_id}", status_code=204, responses=error_responses(404))
-async def delete_source(
-    _auth: AdminRequired, source_id: int, db: DbSession, temporal: TemporalClientDep
-) -> None:
+async def delete_source(_auth: AdminRequired, source_id: int, temporal: TemporalClientDep) -> None:
     try:
-        SourceRegistry().soft_delete(source_id)
+        await SourceRegistry().soft_delete(source_id)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
 
-    await _sync_schedules(db, temporal)
+    await _sync_schedules(temporal)
