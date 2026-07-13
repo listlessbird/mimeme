@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
+	describeImageIngestInput,
 	type IngestionRow,
 	INGESTION_POLL_MS,
 	ingestionQueryOptions,
@@ -297,7 +298,9 @@ function IngestionRowItem({ row }: { row: IngestionRow }) {
 					{failed && row.error_message ? (
 						<p className="truncate text-xs text-destructive">{row.error_message}</p>
 					) : (
-						<p className="truncate text-xs text-muted-foreground">{row.url}</p>
+						<p className="truncate text-xs text-muted-foreground">
+							{describeImageIngestInput(row.input)}
+						</p>
 					)}
 				</div>
 				<div className="hidden shrink-0 text-right text-xs text-muted-foreground sm:block">
