@@ -584,8 +584,8 @@ export interface components {
             /** Versions */
             versions: components["schemas"]["IndexVersionResponse"][];
         };
-        /** IngestJobResult */
-        IngestJobResult: {
+        /** IngestJobResultPayload */
+        IngestJobResultPayload: {
             /** Processed */
             processed: number;
             /** Failed */
@@ -607,8 +607,8 @@ export interface components {
         IngestionDetailResponse: {
             /** Ingest Url Id */
             ingest_url_id: number;
-            /** Url */
-            url: string;
+            /** Input */
+            input: components["schemas"]["RemoteImageUrlInput"] | components["schemas"]["StagedUploadInput"];
             /** Job Id */
             job_id: string;
             /** Source Run Id */
@@ -689,8 +689,8 @@ export interface components {
         IngestionRowResponse: {
             /** Ingest Url Id */
             ingest_url_id: number;
-            /** Url */
-            url: string;
+            /** Input */
+            input: components["schemas"]["RemoteImageUrlInput"] | components["schemas"]["StagedUploadInput"];
             /** Job Id */
             job_id: string;
             /** Source Run Id */
@@ -766,11 +766,9 @@ export interface components {
             /** Completed At */
             completed_at?: string | null;
             /** @description Job result data */
-            result?: components["schemas"]["JobResult"] | null;
+            result?: components["schemas"]["JobResultPayload"] | null;
         };
-        JobResult: components["schemas"]["IngestJobResult"] | components["schemas"]["RebuildJobResult"] | components["schemas"]["RawJobResult"] | {
-            [key: string]: components["schemas"]["JsonValue"];
-        };
+        JobResultPayload: components["schemas"]["IngestJobResultPayload"] | components["schemas"]["RebuildJobResultPayload"] | components["schemas"]["RawJobResultPayload"];
         /**
          * JobStatus
          * @enum {string}
@@ -781,7 +779,6 @@ export interface components {
          * @enum {string}
          */
         JobType: "ingest" | "rebuild_index";
-        JsonValue: unknown;
         /** MemeApiAdapterConfig */
         MemeApiAdapterConfig: {
             /** Subreddits */
@@ -822,8 +819,8 @@ export interface components {
              */
             retry_after: string;
         };
-        /** RawJobResult */
-        RawJobResult: {
+        /** RawJobResultPayload */
+        RawJobResultPayload: {
             /** Raw */
             raw: string;
         };
@@ -841,8 +838,8 @@ export interface components {
              */
             model_name?: string | null;
         };
-        /** RebuildJobResult */
-        RebuildJobResult: {
+        /** RebuildJobResultPayload */
+        RebuildJobResultPayload: {
             /** Version */
             version: string;
             /** Num Vectors */
@@ -852,7 +849,17 @@ export interface components {
             /** Removed Versions */
             removed_versions: string[];
             /** Text Num Vectors */
-            text_num_vectors: number | null;
+            text_num_vectors?: number | null;
+        };
+        /** RemoteImageUrlInput */
+        RemoteImageUrlInput: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "remote_image_url";
+            /** Url */
+            url: string;
         };
         /** RetryResponse */
         RetryResponse: {
@@ -880,8 +887,8 @@ export interface components {
         RunItemResponse: {
             /** Id */
             id: number;
-            /** Url */
-            url: string;
+            /** Input */
+            input: components["schemas"]["RemoteImageUrlInput"] | components["schemas"]["StagedUploadInput"];
             /** Source Item Id */
             source_item_id: number | null;
             /** External Item Id */
@@ -1178,6 +1185,16 @@ export interface components {
             images_ingested: number;
             /** Failed Count */
             failed_count: number;
+        };
+        /** StagedUploadInput */
+        StagedUploadInput: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            kind: "staged_upload";
+            /** Artifact Key */
+            artifact_key: string;
         };
         /** TriggerRunResponse */
         TriggerRunResponse: {

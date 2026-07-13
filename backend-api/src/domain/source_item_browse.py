@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime
-from collections.abc import Callable
 from enum import StrEnum
 from typing import Any, TypeGuard
 
@@ -9,9 +8,9 @@ from pydantic import BaseModel
 from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from domain.image_ingest_input import ImageIngestInput, restore_image_ingest_input
 from domain.source_registry import SourceNotFoundError
 from shared import db
-from shared.config import settings
 from shared.models.orm import (
     DuplicateReason,
     Image,
@@ -21,7 +20,7 @@ from shared.models.orm import (
     SourceItem,
     SourceRun,
 )
-from shared.services.api_storage import ApiStorage
+from shared.services.media_url import MediaUrlResolver
 
 
 class RunNotFoundError(Exception):
@@ -60,10 +59,10 @@ def resolve_thumbnail_url(
     *,
     image_s3_key: str | None,
     preview_url: str | None,
-    presign: Callable[[str], str],
+    media_urls: MediaUrlResolver,
 ) -> str | None:
     if image_s3_key:
-        return presign(image_s3_key)
+        return media_urls.resolve(image_s3_key)
     return preview_url
 
 
@@ -95,7 +94,7 @@ class SourceItemsPage(BaseModel, frozen=True):
 
 class RunItemView(BaseModel, frozen=True):
     id: int
-    url: str
+    input: ImageIngestInput
     source_item_id: int | None
     external_item_id: str | None
     title: str | None
@@ -114,8 +113,8 @@ class RunItemsPage(BaseModel, frozen=True):
 
 
 class SourceItemBrowser:
-    def __init__(self, storage: ApiStorage) -> None:
-        self.storage = storage
+    def __init__(self, media_urls: MediaUrlResolver) -> None:
+        self.media_urls = media_urls
 
     async def list_items(
         self,
@@ -154,9 +153,6 @@ class SourceItemBrowser:
                 )
             ).all()
 
-            def presign(key: str) -> str:
-                return self.storage.presign(key, expiration=settings.s3_presigned_url_expiry)
-
             items: list[SourceItemView] = []
             for item, attempt, image_s3_key in rows:
                 preview_url = preview_from_metadata(item.raw_metadata)
@@ -169,7 +165,7 @@ class SourceItemBrowser:
                         thumbnail_url=resolve_thumbnail_url(
                             image_s3_key=image_s3_key,
                             preview_url=preview_url,
-                            presign=presign,
+                            media_urls=self.media_urls,
                         ),
                         first_seen_at=item.first_seen_at,
                         last_seen_at=item.last_seen_at,
@@ -180,7 +176,11 @@ class SourceItemBrowser:
                         attempt_status=attempt.status if attempt else None,
                         attempt_error_message=attempt.error_message if attempt else None,
                         attempt_source_run_id=attempt.source_run_id if attempt else None,
-                        media_url=attempt.url if attempt else None,
+                        media_url=(
+                            attempt.url
+                            if attempt and attempt.input_kind == "remote_image_url"
+                            else None
+                        ),
                     )
                 )
 
@@ -241,9 +241,6 @@ class SourceItemBrowser:
                 session, {url.source_item_id for url in rows if url.source_item_id is not None}
             )
 
-            def presign(key: str) -> str:
-                return self.storage.presign(key, expiration=settings.s3_presigned_url_expiry)
-
             items: list[RunItemView] = []
             for url in rows:
                 resolved_image_id = url.image_id or url.duplicate_of_image_id
@@ -253,7 +250,11 @@ class SourceItemBrowser:
                 items.append(
                     RunItemView(
                         id=url.id,
-                        url=url.url,
+                        input=restore_image_ingest_input(
+                            kind=url.input_kind,
+                            url=url.url,
+                            artifact_key=url.artifact_key,
+                        ),
                         source_item_id=url.source_item_id,
                         external_item_id=source_item.external_item_id if source_item else None,
                         title=source_item.title if source_item else None,
@@ -270,7 +271,7 @@ class SourceItemBrowser:
                             preview_url=preview_from_metadata(
                                 source_item.raw_metadata if source_item else None
                             ),
-                            presign=presign,
+                            media_urls=self.media_urls,
                         ),
                     )
                 )

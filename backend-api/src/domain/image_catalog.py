@@ -3,15 +3,16 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
+import structlog
 from pydantic import BaseModel, Field
 from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared import db
-from shared.config import settings
 from shared.models import Annotation, Processing, ProcessingStatus
 from shared.models import ORMImage as Image
 from shared.services.api_storage import ApiStorage
+from shared.services.media_url import MediaUrlResolver
 
 ImageCatalogStatus = Literal[
     "pending",
@@ -22,6 +23,7 @@ ImageCatalogStatus = Literal[
     "done",
     "failed",
 ]
+log = structlog.get_logger()
 
 
 class ImageCatalogNotFoundError(Exception):
@@ -88,8 +90,15 @@ def project_image_status(proc: Processing | None) -> ImageCatalogStatus:
 
 
 class ImageCatalog:
-    def __init__(self, storage: ApiStorage) -> None:
-        self._storage = storage
+    def __init__(
+        self,
+        media_storage: ApiStorage,
+        artifact_storage: ApiStorage,
+        media_urls: MediaUrlResolver,
+    ) -> None:
+        self._media_storage = media_storage
+        self._artifact_storage = artifact_storage
+        self._media_urls = media_urls
 
     async def list_images(
         self,
@@ -164,20 +173,31 @@ class ImageCatalog:
 
             image, processing = row
 
-            keys_to_delete: list[str] = []
-
             if image.s3_key:
-                keys_to_delete.append(image.s3_key)
+                try:
+                    await self._media_storage.delete(image.s3_key)
+                except Exception:
+                    log.warning(
+                        "image_catalog_storage_delete_failed",
+                        storage_role="media",
+                        key=image.s3_key,
+                        exc_info=True,
+                    )
 
             if processing and processing.embed_s3_key:
-                keys_to_delete.append(processing.embed_s3_key)
-                keys_to_delete.append(processing.embed_s3_key.replace(".npy", "_text.npy"))
-
-            for key in keys_to_delete:
-                try:
-                    await self._storage.delete(key)
-                except Exception:
-                    pass
+                for key in (
+                    processing.embed_s3_key,
+                    processing.embed_s3_key.replace(".npy", "_text.npy"),
+                ):
+                    try:
+                        await self._artifact_storage.delete(key)
+                    except Exception:
+                        log.warning(
+                            "image_catalog_storage_delete_failed",
+                            storage_role="artifact",
+                            key=key,
+                            exc_info=True,
+                        )
 
             await session.delete(image)
 
@@ -213,10 +233,7 @@ class ImageCatalog:
     ) -> ImageCatalogImage:
         url = None
         if image.s3_key:
-            url = self._storage.presign(
-                image.s3_key,
-                expiration=settings.s3_presigned_url_expiry,
-            )
+            url = self._media_urls.resolve(image.s3_key)
 
         return ImageCatalogImage(
             id=image.id,

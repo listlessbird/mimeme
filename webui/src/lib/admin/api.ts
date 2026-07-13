@@ -60,6 +60,18 @@ export type IngestStage = Schemas["IngestStage"];
 export type IngestOutcome = Schemas["IngestOutcome"];
 export type IngestionLogs = Schemas["IngestionLogsResponse"];
 export type IngestionLogEntry = Schemas["IngestionLogEntryResponse"];
+export type ImageIngestInput = Schemas["RemoteImageUrlInput"] | Schemas["StagedUploadInput"];
+
+export function describeImageIngestInput(input: ImageIngestInput): string {
+	switch (input.kind) {
+		case "remote_image_url":
+			return input.url;
+		case "staged_upload": {
+			const filename = input.artifact_key.split("/").at(-1);
+			return filename ? `Uploaded file: ${filename}` : "Uploaded file";
+		}
+	}
+}
 
 export const IMAGE_STATUSES: ImageStatus[] = [
 	"pending",

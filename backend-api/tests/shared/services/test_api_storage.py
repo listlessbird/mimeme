@@ -1,61 +1,12 @@
 from __future__ import annotations
 
-from typing import Any, BinaryIO
+from typing import Any
 
 import pytest
 from botocore.client import ClientError
 
-from shared.services.api_storage import AsyncApiStorage, BotoApiStorage
-
-
-class RecordingStorage:
-    def __init__(self) -> None:
-        self.calls: list[tuple[object, ...]] = []
-        self.keys: set[str] = set()
-
-    def generate_presigned_url(self, key: str, expiration: int = 3600) -> str:
-        self.calls.append(("generate_presigned_url", key, expiration))
-        return f"https://fake/{key}?expires={expiration}"
-
-    def upload_bytes(
-        self, data: bytes | BinaryIO, key: str, content_type: str = "application/octet-stream"
-    ) -> str:
-        self.calls.append(("upload_bytes", data, key, content_type))
-        self.keys.add(key)
-        return f"etag:{key}"
-
-    def delete(self, key: str) -> None:
-        self.calls.append(("delete", key))
-        self.keys.discard(key)
-
-    def exists(self, key: str) -> bool:
-        self.calls.append(("exists", key))
-        return key in self.keys
-
-
-async def test_boto_api_storage_delegates_the_api_storage_surface() -> None:
-    storage = RecordingStorage()
-    api_storage = BotoApiStorage(storage)
-
-    assert api_storage.presign("images/source/example.jpg", expiration=42) == (
-        "https://fake/images/source/example.jpg?expires=42"
-    )
-    assert (
-        await api_storage.upload_bytes(b"image", "uploads/staging/example.jpg", "image/jpeg")
-        == "etag:uploads/staging/example.jpg"
-    )
-    assert await api_storage.exists("uploads/staging/example.jpg") is True
-
-    await api_storage.delete("uploads/staging/example.jpg")
-
-    assert await api_storage.exists("uploads/staging/example.jpg") is False
-    assert storage.calls == [
-        ("generate_presigned_url", "images/source/example.jpg", 42),
-        ("upload_bytes", b"image", "uploads/staging/example.jpg", "image/jpeg"),
-        ("exists", "uploads/staging/example.jpg"),
-        ("delete", "uploads/staging/example.jpg"),
-        ("exists", "uploads/staging/example.jpg"),
-    ]
+from shared.services.api_storage import AsyncApiStorage
+from shared.services.storage import S3Config
 
 
 class FakeS3Client:
@@ -87,21 +38,21 @@ class FakeS3Client:
 
 
 async def test_async_api_storage_uses_the_loop_client(monkeypatch: pytest.MonkeyPatch) -> None:
-    presigner = RecordingStorage()
     client = FakeS3Client()
 
-    async def _fake_get_client() -> FakeS3Client:
+    async def _fake_get_client(config: S3Config) -> FakeS3Client:
         return client
 
     monkeypatch.setattr("shared.services.api_storage.get_loop_client", _fake_get_client)
-    monkeypatch.setattr(
-        AsyncApiStorage, "bucket", property(lambda self: "test-bucket"), raising=True
-    )
-
-    api_storage = AsyncApiStorage(presigner)
-
-    assert api_storage.presign("images/source/example.jpg", expiration=42) == (
-        "https://fake/images/source/example.jpg?expires=42"
+    api_storage = AsyncApiStorage(
+        S3Config(
+            endpoint_url="http://example.test",
+            region="auto",
+            access_key="key",
+            secret_key="secret",
+            bucket="test-bucket",
+            force_path_style=True,
+        )
     )
     assert (
         await api_storage.upload_bytes(b"image", "uploads/staging/example.jpg", "image/jpeg")

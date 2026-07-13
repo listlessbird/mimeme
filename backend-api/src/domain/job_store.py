@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import func, select
 
+from domain.image_ingest_input import ImageIngestInput, RemoteImageUrlInput
 from domain.job_rules import (
     IndexBuildView,
     IngestJobCreation,
@@ -11,7 +12,6 @@ from domain.job_rules import (
     JobRowData,
     JobView,
     RebuildJobCreation,
-    dedup_urls,
     ensure_cancellable,
     mint_ingest_job,
     mint_rebuild_job,
@@ -25,12 +25,13 @@ class ApiJobStore:
     async def create_ingest_job(
         self,
         *,
-        urls: list[str],
+        inputs: list[ImageIngestInput],
         dataset: str | None,
         tags: list[str],
         callback_url: str | None,
     ) -> IngestJobCreation:
-        unique_urls, duplicates = dedup_urls(urls)
+        unique_inputs = list(dict.fromkeys(inputs))
+        duplicates = len(inputs) - len(unique_inputs)
         job_id, workflow_id = mint_ingest_job()
 
         async with db.write_session() as session:
@@ -38,15 +39,24 @@ class ApiJobStore:
             session.add(job)
             await session.flush()
 
-            for url in unique_urls:
-                session.add(IngestURL(job_id=job_id, url=url))
+            for item in unique_inputs:
+                if isinstance(item, RemoteImageUrlInput):
+                    session.add(IngestURL(job_id=job_id, input_kind=item.kind, url=item.url))
+                else:
+                    session.add(
+                        IngestURL(
+                            job_id=job_id,
+                            input_kind=item.kind,
+                            artifact_key=item.artifact_key,
+                        )
+                    )
 
             await session.flush()
 
         return IngestJobCreation(
             job_id=job_id,
             workflow_id=workflow_id,
-            queued=len(unique_urls),
+            queued=len(unique_inputs),
             duplicates=duplicates,
             dataset=dataset,
             tags=tags,

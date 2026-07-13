@@ -20,7 +20,7 @@ from activities.indexing.models import (
 from shared.db import session_scope
 from shared.logging import emit_activity_event
 from shared.models import Processing, ProcessingStatus
-from shared.services.storage import get_storage_service
+from shared.services.storage import get_artifact_storage_service
 
 log = structlog.get_logger()
 MAX_DOWNLOAD_WORKERS = max(4, min(32, (os.cpu_count() or 8) * 2))
@@ -37,7 +37,7 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
     dimension: int | None = None
     version: str | None = None
     text_num_vectors: int | None = None
-    storage = get_storage_service()
+    storage = get_artifact_storage_service()
     index_manager = FaissIndexManager.get_instance()
     try:
         with session_scope() as session:

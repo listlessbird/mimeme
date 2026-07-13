@@ -1,7 +1,7 @@
 import tempfile
 import time
 from pathlib import Path
-from typing import TypedDict, cast
+from typing import TypedDict
 from urllib.parse import urlparse
 
 import httpx
@@ -12,16 +12,18 @@ from temporalio import activity
 
 from activities.storage.img_utils import compute_phash, compute_sha256, get_image_info
 from activities.storage.models import (
+    CleanupStagedUploadInput,
     DownloadImageInput,
     DownloadImageOutput,
     ProcessImageInput,
     ProcessImageOutput,
 )
 from activities.storage.phash_index import get_phash_index
+from domain.image_ingest_input import RemoteImageUrlInput, StagedUploadInput
 from shared.db import session_scope
 from shared.logging import emit_activity_event
 from shared.models import DuplicateReason, ORMImage, Processing, ProcessingStatus
-from shared.services import StorageService, get_storage_service
+from shared.services import get_artifact_storage_service, get_media_storage_service
 
 log = structlog.get_logger()
 
@@ -66,16 +68,31 @@ def download_image_activity(input: DownloadImageInput) -> DownloadImageOutput:
     status_code: int | None = None
     content_type: str | None = None
     bytes_downloaded: int | None = None
+    source_url = input.input.url if isinstance(input.input, RemoteImageUrlInput) else None
     log.info(
         "activity_step",
         activity_name="download_image_activity",
         step="start_download",
         job_id=input.job_id,
         ingest_url_id=input.ingest_url_id,
-        url=input.url,
+        input_kind=input.input.kind,
     )
     try:
-        parsed = urlparse(input.url)
+        if isinstance(input.input, StagedUploadInput):
+            filename = Path(input.input.artifact_key).name or "image"
+            content = get_artifact_storage_service().download_bytes(input.input.artifact_key)
+            suffix = Path(filename).suffix or ".jpg"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as f:
+                f.write(content)
+                bytes_downloaded = len(content)
+                return DownloadImageOutput(
+                    ingest_url_id=input.ingest_url_id,
+                    local_path=f.name,
+                    filename=filename,
+                    success=True,
+                )
+
+        parsed = urlparse(input.input.url)
         filename = Path(parsed.path).name or "image"
 
         with httpx.Client(
@@ -92,7 +109,7 @@ def download_image_activity(input: DownloadImageInput) -> DownloadImageOutput:
                 "pragma": "no-cache",
             },
         ) as httpclient:
-            response = httpclient.get(input.url)
+            response = httpclient.get(input.input.url)
             log.info(
                 "activity_step",
                 activity_name="download_image_activity",
@@ -115,7 +132,7 @@ def download_image_activity(input: DownloadImageInput) -> DownloadImageOutput:
                     local_path="",
                     filename="",
                     success=False,
-                    error=f"Couldnt resolve an image from the url {input.url}, got {resolved_content_type} as content type",
+                    error=f"Couldnt resolve an image from the url {input.input.url}, got {resolved_content_type} as content type",
                 )
 
             suffix = Path(filename).suffix or ".jpg"
@@ -210,10 +227,23 @@ def download_image_activity(input: DownloadImageInput) -> DownloadImageOutput:
             error=error_message,
             job_id=input.job_id,
             ingest_url_id=input.ingest_url_id,
-            url=input.url,
+            url=source_url,
+            input_kind=input.input.kind,
             status_code=status_code,
             content_type=content_type,
             bytes=bytes_downloaded,
+        )
+
+
+@activity.defn
+def cleanup_staged_upload_activity(input: CleanupStagedUploadInput) -> None:
+    try:
+        get_artifact_storage_service().delete(input.artifact_key)
+    except Exception:
+        log.warning(
+            "staged_upload_cleanup_failed",
+            artifact_key=input.artifact_key,
+            exc_info=True,
         )
 
 
@@ -225,7 +255,7 @@ def process_image_activity(input: ProcessImageInput) -> ProcessImageOutput:
     image_id: int | None = None
     is_duplicate: bool | None = None
     s3_key: str | None = None
-    storage = cast(StorageService, get_storage_service())
+    storage = get_media_storage_service()
 
     local_path = Path(input.local_path)
     log.info(

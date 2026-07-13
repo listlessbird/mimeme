@@ -4,7 +4,7 @@ import threading
 import time
 from collections import OrderedDict
 from time import perf_counter
-from typing import Literal, cast
+from typing import Literal
 
 import numpy as np
 import structlog
@@ -15,12 +15,11 @@ from sqlalchemy.orm import Session
 from activities.indexing import FaissIndexManager
 from api.models.search import SearchResult
 from api.services.text_encoder import SearchTextEncoder
-from shared.config import settings
 from shared.db import read_session_scope
 from shared.models import IndexBuild
 from shared.models.orm import Annotation
 from shared.models.orm import Image as ORMImage
-from shared.services.storage import StorageService, get_storage_service
+from shared.services.media_url import MediaUrlResolver
 
 log = structlog.get_logger()
 
@@ -124,10 +123,10 @@ class SearchService:
     def __init__(
         self,
         index_manager: FaissIndexManager,
-        storage: StorageService | None = None,
+        media_urls: MediaUrlResolver,
     ) -> None:
         self.index_manager = index_manager
-        self._storage = storage or cast(StorageService, get_storage_service())
+        self._media_urls = media_urls
 
     def search_by_embedding(
         self,
@@ -260,10 +259,7 @@ class SearchService:
             image, annotation = row
             url = None
             if image.s3_key:
-                url = self._storage.generate_presigned_url(
-                    image.s3_key,
-                    expiration=settings.s3_presigned_url_expiry,
-                )
+                url = self._media_urls.resolve(image.s3_key)
 
             results.append(
                 SearchResult(
@@ -286,11 +282,11 @@ class SearchIndexExecution:
         self,
         index_manager: FaissIndexManager,
         *,
-        storage: StorageService | None = None,
+        media_urls: MediaUrlResolver,
         text_encoder_factory=SearchTextEncoder.get_instance,
     ) -> None:
         self._index_manager = index_manager
-        self._storage = storage
+        self._media_urls = media_urls
         self._text_encoder_factory = text_encoder_factory
 
     def search(
@@ -307,7 +303,7 @@ class SearchIndexExecution:
 
         try:
             with read_session_scope() as db:
-                service = SearchService(self._index_manager, storage=self._storage)
+                service = SearchService(self._index_manager, self._media_urls)
                 results = service.search_by_embedding(
                     embedding=embedding,
                     limit=limit + offset,
@@ -350,7 +346,7 @@ class SearchIndexExecution:
 
         try:
             with read_session_scope() as db:
-                service = SearchService(self._index_manager, storage=self._storage)
+                service = SearchService(self._index_manager, self._media_urls)
                 results = service.find_similar(image_id=image_id, limit=limit, db=db)
         except ValueError as exc:
             raise SearchImageNotFoundError(str(exc)) from exc

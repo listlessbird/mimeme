@@ -22,13 +22,20 @@ TEMPORAL_NAMESPACE=default
 GPU_BACKEND=modal
 MODAL_APP_NAME=$(tf_output modal_app_name)
 
-S3_ENDPOINT_URL=$(tf_output s3_endpoint_url)
-S3_REGION=$(tf_output s3_region)
-S3_ACCESS_KEY_ID=$(tf_output s3_access_key_id)
-S3_SECRET_ACCESS_KEY=$(tf_output s3_secret_access_key)
-S3_BUCKET=$(tf_output s3_bucket_name)
-S3_FORCE_PATH_STYLE=$(tf_output s3_force_path_style)
-S3_PRESIGNED_URL_EXPIRY=3600
+MEDIA_S3_ENDPOINT_URL=$(tf_output media_s3_endpoint_url)
+MEDIA_S3_REGION=$(tf_output media_s3_region)
+MEDIA_S3_ACCESS_KEY_ID=$(tf_output media_s3_access_key_id)
+MEDIA_S3_SECRET_ACCESS_KEY=$(tf_output media_s3_secret_access_key)
+MEDIA_S3_BUCKET=$(tf_output media_s3_bucket_name)
+MEDIA_S3_FORCE_PATH_STYLE=$(tf_output media_s3_force_path_style)
+MEDIA_PUBLIC_BASE_URL=$(tf_output media_public_base_url)
+
+ARTIFACT_S3_ENDPOINT_URL=$(tf_output artifact_s3_endpoint_url)
+ARTIFACT_S3_REGION=$(tf_output artifact_s3_region)
+ARTIFACT_S3_ACCESS_KEY_ID=$(tf_output artifact_s3_access_key_id)
+ARTIFACT_S3_SECRET_ACCESS_KEY=$(tf_output artifact_s3_secret_access_key)
+ARTIFACT_S3_BUCKET=$(tf_output artifact_s3_bucket_name)
+ARTIFACT_S3_FORCE_PATH_STYLE=$(tf_output artifact_s3_force_path_style)
 
 AXIOM_DATASET=$(tf_output axiom_dataset_name)
 AXIOM_API_TOKEN=$(tf_output axiom_ingest_token)

@@ -15,7 +15,7 @@ from activities.indexing.faiss_vectors import FaissVectorIndex
 from activities.indexing.index_artifacts import IndexArtifactStore
 from activities.indexing.index_catalog import ActiveIndexCatalog
 from shared.config import settings
-from shared.services.storage import get_storage_service
+from shared.services.storage import get_artifact_storage_service
 
 log = structlog.get_logger()
 
@@ -31,7 +31,7 @@ class FaissIndexManager:
     _lock = threading.Lock()
 
     def __init__(self) -> None:
-        self._storage = get_storage_service()
+        self._storage = get_artifact_storage_service()
         self._artifacts = IndexArtifactStore(
             storage=self._storage,
             cache_dir=settings.index_cache_dir,

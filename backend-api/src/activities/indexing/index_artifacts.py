@@ -85,7 +85,7 @@ class IndexArtifactStore:
 
     def has_text_artifacts_cached(self, version: str) -> bool:
         paths = self.paths(version)
-        return paths.text_index_file.exists()
+        return paths.text_index_file.exists() and paths.text_mapping_file.exists()
 
     def read_mapping(self, path: Path) -> dict[int, int]:
         if not path.exists():
@@ -152,7 +152,7 @@ class IndexArtifactStore:
         return self._storage.list_objects(prefix)
 
     def _ensure_image_artifacts(self, version: str, paths: IndexArtifactPaths) -> None:
-        if paths.index_file.exists():
+        if paths.index_file.exists() and paths.mapping_file.exists():
             return
 
         paths.cache_path.mkdir(parents=True, exist_ok=True)

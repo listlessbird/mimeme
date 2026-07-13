@@ -2,7 +2,12 @@ import { Button } from "@/components/ui/button";
 import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Spinner } from "@/components/ui/spinner";
-import { ITEMS_PAGE_SIZE, type RunItem, runItemsQueryOptions } from "@/lib/admin/api";
+import {
+	describeImageIngestInput,
+	ITEMS_PAGE_SIZE,
+	type RunItem,
+	runItemsQueryOptions,
+} from "@/lib/admin/api";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { ArrowUpRight, RotateCcw } from "lucide-react";
 import { useState } from "react";
@@ -99,7 +104,7 @@ function AttemptCard({
 		<div className="flex gap-3 rounded-md border p-3">
 			<ZoomableImage
 				src={item.thumbnail_url}
-				alt={item.title ?? item.external_item_id ?? item.url}
+				alt={item.title ?? item.external_item_id ?? describeImageIngestInput(item.input)}
 				className="size-20 shrink-0 rounded-md border bg-muted object-cover"
 				fallbackClassName="size-20 shrink-0"
 			/>

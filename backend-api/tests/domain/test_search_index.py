@@ -19,6 +19,13 @@ from domain.search_index import (
     SearchService,
     reciprocal_rank_fusion,
 )
+from shared.services.media_url import MediaUrlResolver
+
+MEDIA_URLS = MediaUrlResolver("https://assets.mimeme.dev")
+
+
+def _execution(index_manager: MagicMock, **kwargs: object) -> SearchIndexExecution:
+    return SearchIndexExecution(index_manager, media_urls=MEDIA_URLS, **kwargs)
 
 
 class _TextEncoder:
@@ -59,7 +66,7 @@ def test_query_embedding_cache_reuses_normalized_query(monkeypatch: pytest.Monke
         return encoder
 
     monkeypatch.setattr(search_index.SearchTextEncoder, "get_instance", get_instance)
-    execution = SearchIndexExecution(
+    execution = _execution(
         MagicMock(),
         text_encoder_factory=search_index.SearchTextEncoder.get_instance,
     )
@@ -79,7 +86,7 @@ def test_query_embedding_cache_misses_for_different_queries(
         return encoder
 
     monkeypatch.setattr(search_index.SearchTextEncoder, "get_instance", get_instance)
-    execution = SearchIndexExecution(
+    execution = _execution(
         MagicMock(),
         text_encoder_factory=search_index.SearchTextEncoder.get_instance,
     )
@@ -98,7 +105,7 @@ def test_query_embedding_cache_evicts_oldest_entry(monkeypatch: pytest.MonkeyPat
 
     monkeypatch.setattr(search_index.SearchTextEncoder, "get_instance", get_instance)
     monkeypatch.setattr(search_index, "_EMBEDDING_CACHE_MAX", 1)
-    execution = SearchIndexExecution(
+    execution = _execution(
         MagicMock(),
         text_encoder_factory=search_index.SearchTextEncoder.get_instance,
     )
@@ -118,7 +125,7 @@ def test_no_active_index_raises_unavailable(
     _patch_read_session_scope(monkeypatch, db_session)
     mock_index_manager.is_loaded = False
 
-    execution = SearchIndexExecution(
+    execution = _execution(
         mock_index_manager,
         text_encoder_factory=lambda: _TextEncoder(),
     )
@@ -138,7 +145,7 @@ def test_stale_loaded_index_triggers_active_index_load(
     mock_index_manager.is_loaded = True
     mock_index_manager.active_version = "v1"
 
-    SearchIndexExecution(mock_index_manager).ensure_index_loaded_for_thread()
+    _execution(mock_index_manager).ensure_index_loaded_for_thread()
 
     mock_index_manager.load_active_index.assert_called_once()
 
@@ -154,7 +161,7 @@ def test_query_encoding_failure_is_domain_error(
     mock_index_manager.is_loaded = True
     mock_index_manager.active_version = "v1-test"
 
-    execution = SearchIndexExecution(
+    execution = _execution(
         mock_index_manager,
         text_encoder_factory=lambda: _TextEncoder(fails=True),
     )
@@ -179,7 +186,7 @@ def test_encoder_index_model_mismatch_raises_incompatible(
     mock_index_manager.is_loaded = True
     mock_index_manager.active_version = "v1-test"
 
-    execution = SearchIndexExecution(
+    execution = _execution(
         mock_index_manager,
         text_encoder_factory=lambda: _TextEncoder(source_model="some/other-model"),
     )
@@ -208,9 +215,8 @@ def test_encoder_index_model_match_searches_normally(
     mock_index_manager.has_text_index.return_value = False
     mock_index_manager.search.return_value = [(image.id, 0.9)]
 
-    page = SearchIndexExecution(
+    page = _execution(
         mock_index_manager,
-        storage=mock_storage,
         text_encoder_factory=lambda: _TextEncoder(
             source_model="google/siglip2-base-patch16-naflex"
         ),
@@ -239,9 +245,8 @@ def test_encoder_without_source_model_skips_guard(
     mock_index_manager.has_text_index.return_value = False
     mock_index_manager.search.return_value = [(image.id, 0.9)]
 
-    page = SearchIndexExecution(
+    page = _execution(
         mock_index_manager,
-        storage=mock_storage,
         text_encoder_factory=lambda: _TextEncoder(),
     ).search(query="cat", limit=20, offset=0, mode="image")
 
@@ -265,9 +270,8 @@ def test_search_hydrates_results_and_paginates(
     mock_index_manager.has_text_index.return_value = False
     mock_index_manager.search.return_value = [(first.id, 0.9), (second.id, 0.8)]
 
-    page = SearchIndexExecution(
+    page = _execution(
         mock_index_manager,
-        storage=mock_storage,
         text_encoder_factory=lambda: _TextEncoder(),
     ).search(query="cat", limit=1, offset=1, mode="image")
 
@@ -294,7 +298,7 @@ def test_hybrid_search_uses_reciprocal_rank_fusion(
     mock_index_manager.search.return_value = [(first.id, 0.9), (second.id, 0.8)]
     mock_index_manager.search_text.return_value = [(second.id, 0.95), (third.id, 0.4)]
 
-    results = SearchService(mock_index_manager, storage=mock_storage).search_by_embedding(
+    results = SearchService(mock_index_manager, MEDIA_URLS).search_by_embedding(
         embedding=[0.1, 0.2],
         db=db_session,
         limit=3,
@@ -317,7 +321,7 @@ def test_hybrid_search_falls_back_to_image_index(
     mock_index_manager.has_text_index.return_value = False
     mock_index_manager.search.return_value = [(image.id, 0.9)]
 
-    results = SearchService(mock_index_manager, storage=mock_storage).search_by_embedding(
+    results = SearchService(mock_index_manager, MEDIA_URLS).search_by_embedding(
         embedding=[0.1, 0.2],
         db=db_session,
         limit=3,
@@ -339,7 +343,7 @@ def test_hydration_skips_missing_rows(
     mock_index_manager.has_text_index.return_value = False
     mock_index_manager.search.return_value = [(999999, 0.95), (image.id, 0.9)]
 
-    results = SearchService(mock_index_manager, storage=mock_storage).search_by_embedding(
+    results = SearchService(mock_index_manager, MEDIA_URLS).search_by_embedding(
         embedding=[0.1, 0.2],
         db=db_session,
         limit=2,
@@ -366,7 +370,7 @@ def test_find_similar_excludes_query_image(
     mock_index_manager.get_vector_by_image_id.return_value = np.array([0.1, 0.2])
     mock_index_manager.search.return_value = [(query.id, 1.0), (second.id, 0.9), (third.id, 0.8)]
 
-    page = SearchIndexExecution(mock_index_manager, storage=mock_storage).find_similar(
+    page = _execution(mock_index_manager).find_similar(
         image_id=query.id,
         limit=2,
     )
@@ -389,7 +393,7 @@ def test_find_similar_missing_vector_raises_domain_not_found(
     mock_index_manager.get_vector_by_image_id.return_value = None
 
     with pytest.raises(SearchImageNotFoundError):
-        SearchIndexExecution(mock_index_manager, storage=mock_storage).find_similar(
+        _execution(mock_index_manager).find_similar(
             image_id=999999,
             limit=2,
         )

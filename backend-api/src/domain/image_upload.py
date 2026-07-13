@@ -3,19 +3,12 @@ from __future__ import annotations
 import re
 import uuid
 
-from pydantic import BaseModel
-
-from shared.config import settings
+from domain.image_ingest_input import StagedUploadInput
 from shared.services.api_storage import ApiStorage
 
 UPLOAD_STAGING_PREFIX = "uploads/staging"
 
 _EXT_RE = re.compile(r"^[a-z0-9]{1,8}$")
-
-
-class StagedUpload(BaseModel, frozen=True):
-    key: str
-    url: str
 
 
 def staging_key(filename: str | None, *, token: str | None = None) -> str:
@@ -42,10 +35,9 @@ class ImageUploadStager:
         content: bytes,
         filename: str | None,
         content_type: str | None,
-    ) -> StagedUpload:
+    ) -> StagedUploadInput:
         key = staging_key(filename)
         await self._storage.upload_bytes(
             content, key, content_type=content_type or "application/octet-stream"
         )
-        url = self._storage.presign(key, expiration=settings.s3_presigned_url_expiry)
-        return StagedUpload(key=key, url=url)
+        return StagedUploadInput(artifact_key=key)

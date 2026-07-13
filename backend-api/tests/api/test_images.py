@@ -108,19 +108,19 @@ class TestUploadImage:
         assert data["queued"] == 1
         assert data["duplicates"] == 0
 
-        # stored to a staging key
         assert len(api_storage.uploaded) == 1
         stored_key = api_storage.uploaded[0].key
         assert stored_key.startswith("uploads/staging/")
 
-        # converged on the URL-based ingest path: one ingest_url over the staged URL
         urls = (
             await async_db_session.scalars(
                 select(IngestURL).where(IngestURL.job_id == data["job_id"])
             )
         ).all()
         assert len(urls) == 1
-        assert urls[0].url == "https://mock-s3/presigned"
+        assert urls[0].input_kind == "staged_upload"
+        assert urls[0].url is None
+        assert urls[0].artifact_key == stored_key
 
     async def test_upload_starts_workflow(
         self,

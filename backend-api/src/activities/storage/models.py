@@ -2,13 +2,18 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from domain.image_ingest_input import ImageIngestInput
 from shared.models import DuplicateReason
 
 
 class DownloadImageInput(BaseModel):
-    url: str
+    input: ImageIngestInput
     job_id: str
     ingest_url_id: int
+
+
+class CleanupStagedUploadInput(BaseModel):
+    artifact_key: str
 
 
 class DownloadImageOutput(BaseModel):

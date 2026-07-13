@@ -45,7 +45,7 @@ async def test_ingestion_list_and_detail_use_async_browser(
     assert len(rows) == 1
     assert rows[0]["ingest_url_id"] == attempt_id
     assert rows[0]["resolved_image_id"] == image_id
-    assert rows[0]["thumbnail_url"] == "https://mock-s3/presigned"
+    assert rows[0]["thumbnail_url"] == "https://assets.mimeme.dev/images/test/meme.jpg"
 
     detail_response = await async_client.get(f"/ingestion/{attempt_id}")
     assert detail_response.status_code == 200
@@ -88,11 +88,17 @@ async def test_source_item_and_run_item_routes_use_async_browser(
     items_body = items_response.json()
     assert items_body["total"] == 1
     assert items_body["items"][0]["id"] == item_id
-    assert items_body["items"][0]["thumbnail_url"] == "https://mock-s3/presigned"
+    assert (
+        items_body["items"][0]["thumbnail_url"]
+        == "https://assets.mimeme.dev/images/test/source-item.jpg"
+    )
 
     run_items_response = await async_client.get(f"/sources/{source_id}/runs/{run_id}/items")
     assert run_items_response.status_code == 200
     run_items_body = run_items_response.json()
     assert run_items_body["total"] == 1
     assert run_items_body["items"][0]["source_item_id"] == item_id
-    assert run_items_body["items"][0]["thumbnail_url"] == "https://mock-s3/presigned"
+    assert (
+        run_items_body["items"][0]["thumbnail_url"]
+        == "https://assets.mimeme.dev/images/test/source-item.jpg"
+    )
