@@ -79,6 +79,16 @@ class JobCancellation(BaseModel, frozen=True):
     workflow_id: str | None
 
 
+class IndexBuildView(BaseModel, frozen=True, from_attributes=True):
+    version: str
+    embed_model: str | None
+    index_type: str | None
+    num_vectors: int | None
+    dimension: int | None
+    is_active: bool
+    created_at: datetime | None
+
+
 class JobRowData(BaseModel, frozen=True, from_attributes=True):
     id: str
     type: JobType

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import datetime
 from typing import Any
 
@@ -78,7 +79,7 @@ class AxiomLogReader:
             self._client = Client(token=self._token)
         return self._client
 
-    def fetch_attempt_logs(
+    async def fetch_attempt_logs(
         self,
         *,
         ingest_url_id: int,
@@ -106,7 +107,7 @@ class AxiomLogReader:
             )
 
         try:
-            result = self._get_client().query(apl, opts)
+            result = await asyncio.to_thread(lambda: self._get_client().query(apl, opts))
         except Exception as exc:
             log.warning("ingestion_logs_query_failed", ingest_url_id=ingest_url_id, error=str(exc))
             return []

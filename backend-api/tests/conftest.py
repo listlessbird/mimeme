@@ -355,7 +355,7 @@ def client(
     """
     from contextlib import asynccontextmanager
 
-    from api.deps import get_db, get_index_manager, get_storage, get_temporal_client
+    from api.deps import get_index_manager, get_storage, get_temporal_client
     from api.main import create_app
 
     @asynccontextmanager
@@ -367,9 +367,6 @@ def client(
     # with a no-op so the test client doesn't hit external services.
     app.router.lifespan_context = _noop_lifespan
 
-    def _override_db() -> Iterator[Session]:
-        yield db_session
-
     async def _override_temporal() -> AsyncMock:
         return mock_temporal
 
@@ -379,7 +376,6 @@ def client(
     def _override_index_manager() -> MagicMock:
         return mock_index_manager
 
-    app.dependency_overrides[get_db] = _override_db
     app.dependency_overrides[get_temporal_client] = _override_temporal
     app.dependency_overrides[get_storage] = _override_storage
     app.dependency_overrides[get_index_manager] = _override_index_manager
@@ -398,7 +394,7 @@ async def async_client(
 ) -> AsyncIterator[AsyncClient]:
     from contextlib import asynccontextmanager
 
-    from api.deps import get_db, get_index_manager, get_storage, get_temporal_client
+    from api.deps import get_index_manager, get_storage, get_temporal_client
     from api.main import create_app
 
     @asynccontextmanager
@@ -407,9 +403,6 @@ async def async_client(
 
     app = create_app()
     app.router.lifespan_context = _noop_lifespan
-
-    def _override_db() -> Iterator[Session]:
-        yield db_session
 
     async def _override_temporal() -> AsyncMock:
         return mock_temporal
@@ -420,7 +413,6 @@ async def async_client(
     def _override_index_manager() -> MagicMock:
         return mock_index_manager
 
-    app.dependency_overrides[get_db] = _override_db
     app.dependency_overrides[get_temporal_client] = _override_temporal
     app.dependency_overrides[get_storage] = _override_storage
     app.dependency_overrides[get_index_manager] = _override_index_manager

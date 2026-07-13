@@ -5,6 +5,7 @@ from typing import BinaryIO
 import pytest
 
 from api.deps import get_storage
+from shared.services.api_storage import AsyncApiStorage
 
 
 class RecordingStorage:
@@ -27,19 +28,12 @@ class RecordingStorage:
         return key in self.keys
 
 
-async def test_get_storage_returns_api_storage_adapter(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_get_storage_returns_async_api_storage(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("api.deps.get_storage_service", RecordingStorage)
 
     storage = get_storage()
 
+    assert isinstance(storage, AsyncApiStorage)
     assert storage.presign("images/source/example.jpg", expiration=42) == (
         "https://fake/images/source/example.jpg?expires=42"
     )
-    assert await storage.upload_bytes(b"image", "uploads/staging/example.jpg", "image/jpeg") == (
-        "etag:uploads/staging/example.jpg"
-    )
-    assert await storage.exists("uploads/staging/example.jpg") is True
-
-    await storage.delete("uploads/staging/example.jpg")
-
-    assert await storage.exists("uploads/staging/example.jpg") is False

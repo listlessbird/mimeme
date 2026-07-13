@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 
 import pytest
-from fastapi.testclient import TestClient
 from httpx import AsyncClient
 from sqlalchemy.orm import Session
 
@@ -276,34 +275,38 @@ async def test_detail_failed_attempt_preserves_error_fields(
     assert body["image_id"] is None
 
 
-def test_logs_unavailable_when_axiom_not_configured(
-    client: TestClient,
-    db_session: Session,
+async def test_logs_unavailable_when_axiom_not_configured(
+    async_client: AsyncClient,
+    run_sync_seed,
+    _patch_async_domain_session_scope: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "axiom_api_token", "")
     monkeypatch.setattr(settings, "axiom_dataset", "")
-    attempt = _attempt(db_session)
-    db_session.flush()
+    attempt_id = await run_sync_seed(lambda session: _attempt(session).id)
 
-    response = client.get(f"/ingestion/{attempt.id}/logs")
+    response = await async_client.get(f"/ingestion/{attempt_id}/logs")
     assert response.status_code == 200
     assert response.json()["available"] is False
     assert response.json()["entries"] == []
 
 
-def test_logs_missing_attempt_returns_404(client: TestClient) -> None:
-    assert client.get("/ingestion/999999/logs").status_code == 404
-
-
-def test_endpoints_reject_non_admin(
-    client: TestClient, db_session: Session, monkeypatch: pytest.MonkeyPatch
+async def test_logs_missing_attempt_returns_404(
+    async_client: AsyncClient, _patch_async_domain_session_scope: None
 ) -> None:
-    attempt = _attempt(db_session)
-    db_session.flush()
+    assert (await async_client.get("/ingestion/999999/logs")).status_code == 404
+
+
+async def test_endpoints_reject_non_admin(
+    async_client: AsyncClient,
+    run_sync_seed,
+    _patch_async_domain_session_scope: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attempt_id = await run_sync_seed(lambda session: _attempt(session).id)
     monkeypatch.setattr(settings, "app_env", "production")
     monkeypatch.setattr(settings, "api_key_admin", "secret-admin-key")
 
-    assert client.get("/ingestion").status_code == 403
-    assert client.get(f"/ingestion/{attempt.id}").status_code == 403
-    assert client.get(f"/ingestion/{attempt.id}/logs").status_code == 403
+    assert (await async_client.get("/ingestion")).status_code == 403
+    assert (await async_client.get(f"/ingestion/{attempt_id}")).status_code == 403
+    assert (await async_client.get(f"/ingestion/{attempt_id}/logs")).status_code == 403

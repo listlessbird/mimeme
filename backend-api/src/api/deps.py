@@ -4,21 +4,22 @@ from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy.orm import Session
 from temporalio.client import Client
 from temporalio.contrib.pydantic import pydantic_data_converter
 
 from activities.indexing import FaissIndexManager
 from shared.config import settings
-from shared.db import get_db
-from shared.services.api_storage import ApiStorage, ApiStorageProbe, BotoApiStorage
+from shared.services.api_storage import (
+    ApiStorage,
+    ApiStorageProbe,
+    AsyncApiStorage,
+    BotoApiStorage,
+)
 from shared.services.storage import get_storage_service
-
-DbSession = Annotated[Session, Depends(get_db)]
 
 
 def get_storage() -> ApiStorage:
-    return BotoApiStorage(get_storage_service())
+    return AsyncApiStorage(get_storage_service())
 
 
 StorageDep = Annotated[ApiStorage, Depends(get_storage)]

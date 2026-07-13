@@ -3,17 +3,16 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
-from sqlalchemy import select
 
 from api.auth import AdminRequired
-from api.deps import DbSession, TemporalClientDep
+from api.deps import TemporalClientDep
 from api.models.errors import error_responses
 from api.models.health import IndexVersionResponse, IndexVersionsResponse
 from api.models.jobs import JobListResponse, JobResponse, RebuildIndexRequest
 from domain.job_rules import JobLifecycleInvalidStateError, JobLifecycleNotFoundError
 from domain.job_store import ApiJobStore
 from shared.config import settings
-from shared.models import IndexBuild, JobStatus, JobType
+from shared.models import JobStatus, JobType
 from workflows import RebuildIndexWorkflow, RebuildIndexWorkflowInput
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"], responses=error_responses(403, 429, 500))
@@ -101,13 +100,9 @@ async def list_jobs(
 @router.get("/indexes/versions", response_model=IndexVersionsResponse)
 async def list_index_versions(
     _auth: AdminRequired,
-    db: DbSession,
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
 ) -> IndexVersionsResponse:
-
-    builds = db.scalars(
-        select(IndexBuild).order_by(IndexBuild.created_at.desc()).limit(limit)
-    ).all()
+    builds = await ApiJobStore().list_index_builds(limit=limit)
 
     return IndexVersionsResponse(
         versions=[

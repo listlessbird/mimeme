@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
 
 from api.auth import AdminRequired
-from api.deps import DbSession, StorageDep
+from api.deps import StorageDep
 from api.models.errors import error_responses
 from api.models.ingestion import (
     IngestionDetailResponse,
@@ -23,6 +23,7 @@ from domain.ingestion_browse import (
     IngestionView,
     IngestOutcome,
 )
+from shared import db
 from shared.models import IngestStage, IngestURL, SourceRunTrigger
 
 router = APIRouter(
@@ -92,18 +93,20 @@ async def get_ingestion_attempt(
 async def get_ingestion_logs(
     _auth: AdminRequired,
     ingest_url_id: int,
-    db: DbSession,
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
 ) -> IngestionLogsResponse:
-    row = db.execute(
-        select(IngestURL.job_id, IngestURL.created_at).where(IngestURL.id == ingest_url_id)
-    ).first()
+    async with db.read_session() as session:
+        result = await session.execute(
+            select(IngestURL.job_id, IngestURL.created_at).where(IngestURL.id == ingest_url_id)
+        )
+        row = result.first()
+
     if row is None:
         raise HTTPException(status_code=404, detail="Ingest attempt not found")
 
     job_id, created_at = row
     reader = AxiomLogReader()
-    entries = reader.fetch_attempt_logs(
+    entries = await reader.fetch_attempt_logs(
         ingest_url_id=ingest_url_id,
         job_id=job_id,
         created_at=created_at,

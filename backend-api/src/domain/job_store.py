@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import func, select
 
 from domain.job_rules import (
+    IndexBuildView,
     IngestJobCreation,
     JobCancellation,
     JobLifecycleNotFoundError,
@@ -17,7 +18,7 @@ from domain.job_rules import (
     project_job,
 )
 from shared import db
-from shared.models import IngestURL, Job, JobStatus, JobType
+from shared.models import IndexBuild, IngestURL, Job, JobStatus, JobType
 
 
 class ApiJobStore:
@@ -112,6 +113,13 @@ class ApiJobStore:
 
             views = [project_job(JobRowData.model_validate(job)) for job in jobs]
             return JobList(jobs=views, total=total)
+
+    async def list_index_builds(self, *, limit: int) -> list[IndexBuildView]:
+        async with db.read_session() as session:
+            rows = await session.scalars(
+                select(IndexBuild).order_by(IndexBuild.created_at.desc()).limit(limit)
+            )
+            return [IndexBuildView.model_validate(row) for row in rows.all()]
 
     async def request_cancellation(self, job_id: str) -> JobCancellation:
         async with db.read_session() as session:

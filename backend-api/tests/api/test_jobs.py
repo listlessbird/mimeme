@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock
 
-from fastapi.testclient import TestClient
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -257,18 +256,24 @@ class TestRebuildIndex:
 
 
 class TestIndexVersions:
-    def test_list_index_versions_empty(self, client: TestClient) -> None:
-        resp = client.get("/jobs/indexes/versions")
+    async def test_list_index_versions_empty(
+        self, async_client: AsyncClient, _patch_async_domain_session_scope: None
+    ) -> None:
+        resp = await async_client.get("/jobs/indexes/versions")
         assert resp.status_code == 200
         data = resp.json()
         assert data["versions"] == []
 
-    def test_list_index_versions_with_data(self, client: TestClient, db_session: Session) -> None:
-        create_index_build(session=db_session, is_active=True, version="v1")
-        create_index_build(session=db_session, is_active=False, version="v2")
-        db_session.flush()
+    async def test_list_index_versions_with_data(
+        self, async_client: AsyncClient, run_sync_seed, _patch_async_domain_session_scope: None
+    ) -> None:
+        def seed(session: Session) -> None:
+            create_index_build(session=session, is_active=True, version="v1")
+            create_index_build(session=session, is_active=False, version="v2")
 
-        resp = client.get("/jobs/indexes/versions")
+        await run_sync_seed(seed)
+
+        resp = await async_client.get("/jobs/indexes/versions")
         data = resp.json()
         assert len(data["versions"]) == 2
         active = [v for v in data["versions"] if v["is_active"]]

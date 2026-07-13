@@ -25,7 +25,7 @@ dependencies = [
     "slowapi==0.1.9",
     "axiom-py==0.10.0",
     "asyncpg>=0.31.0",
-    "aioboto3>=7.0.0",
+    "aiobotocore>=3.7.0",
 ]
 
 # Extras only needed to run models locally (GPU_BACKEND=local) or to import
@@ -72,6 +72,7 @@ dev = [
 lint = ["ruff==0.15.2"]
 typecheck = [
     "pyright",
+    "types-aiobotocore>=3.7.0",
     "types-aiobotocore-s3>=3.7.0",
 ]
 test = [
