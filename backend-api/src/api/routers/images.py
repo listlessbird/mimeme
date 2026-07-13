@@ -3,7 +3,7 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 
 from api.auth import AdminRequired
-from api.deps import DbSession, StorageDep, TemporalClientDep
+from api.deps import StorageDep, TemporalClientDep
 from api.models.errors import error_responses
 from api.models.images import (
     ImageIngestRequest,
@@ -15,7 +15,7 @@ from api.models.images import (
 from api.rate_limit import ADMIN_LIMIT, limiter
 from domain.image_catalog import ImageCatalog, ImageCatalogNotFoundError
 from domain.image_upload import ImageUploadStager
-from domain.job_lifecycle import JobLifecycle
+from domain.job_store import ApiJobStore
 from shared.config import settings
 from workflows import IngestWorkflow, IngestWorkflowInput
 
@@ -23,7 +23,6 @@ router = APIRouter(prefix="/images", tags=["Images"], responses=error_responses(
 
 
 async def _launch_ingest(
-    db: DbSession,
     temporal: TemporalClientDep,
     *,
     urls: list[str],
@@ -31,8 +30,8 @@ async def _launch_ingest(
     tags: list[str],
     callback_url: str | None,
 ) -> ImageIngestResponse:
-    lifecycle = JobLifecycle(db)
-    job = lifecycle.create_ingest_job(
+    store = ApiJobStore()
+    job = await store.create_ingest_job(
         urls=urls, dataset=dataset, tags=tags, callback_url=callback_url
     )
 
@@ -47,7 +46,7 @@ async def _launch_ingest(
         id=job.workflow_id,
         task_queue=settings.temporal_task_queue,
     )
-    lifecycle.record_workflow_id(job.job_id, job.workflow_id)
+    await store.record_workflow_id(job.job_id, job.workflow_id)
 
     return ImageIngestResponse(
         job_id=job.job_id,
@@ -63,11 +62,9 @@ async def ingest_images(
     request: Request,
     _auth: AdminRequired,
     ingest_request: ImageIngestRequest,
-    db: DbSession,
     temporal: TemporalClientDep,
 ) -> ImageIngestResponse:
     return await _launch_ingest(
-        db,
         temporal,
         urls=[str(url) for url in ingest_request.urls],
         dataset=ingest_request.dataset,
@@ -81,7 +78,6 @@ async def ingest_images(
 async def upload_image(
     request: Request,
     _auth: AdminRequired,
-    db: DbSession,
     storage: StorageDep,
     temporal: TemporalClientDep,
     file: Annotated[UploadFile, File()],
@@ -92,12 +88,11 @@ async def upload_image(
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
-    staged = ImageUploadStager(storage).stage(
+    staged = await ImageUploadStager(storage).stage(
         content=content, filename=file.filename, content_type=file.content_type
     )
 
     return await _launch_ingest(
-        db,
         temporal,
         urls=[staged.url],
         dataset=dataset,
@@ -111,7 +106,6 @@ async def upload_image(
 async def list_images(
     request: Request,
     _auth: AdminRequired,
-    db: DbSession,
     storage: StorageDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -119,7 +113,7 @@ async def list_images(
     dataset: Annotated[str | None, Query()] = None,
     sort: Annotated[Literal["newest", "oldest"], Query()] = "newest",
 ) -> ImageListResponse:
-    page = ImageCatalog(db, storage).list_images(
+    page = await ImageCatalog(storage).list_images(
         limit=limit,
         offset=offset,
         status=status.value if status else None,
@@ -146,11 +140,10 @@ async def list_images(
 async def get_image(
     _auth: AdminRequired,
     image_id: int,
-    db: DbSession,
     storage: StorageDep,
 ) -> ImageResponse:
     try:
-        image = ImageCatalog(db, storage).get_image(image_id)
+        image = await ImageCatalog(storage).get_image(image_id)
     except ImageCatalogNotFoundError:
         raise HTTPException(status_code=404, detail="Image not found")
     payload = image.model_dump()
@@ -162,10 +155,9 @@ async def get_image(
 async def delete_image(
     _auth: AdminRequired,
     image_id: int,
-    db: DbSession,
     storage: StorageDep,
 ) -> None:
     try:
-        ImageCatalog(db, storage).delete_image(image_id)
+        await ImageCatalog(storage).delete_image(image_id)
     except ImageCatalogNotFoundError:
         raise HTTPException(status_code=404, detail="Image not found")

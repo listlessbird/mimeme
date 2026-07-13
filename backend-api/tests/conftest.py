@@ -13,13 +13,17 @@ without Docker.
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
-from contextlib import contextmanager
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from contextlib import asynccontextmanager, contextmanager
+from dataclasses import dataclass
+from typing import BinaryIO, TypeVar
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, create_engine, event, text
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import Connection, Engine, create_engine, event, text
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -28,6 +32,8 @@ os.environ.setdefault("APP_ENV", "development")
 os.environ.setdefault("PRELOAD_TEXT_ENCODER_ON_STARTUP", "false")
 
 from shared.models.orm import Base  # noqa: E402
+
+T = TypeVar("T")
 
 
 def _build_test_engine() -> Engine:
@@ -54,6 +60,15 @@ def _build_test_engine() -> Engine:
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+
+
+def _async_test_url(engine: Engine) -> str:
+    sync_url = engine.url.render_as_string(hide_password=False)
+    if sync_url.startswith("postgresql://"):
+        return "postgresql+asyncpg://" + sync_url[len("postgresql://") :]
+    if sync_url.startswith("postgres://"):
+        return "postgresql+asyncpg://" + sync_url[len("postgres://") :]
+    return sync_url
 
 
 # ---------------------------------------------------------------------------
@@ -107,6 +122,69 @@ def db_session(db_engine: Engine) -> Iterator[Session]:
 
 
 @pytest.fixture()
+async def async_db_engine(db_engine: Engine) -> AsyncIterator[AsyncEngine]:
+    if db_engine.dialect.name != "postgresql":
+        pytest.skip("async DB fixtures require PostgreSQL")
+
+    engine = create_async_engine(_async_test_url(db_engine), echo=False, future=True)
+
+    yield engine
+
+    await engine.dispose()
+
+
+@pytest.fixture()
+async def async_db_connection(
+    async_db_engine: AsyncEngine,
+) -> AsyncIterator[AsyncConnection]:
+    connection = await async_db_engine.connect()
+    transaction = await connection.begin()
+
+    yield connection
+
+    await transaction.rollback()
+    await connection.close()
+
+
+@pytest.fixture()
+async def async_db_session(
+    async_db_connection: AsyncConnection,
+) -> AsyncIterator[AsyncSession]:
+    session = AsyncSession(
+        bind=async_db_connection,
+        expire_on_commit=False,
+        join_transaction_mode="create_savepoint",
+    )
+
+    yield session
+
+    await session.close()
+
+
+@pytest.fixture()
+def run_sync_seed(
+    async_db_connection: AsyncConnection,
+) -> Callable[[Callable[[Session], T]], Awaitable[T]]:
+    async def _run(seed: Callable[[Session], T]) -> T:
+        def _inside(sync_connection: Connection) -> T:
+            session = Session(
+                bind=sync_connection,
+                expire_on_commit=False,
+                join_transaction_mode="rollback_only",
+            )
+            try:
+                result = seed(session)
+                session.flush()
+                return result
+            finally:
+                session.close()
+
+        return await async_db_connection.run_sync(_inside)
+
+    return _run
+
+
+@pytest.fixture()
 def _patch_session_scope(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
     """Monkeypatch ``shared.db.session_scope`` so that activities under test
     use the rollback-protected test session instead of a real connection.
@@ -134,15 +212,86 @@ def _patch_session_scope(db_session: Session, monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr("shared.db.get_db", _test_get_db)
 
 
+@pytest.fixture()
+def _patch_domain_session_scope(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    @contextmanager
+    def _test_session_scope() -> Iterator[Session]:
+        yield db_session
+        db_session.flush()
+
+    monkeypatch.setattr("shared.db.session_scope", _test_session_scope)
+    monkeypatch.setattr("shared.db.read_session_scope", _test_session_scope)
+
+
+@pytest.fixture()
+def _patch_async_domain_session_scope(
+    async_db_session: AsyncSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    @asynccontextmanager
+    async def _test_read_session() -> AsyncIterator[AsyncSession]:
+        yield async_db_session
+
+    @asynccontextmanager
+    async def _test_write_session() -> AsyncIterator[AsyncSession]:
+        yield async_db_session
+        await async_db_session.flush()
+
+    monkeypatch.setattr("shared.db.read_session", _test_read_session)
+    monkeypatch.setattr("shared.db.write_session", _test_write_session)
+
+
 # ---------------------------------------------------------------------------
 # Mock fixtures for external services
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class UploadBytesCall:
+    data: bytes | BinaryIO
+    key: str
+    content_type: str
+
+
+class FakeApiStorage:
+    def __init__(self) -> None:
+        self.presigned: list[tuple[str, int]] = []
+        self.uploaded: list[UploadBytesCall] = []
+        self.deleted: list[str] = []
+        self.existing_keys: set[str] = set()
+
+    def presign(self, key: str, expiration: int = 3600) -> str:
+        self.presigned.append((key, expiration))
+        return "https://mock-s3/presigned"
+
+    async def upload_bytes(
+        self, data: bytes | BinaryIO, key: str, content_type: str = "application/octet-stream"
+    ) -> str:
+        self.uploaded.append(UploadBytesCall(data=data, key=key, content_type=content_type))
+        self.existing_keys.add(key)
+        return "mock-etag"
+
+    async def delete(self, key: str) -> None:
+        self.deleted.append(key)
+        self.existing_keys.discard(key)
+
+    async def exists(self, key: str) -> bool:
+        return key in self.existing_keys
+
+
+@pytest.fixture()
+def api_storage() -> FakeApiStorage:
+    return FakeApiStorage()
 
 
 @pytest.fixture()
 def mock_storage() -> MagicMock:
     """Mock StorageService — no real S3 calls."""
     storage = MagicMock()
+    storage.presign.return_value = "https://mock-s3/presigned"
     storage.generate_presigned_url.return_value = "https://mock-s3/presigned"
     storage.upload_file.return_value = "mock-etag"
     storage.upload_bytes.return_value = "mock-etag"
@@ -192,7 +341,8 @@ def mock_index_manager() -> MagicMock:
 @pytest.fixture()
 def client(
     db_session: Session,
-    mock_storage: MagicMock,
+    _patch_domain_session_scope: None,
+    api_storage: FakeApiStorage,
     mock_temporal: AsyncMock,
     mock_index_manager: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
@@ -205,7 +355,7 @@ def client(
     """
     from contextlib import asynccontextmanager
 
-    from api.deps import get_db, get_index_manager, get_storage, get_temporal_client
+    from api.deps import get_index_manager, get_storage, get_temporal_client
     from api.main import create_app
 
     @asynccontextmanager
@@ -217,22 +367,56 @@ def client(
     # with a no-op so the test client doesn't hit external services.
     app.router.lifespan_context = _noop_lifespan
 
-    def _override_db() -> Iterator[Session]:
-        yield db_session
-
     async def _override_temporal() -> AsyncMock:
         return mock_temporal
 
-    def _override_storage() -> MagicMock:
-        return mock_storage
+    def _override_storage() -> FakeApiStorage:
+        return api_storage
 
     def _override_index_manager() -> MagicMock:
         return mock_index_manager
 
-    app.dependency_overrides[get_db] = _override_db
     app.dependency_overrides[get_temporal_client] = _override_temporal
     app.dependency_overrides[get_storage] = _override_storage
     app.dependency_overrides[get_index_manager] = _override_index_manager
 
     with TestClient(app, raise_server_exceptions=False) as tc:
         yield tc
+
+
+@pytest.fixture()
+async def async_client(
+    db_session: Session,
+    _patch_domain_session_scope: None,
+    api_storage: FakeApiStorage,
+    mock_temporal: AsyncMock,
+    mock_index_manager: MagicMock,
+) -> AsyncIterator[AsyncClient]:
+    from contextlib import asynccontextmanager
+
+    from api.deps import get_index_manager, get_storage, get_temporal_client
+    from api.main import create_app
+
+    @asynccontextmanager
+    async def _noop_lifespan(app: object):
+        yield
+
+    app = create_app()
+    app.router.lifespan_context = _noop_lifespan
+
+    async def _override_temporal() -> AsyncMock:
+        return mock_temporal
+
+    def _override_storage() -> FakeApiStorage:
+        return api_storage
+
+    def _override_index_manager() -> MagicMock:
+        return mock_index_manager
+
+    app.dependency_overrides[get_temporal_client] = _override_temporal
+    app.dependency_overrides[get_storage] = _override_storage
+    app.dependency_overrides[get_index_manager] = _override_index_manager
+
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac

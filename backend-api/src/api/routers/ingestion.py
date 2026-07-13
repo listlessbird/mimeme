@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
 
 from api.auth import AdminRequired
-from api.deps import DbSession, StorageDep
+from api.deps import StorageDep
 from api.models.errors import error_responses
 from api.models.ingestion import (
     IngestionDetailResponse,
@@ -23,6 +23,7 @@ from domain.ingestion_browse import (
     IngestionView,
     IngestOutcome,
 )
+from shared import db
 from shared.models import IngestStage, IngestURL, SourceRunTrigger
 
 router = APIRouter(
@@ -33,7 +34,6 @@ router = APIRouter(
 @router.get("", response_model=IngestionListResponse)
 async def list_ingestion(
     _auth: AdminRequired,
-    db: DbSession,
     storage: StorageDep,
     view: Annotated[IngestionView, Query()] = IngestionView.LIVE,
     stage: Annotated[IngestStage | None, Query()] = None,
@@ -46,7 +46,7 @@ async def list_ingestion(
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> IngestionListResponse:
-    page = IngestionBrowser(db, storage).list_attempts(
+    page = await IngestionBrowser(storage).list_attempts(
         limit=limit,
         offset=offset,
         view=view,
@@ -75,11 +75,10 @@ async def list_ingestion(
 async def get_ingestion_attempt(
     _auth: AdminRequired,
     ingest_url_id: int,
-    db: DbSession,
     storage: StorageDep,
 ) -> IngestionDetailResponse:
     try:
-        detail = IngestionBrowser(db, storage).get_attempt(ingest_url_id)
+        detail = await IngestionBrowser(storage).get_attempt(ingest_url_id)
     except AttemptNotFoundError:
         raise HTTPException(status_code=404, detail="Ingest attempt not found")
 
@@ -94,18 +93,20 @@ async def get_ingestion_attempt(
 async def get_ingestion_logs(
     _auth: AdminRequired,
     ingest_url_id: int,
-    db: DbSession,
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
 ) -> IngestionLogsResponse:
-    row = db.execute(
-        select(IngestURL.job_id, IngestURL.created_at).where(IngestURL.id == ingest_url_id)
-    ).first()
+    async with db.read_session() as session:
+        result = await session.execute(
+            select(IngestURL.job_id, IngestURL.created_at).where(IngestURL.id == ingest_url_id)
+        )
+        row = result.first()
+
     if row is None:
         raise HTTPException(status_code=404, detail="Ingest attempt not found")
 
     job_id, created_at = row
     reader = AxiomLogReader()
-    entries = reader.fetch_attempt_logs(
+    entries = await reader.fetch_attempt_logs(
         ingest_url_id=ingest_url_id,
         job_id=job_id,
         created_at=created_at,

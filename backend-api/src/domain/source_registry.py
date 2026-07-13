@@ -1,12 +1,15 @@
 import datetime
+from collections.abc import Sequence
 from typing import Any
 
 from pydantic import BaseModel
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from domain.adapters.registry import KNOWN_ADAPTER_KEYS, UnknownAdapterKeyError
 from domain.source_run_accounting import UrlOutcome, derive_run_accounting
+from domain.source_schedule_spec import ScheduleSpec, derive_schedule_spec
+from shared import db
 from shared.models.orm import (
     IngestionSource,
     IngestURL,
@@ -80,10 +83,7 @@ class SourceDetail(SourceView, frozen=True):
 
 
 class SourceRegistry:
-    def __init__(self, db: Session) -> None:
-        self.db = db
-
-    def create(
+    async def create(
         self,
         *,
         name: str,
@@ -99,61 +99,71 @@ class SourceRegistry:
         if adapter_key not in KNOWN_ADAPTER_KEYS:
             raise UnknownAdapterKeyError(adapter_key)
 
-        if self._live_name_exists(name):
-            raise DuplicateSourceNameError(name)
+        async with db.write_session() as session:
+            if await self._live_name_exists(session, name):
+                raise DuplicateSourceNameError(name)
 
-        source = IngestionSource(
-            name=name,
-            adapter_key=adapter_key,
-            adapter_config=adapter_config,
-            dataset=dataset,
-            schedule_cron=schedule_cron,
-            schedule_timezone=schedule_timezone,
-            max_items_per_run=max_items_per_run,
-            enabled=enabled,
-        )
-
-        self.db.add(source)
-        self.db.flush()
-        self.db.refresh(source)
-
-        return self._to_source_view(source)
-
-    def list_sources(self) -> list[SourceListItem]:
-        sources = (
-            self.db.query(IngestionSource)
-            .filter(IngestionSource.deleted_at.is_(None))
-            .order_by(IngestionSource.created_at.desc())
-            .all()
-        )
-
-        stats_by_souce_id = self._stats_by_source_id([source.id for source in sources])
-
-        return [
-            SourceListItem(
-                **self._to_source_view(source).model_dump(), stats=stats_by_souce_id[source.id]
+            source = IngestionSource(
+                name=name,
+                adapter_key=adapter_key,
+                adapter_config=adapter_config,
+                dataset=dataset,
+                schedule_cron=schedule_cron,
+                schedule_timezone=schedule_timezone,
+                max_items_per_run=max_items_per_run,
+                enabled=enabled,
             )
-            for source in sources
-        ]
 
-    def get_source(self, source_id: int, *, recent_runs_limit: int = 20) -> SourceDetail:
-        source = self._live_source_or_raise(source_id)
+            session.add(source)
+            await session.flush()
+            await session.refresh(source)
 
-        runs = (
-            self.db.query(SourceRun)
-            .filter(SourceRun.source_id == source.id)
-            .order_by(SourceRun.created_at.desc())
-            .limit(recent_runs_limit)
-            .all()
-        )
+            return self._to_source_view(source)
 
-        return SourceDetail(
-            **self._to_source_view(source).model_dump(),
-            stats=self._stats_by_source_id([source.id])[source.id],
-            recent_runs=self._to_run_views(runs),
-        )
+    async def list_sources(self) -> list[SourceListItem]:
 
-    def patch(
+        async with db.read_session() as session:
+            sources = (
+                await session.scalars(
+                    select(IngestionSource)
+                    .where(IngestionSource.deleted_at.is_(None))
+                    .order_by(IngestionSource.created_at.desc())
+                )
+            ).all()
+
+            stats_by_souce_id = await self._stats_by_source_id(
+                session, [source.id for source in sources]
+            )
+
+            return [
+                SourceListItem(
+                    **self._to_source_view(source).model_dump(),
+                    stats=stats_by_souce_id[source.id],
+                )
+                for source in sources
+            ]
+
+    async def get_source(self, source_id: int, *, recent_runs_limit: int = 20) -> SourceDetail:
+
+        async with db.read_session() as session:
+            source = await self._live_source_or_raise(session, source_id)
+
+            runs = (
+                await session.scalars(
+                    select(SourceRun)
+                    .where(SourceRun.source_id == source.id)
+                    .order_by(SourceRun.created_at.desc())
+                    .limit(recent_runs_limit)
+                )
+            ).all()
+
+            return SourceDetail(
+                **self._to_source_view(source).model_dump(),
+                stats=(await self._stats_by_source_id(session, [source.id]))[source.id],
+                recent_runs=await self._to_run_views(session, runs),
+            )
+
+    async def patch(
         self,
         source_id: int,
         *,
@@ -164,49 +174,76 @@ class SourceRegistry:
         max_items_per_run: int | None | _Unset = UNSET,
         enabled: bool | _Unset = UNSET,
     ) -> SourceView:
-        source = self._live_source_or_raise(source_id)
 
-        if not isinstance(adapter_config, _Unset):
-            source.adapter_config = adapter_config
+        async with db.write_session() as session:
+            source = await self._live_source_or_raise(session, source_id)
 
-        if not isinstance(dataset, _Unset):
-            source.dataset = dataset
+            if not isinstance(adapter_config, _Unset):
+                source.adapter_config = adapter_config
 
-        if not isinstance(schedule_cron, _Unset):
-            source.schedule_cron = schedule_cron
+            if not isinstance(dataset, _Unset):
+                source.dataset = dataset
 
-        if not isinstance(schedule_timezone, _Unset):
-            source.schedule_timezone = schedule_timezone
+            if not isinstance(schedule_cron, _Unset):
+                source.schedule_cron = schedule_cron
 
-        if not isinstance(max_items_per_run, _Unset):
-            source.max_items_per_run = max_items_per_run
+            if not isinstance(schedule_timezone, _Unset):
+                source.schedule_timezone = schedule_timezone
 
-        if not isinstance(enabled, _Unset):
-            source.enabled = enabled
+            if not isinstance(max_items_per_run, _Unset):
+                source.max_items_per_run = max_items_per_run
 
-        self.db.flush()
-        self.db.refresh(source)
+            if not isinstance(enabled, _Unset):
+                source.enabled = enabled
 
-        return self._to_source_view(source)
+            await session.flush()
+            await session.refresh(source)
 
-    def soft_delete(self, source_id: int) -> None:
-        source = self._live_source_or_raise(source_id)
+            return self._to_source_view(source)
 
-        source.deleted_at = datetime.datetime.now(datetime.UTC)
-        self.db.flush()
+    async def soft_delete(self, source_id: int) -> None:
 
-    def _live_name_exists(self, name: str) -> bool:
+        async with db.write_session() as session:
+            source = await self._live_source_or_raise(session, source_id)
+
+            source.deleted_at = datetime.datetime.now(datetime.UTC)
+            await session.flush()
+
+    async def list_schedule_specs(self) -> list[ScheduleSpec]:
+        async with db.read_session() as session:
+            sources = (
+                await session.scalars(
+                    select(IngestionSource).where(IngestionSource.deleted_at.is_(None))
+                )
+            ).all()
+
+            return [
+                derive_schedule_spec(
+                    source_id=source.id,
+                    schedule_cron=source.schedule_cron,
+                    schedule_timezone=source.schedule_timezone,
+                    enabled=source.enabled,
+                    deleted=False,
+                )
+                for source in sources
+            ]
+
+    async def _live_name_exists(self, session: AsyncSession, name: str) -> bool:
+
         return (
-            self.db.query(IngestionSource)
-            .filter(IngestionSource.name == name, IngestionSource.deleted_at.is_(None))
-            .first()
-            is not None
-        )
+            await session.scalars(
+                select(IngestionSource).where(
+                    IngestionSource.name == name, IngestionSource.deleted_at.is_(None)
+                )
+            )
+        ).first() is not None
 
-    def _live_source_or_raise(self, source_id: int) -> IngestionSource:
+    async def _live_source_or_raise(self, session: AsyncSession, source_id: int) -> IngestionSource:
         source = (
-            self.db.query(IngestionSource).filter(
-                IngestionSource.id == source_id, IngestionSource.deleted_at.is_(None)
+            await session.scalars(
+                select(IngestionSource).where(
+                    IngestionSource.id == source_id, IngestionSource.deleted_at.is_(None)
+                )
             )
         ).one_or_none()
 
@@ -215,7 +252,9 @@ class SourceRegistry:
 
         return source
 
-    def _stats_by_source_id(self, source_ids: list[int]) -> dict[int, SourceStats]:
+    async def _stats_by_source_id(
+        self, session: AsyncSession, source_ids: list[int]
+    ) -> dict[int, SourceStats]:
         stats = {
             source_id: {
                 "run_count": 0,
@@ -230,45 +269,37 @@ class SourceRegistry:
         if not source_ids:
             return {}
 
-        run_rows = self.db.execute(
-            select(SourceRun.source_id, func.count(SourceRun.id))
-            .where(SourceRun.source_id.in_(source_ids))
-            .group_by(SourceRun.source_id)
-        ).all()
-
-        item_rows = self.db.execute(
-            select(SourceItem.source_id, func.count(SourceItem.id))
-            .where(SourceItem.source_id.in_(source_ids))
-            .group_by(SourceItem.source_id)
-        ).all()
-
-        duplicate_rows = self.db.execute(
-            select(IngestURL.source_id, func.count(IngestURL.id))
-            .where(
-                IngestURL.source_id.in_(source_ids),
-                IngestURL.duplicate_reason.is_not(None),
+        run_rows = (
+            await session.execute(
+                select(SourceRun.source_id, func.count(SourceRun.id))
+                .where(SourceRun.source_id.in_(source_ids))
+                .group_by(SourceRun.source_id)
             )
-            .group_by(IngestURL.source_id)
         ).all()
 
-        ingested_rows = self.db.execute(
-            select(IngestURL.source_id, func.count(IngestURL.id))
-            .where(
-                IngestURL.source_id.in_(source_ids),
-                IngestURL.status == ProcessingStatus.DONE,
-                IngestURL.image_id.is_not(None),
-                IngestURL.duplicate_reason.is_(None),
+        item_rows = (
+            await session.execute(
+                select(SourceItem.source_id, func.count(SourceItem.id))
+                .where(SourceItem.source_id.in_(source_ids))
+                .group_by(SourceItem.source_id)
             )
-            .group_by(IngestURL.source_id)
         ).all()
 
-        failed_rows = self.db.execute(
-            select(IngestURL.source_id, func.count(IngestURL.id))
-            .where(
-                IngestURL.source_id.in_(source_ids),
-                IngestURL.status == ProcessingStatus.FAILED,
+        url_rows = (
+            await session.execute(
+                select(
+                    IngestURL.source_id,
+                    func.count(IngestURL.id).filter(IngestURL.duplicate_reason.is_not(None)),
+                    func.count(IngestURL.id).filter(
+                        IngestURL.status == ProcessingStatus.DONE,
+                        IngestURL.image_id.is_not(None),
+                        IngestURL.duplicate_reason.is_(None),
+                    ),
+                    func.count(IngestURL.id).filter(IngestURL.status == ProcessingStatus.FAILED),
+                )
+                .where(IngestURL.source_id.in_(source_ids))
+                .group_by(IngestURL.source_id)
             )
-            .group_by(IngestURL.source_id)
         ).all()
 
         for source_id, count in run_rows:
@@ -277,25 +308,23 @@ class SourceRegistry:
         for source_id, count in item_rows:
             stats[source_id]["items_discovered"] = count
 
-        for source_id, count in duplicate_rows:
-            stats[source_id]["duplicate_count"] = count
-
-        for source_id, count in ingested_rows:
-            stats[source_id]["images_ingested"] = count
-
-        for source_id, count in failed_rows:
-            stats[source_id]["failed_count"] = count
+        for source_id, duplicate_count, images_ingested, failed_count in url_rows:
+            stats[source_id]["duplicate_count"] = duplicate_count
+            stats[source_id]["images_ingested"] = images_ingested
+            stats[source_id]["failed_count"] = failed_count
 
         return {source_id: SourceStats(**values) for source_id, values in stats.items()}
 
-    def _to_run_views(self, runs: list[SourceRun]) -> list[SourceRunView]:
+    async def _to_run_views(
+        self, session: AsyncSession, runs: Sequence[SourceRun]
+    ) -> list[SourceRunView]:
         run_ids = [run.id for run in runs]
 
         if not run_ids:
             return []
 
-        discovered_by_run_id = self._discovered_count_by_run_id(run_ids)
-        outcomes_by_run_id = self._url_outcomes_by_run_id(run_ids)
+        discovered_by_run_id = await self._discovered_count_by_run_id(session, run_ids)
+        outcomes_by_run_id = await self._url_outcomes_by_run_id(session, run_ids)
 
         views: list[SourceRunView] = []
 
@@ -324,26 +353,30 @@ class SourceRegistry:
 
         return views
 
-    def _discovered_count_by_run_id(self, run_ids: list[int]) -> dict[int, int]:
+    async def _discovered_count_by_run_id(
+        self, session: AsyncSession, run_ids: list[int]
+    ) -> dict[int, int]:
         rows = (
-            self.db.query(SourceItem.last_source_run_id, func.count(SourceItem.id))
-            .filter(SourceItem.last_source_run_id.in_(run_ids))
-            .group_by(SourceItem.last_source_run_id)
-            .all()
-        )
+            await session.execute(
+                select(SourceItem.last_source_run_id, func.count(SourceItem.id))
+                .where(SourceItem.last_source_run_id.in_(run_ids))
+                .group_by(SourceItem.last_source_run_id)
+            )
+        ).all()
 
         return {run_id: count for run_id, count in rows if run_id is not None}
 
-    def _url_outcomes_by_run_id(self, run_ids: list[int]) -> dict[int, list[UrlOutcome]]:
+    async def _url_outcomes_by_run_id(
+        self, session: AsyncSession, run_ids: list[int]
+    ) -> dict[int, list[UrlOutcome]]:
+
         rows = (
-            self.db.query(
-                IngestURL.source_run_id,
-                IngestURL.status,
-                IngestURL.duplicate_reason,
+            await session.execute(
+                select(IngestURL.source_run_id, IngestURL.status, IngestURL.duplicate_reason).where(
+                    IngestURL.source_run_id.in_(run_ids)
+                )
             )
-            .filter(IngestURL.source_run_id.in_(run_ids))
-            .all()
-        )
+        ).all()
 
         outcomes_by_run_id: dict[int, list[UrlOutcome]] = {run_id: [] for run_id in run_ids}
 

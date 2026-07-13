@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 
 import httpx
 import structlog
-from sqlalchemy import func
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 from temporalio import activity
 
@@ -150,16 +150,18 @@ def fetch_source_activity(input: FetchSourceInput) -> FetchSourceOutput:
 
 
 def _run_counts(session: Session, source_run_id: int) -> tuple[int, int]:
+
     discovered = (
-        session.query(func.count(SourceItem.id))
-        .filter(SourceItem.last_source_run_id == source_run_id)
-        .scalar()
+        session.scalar(
+            select(func.count(SourceItem.id)).where(SourceItem.last_source_run_id == source_run_id)
+        )
         or 0
     )
+
     queued = (
-        session.query(func.count(IngestURL.id))
-        .filter(IngestURL.source_run_id == source_run_id)
-        .scalar()
+        session.scalar(
+            select(func.count(IngestURL.id)).where(IngestURL.source_run_id == source_run_id)
+        )
         or 0
     )
     return discovered, queued
@@ -191,27 +193,27 @@ def discover_and_queue_activity(input: DiscoverAndQueueInput) -> DiscoverAndQueu
 
             seen_ids = {
                 external_item_id
-                for (external_item_id,) in (
-                    session.query(SourceItem.external_item_id)
-                    .filter(SourceItem.source_id == input.source_id)
-                    .all()
-                )
+                for (external_item_id,) in session.execute(
+                    select(SourceItem.external_item_id).where(
+                        SourceItem.source_id == input.source_id
+                    )
+                ).all()
             }
 
             dedup = dedup_source_items(discovered_items, seen_ids=seen_ids)
             now = datetime.now(UTC)
 
-            for item in dedup.already_seen:
-                existing = (
-                    session.query(SourceItem)
-                    .filter(
+            seen_external_ids = [item.external_item_id for item in dedup.already_seen]
+
+            if seen_external_ids:
+                session.execute(
+                    update(SourceItem)
+                    .where(
                         SourceItem.source_id == input.source_id,
-                        SourceItem.external_item_id == item.external_item_id,
+                        SourceItem.external_item_id.in_(seen_external_ids),
                     )
-                    .one()
+                    .values(last_seen_at=now, last_source_run_id=input.source_run_id)
                 )
-                existing.last_seen_at = now
-                existing.last_source_run_id = input.source_run_id
 
             new_pairs: list[tuple[DiscoveredItem, SourceItem]] = []
             for item in dedup.new:
@@ -284,18 +286,21 @@ def finalize_source_run_activity(input: FinalizeSourceRunInput) -> FinalizeSourc
                 raise ValueError(f"source_run {input.source_run_id} not found")
 
             discovered = (
-                session.query(func.count(SourceItem.id))
-                .filter(SourceItem.last_source_run_id == input.source_run_id)
-                .scalar()
+                session.scalar(
+                    select(func.count(SourceItem.id)).where(
+                        SourceItem.last_source_run_id == input.source_run_id
+                    )
+                )
                 or 0
             )
+
             outcomes = [
                 UrlOutcome(status=status, duplicate_reason=duplicate_reason)
-                for status, duplicate_reason in (
-                    session.query(IngestURL.status, IngestURL.duplicate_reason)
-                    .filter(IngestURL.source_run_id == input.source_run_id)
-                    .all()
-                )
+                for status, duplicate_reason in session.execute(
+                    select(IngestURL.status, IngestURL.duplicate_reason).where(
+                        IngestURL.source_run_id == input.source_run_id
+                    )
+                ).all()
             ]
 
             accounting = derive_run_accounting(discovered_items=discovered, url_outcomes=outcomes)
@@ -334,14 +339,13 @@ def start_source_run_activity(input: StartSourceRunInput) -> StartSourceRunOutpu
 
     try:
         with session_scope() as session:
-            source = (
-                session.query(IngestionSource)
-                .filter(
+            source = session.scalars(
+                select(IngestionSource).where(
                     IngestionSource.id == input.source_id,
                     IngestionSource.deleted_at.is_(None),
                 )
-                .one_or_none()
-            )
+            ).one_or_none()
+
             if source is None:
                 raise ValueError(f"source {input.source_id} not found")
 

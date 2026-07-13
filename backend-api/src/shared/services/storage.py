@@ -94,6 +94,13 @@ class StorageService:
             if error_code in ("404", "NoSuchBucket"):
                 self.client.create_bucket(Bucket=self.bucket)
 
+    def bucket_exists(self) -> bool:
+        try:
+            self.client.head_bucket(Bucket=self.bucket)
+            return True
+        except ClientError:
+            return False
+
     def build_image_key(self, sha256: str, dataset: str | None, extension: str) -> str:
         ext = extension.lower().lstrip(".")
         source = dataset if dataset else "api-ingested"

@@ -5,41 +5,37 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query
 
 from api.auth import AdminRequired
-from api.deps import DbSession, TemporalClientDep
+from api.deps import TemporalClientDep
 from api.models.errors import error_responses
 from api.models.health import IndexVersionResponse, IndexVersionsResponse
 from api.models.jobs import JobListResponse, JobResponse, RebuildIndexRequest
-from domain.job_lifecycle import (
-    JobLifecycle,
-    JobLifecycleInvalidStateError,
-    JobLifecycleNotFoundError,
-)
+from domain.job_rules import JobLifecycleInvalidStateError, JobLifecycleNotFoundError
+from domain.job_store import ApiJobStore
 from shared.config import settings
-from shared.models import IndexBuild, JobStatus, JobType
+from shared.models import JobStatus, JobType
 from workflows import RebuildIndexWorkflow, RebuildIndexWorkflowInput
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"], responses=error_responses(403, 429, 500))
 
 
 @router.get("/{job_id}", response_model=JobResponse, responses=error_responses(404))
-async def get_job(_auth: AdminRequired, job_id: str, db: DbSession) -> JobResponse:
+async def get_job(_auth: AdminRequired, job_id: str) -> JobResponse:
     try:
-        job = JobLifecycle(db).get_job(job_id)
+        job = await ApiJobStore().get_job(job_id)
     except JobLifecycleNotFoundError:
         raise HTTPException(status_code=404, detail="Job not found")
-    return JobResponse.model_construct(**job.model_dump())
+    return JobResponse.model_validate(job.model_dump())
 
 
 @router.post("/rebuild-index", response_model=JobResponse, status_code=202)
 async def trigger_rebuild_index(
     _auth: AdminRequired,
-    db: DbSession,
     temporal: TemporalClientDep,
     request: RebuildIndexRequest | None = None,
 ) -> JobResponse:
     request = request or RebuildIndexRequest()
-    lifecycle = JobLifecycle(db)
-    rebuild = lifecycle.create_rebuild_job(
+    store = ApiJobStore()
+    rebuild = await store.create_rebuild_job(
         force=request.force,
         model_name=request.model_name or settings.embed_model,
         index_type=settings.index_type,
@@ -57,7 +53,7 @@ async def trigger_rebuild_index(
         task_queue=settings.temporal_task_queue,
     )
 
-    lifecycle.record_workflow_id(rebuild.job.id, rebuild.workflow_id)
+    await store.record_workflow_id(rebuild.job.id, rebuild.workflow_id)
 
     return JobResponse(
         id=rebuild.job.id,
@@ -70,12 +66,10 @@ async def trigger_rebuild_index(
 
 
 @router.delete("/{job_id}", status_code=204, responses=error_responses(400, 404))
-async def cancel_job(
-    _auth: AdminRequired, job_id: str, db: DbSession, temporal: TemporalClientDep
-) -> None:
-    lifecycle = JobLifecycle(db)
+async def cancel_job(_auth: AdminRequired, job_id: str, temporal: TemporalClientDep) -> None:
+    store = ApiJobStore()
     try:
-        cancellation = lifecycle.request_cancellation(job_id)
+        cancellation = await store.request_cancellation(job_id)
     except JobLifecycleNotFoundError:
         raise HTTPException(status_code=404, detail="Job not found")
     except JobLifecycleInvalidStateError as exc:
@@ -85,21 +79,20 @@ async def cancel_job(
         handle = temporal.get_workflow_handle(cancellation.workflow_id)
         await handle.cancel()
 
-    lifecycle.mark_cancelled(job_id)
+    await store.mark_cancelled(job_id)
 
 
 @router.get("", response_model=JobListResponse)
 async def list_jobs(
     _auth: AdminRequired,
-    db: DbSession,
     status: Annotated[JobStatus | None, Query()] = None,
     job_type: Annotated[JobType | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> JobListResponse:
-    result = JobLifecycle(db).list_jobs(status=status, job_type=job_type, limit=limit)
+    result = await ApiJobStore().list_jobs(status=status, job_type=job_type, limit=limit)
 
     return JobListResponse(
-        jobs=[JobResponse.model_construct(**job.model_dump()) for job in result.jobs],
+        jobs=[JobResponse.model_validate(job.model_dump()) for job in result.jobs],
         total=result.total,
     )
 
@@ -107,10 +100,9 @@ async def list_jobs(
 @router.get("/indexes/versions", response_model=IndexVersionsResponse)
 async def list_index_versions(
     _auth: AdminRequired,
-    db: DbSession,
     limit: Annotated[int, Query(ge=1, le=50)] = 10,
 ) -> IndexVersionsResponse:
-    builds = db.query(IndexBuild).order_by(IndexBuild.created_at.desc()).limit(limit).all()
+    builds = await ApiJobStore().list_index_builds(limit=limit)
 
     return IndexVersionsResponse(
         versions=[

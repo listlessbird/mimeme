@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 
 import structlog
+from sqlalchemy import select
 from temporalio import activity
 
 from domain.job_lifecycle import JobLifecycle
@@ -166,7 +167,13 @@ def save_annotations_activity(input: SaveAnnotationsInput) -> None:
     started = time.monotonic()
     try:
         with session_scope() as session:
-            ann = session.query(Annotation).filter_by(image_id=input.image_id).first()
+            ann = session.scalars(
+                select(Annotation).where(Annotation.image_id == input.image_id)
+            ).first()
+            proc = session.scalars(
+                select(Processing).where(Processing.image_id == input.image_id)
+            ).first()
+
             created = ann is None
             if not ann:
                 ann = Annotation(image_id=input.image_id)
@@ -175,7 +182,6 @@ def save_annotations_activity(input: SaveAnnotationsInput) -> None:
             ann.caption_text = input.caption
             ann.ocr_text = input.ocr_text
 
-            proc = session.query(Processing).filter_by(image_id=input.image_id).first()
             if proc:
                 proc.caption_status = ProcessingStatus.DONE
                 proc.caption_model = input.caption_model
@@ -206,7 +212,9 @@ def save_embedding_info_activity(input: SaveEmbeddingInfoInput) -> None:
     started = time.monotonic()
     try:
         with session_scope() as session:
-            proc = session.query(Processing).filter_by(image_id=input.image_id).first()
+            proc = session.scalars(
+                select(Processing).where(Processing.image_id == input.image_id)
+            ).first()
             found = proc is not None
             if proc:
                 proc.embed_status = ProcessingStatus.DONE

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 from enum import StrEnum
+from typing import Any
 
 from sqlalchemy import (
     Boolean,
@@ -295,7 +296,7 @@ class IngestionSource(Base):
         SAEnum(SourceType), default=SourceType.API, nullable=False
     )
     adapter_key: Mapped[str] = mapped_column(String(100), nullable=False)
-    adapter_config: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    adapter_config: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
     dataset: Mapped[str | None] = mapped_column(String(255), nullable=True)
     schedule_cron: Mapped[str | None] = mapped_column(String(255), nullable=True)
     schedule_timezone: Mapped[str] = mapped_column(String(64), default="UTC", nullable=False)
@@ -387,7 +388,7 @@ class SourceItem(Base):
     canonical_item_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     canonical_image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
-    raw_metadata: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    raw_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     first_seen_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

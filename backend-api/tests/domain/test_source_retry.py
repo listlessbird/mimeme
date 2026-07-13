@@ -1,14 +1,7 @@
-"""Tests for SourceRetry — re-enqueueing failed Source ingest attempts.
-
-Retry resets the *existing* failed ``IngestURL`` rows in place (preserving the
-one-attempt-per-source-item invariant the galleries depend on), reattaches them
-to a fresh INGEST ``Job`` for the pipeline to pick up, and marks the affected
-runs RUNNING. Run accounting is re-derived later by finalize, not here.
-"""
-
 from __future__ import annotations
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from tests.factories import (
     create_image,
@@ -21,12 +14,11 @@ from tests.factories import (
 
 from domain.source_item_browse import RunNotFoundError
 from domain.source_registry import SourceNotFoundError
-from domain.source_retry import (
-    NothingToRetryError,
-    SourceItemNotFoundError,
-    SourceRetry,
-)
+from domain.source_retry import NothingToRetryError, SourceItemNotFoundError, SourceRetry
 from shared.models import ProcessingStatus, SourceRunStatus
+from shared.models.orm import IngestURL, SourceRun
+
+pytestmark = pytest.mark.usefixtures("_patch_async_domain_session_scope")
 
 
 def _failed_url(session: Session, run, item, **kwargs):
@@ -43,151 +35,151 @@ def _failed_url(session: Session, run, item, **kwargs):
     )
 
 
-class TestRetryRun:
-    def test_resets_failed_urls_and_queues_fresh_job(self, db_session: Session) -> None:
-        src = create_ingestion_source(session=db_session, dataset="memes")
-        run = create_source_run(session=db_session, source=src, source_id=src.id)
-        item = create_source_item(session=db_session, source=src, source_id=src.id)
-        url = _failed_url(db_session, run, item)
+async def test_retry_run_resets_failed_url_and_queues_job(
+    run_sync_seed, async_db_session: AsyncSession
+) -> None:
+    def seed(session: Session) -> tuple[int, int, int]:
+        source = create_ingestion_source(session=session, dataset="memes")
+        run = create_source_run(session=session, source=source, status=SourceRunStatus.PARTIAL)
+        item = create_source_item(session=session, source=source)
+        url = _failed_url(session, run, item)
+        return source.id, run.id, url.id
 
-        plan = SourceRetry(db_session).retry_run(src.id, run.id)
+    source_id, run_id, url_id = await run_sync_seed(seed)
+    plan = await SourceRetry().retry_run(source_id, run_id)
 
-        db_session.refresh(url)
-        assert url.status == ProcessingStatus.PENDING
-        assert url.error_message is None
-        assert url.job_id == plan.job_id
-        assert plan.count == 1
-        assert plan.source_run_ids == [run.id]
-        assert plan.dataset == "memes"
-        assert plan.workflow_id == f"source-retry-workflow-{plan.job_id}"
-        assert plan.workflow_id != f"ingest-workflow-{plan.job_id}"
+    url = await async_db_session.get(IngestURL, url_id)
+    run = await async_db_session.get(SourceRun, run_id)
+    assert url is not None
+    assert url.status == ProcessingStatus.PENDING
+    assert url.error_message is None
+    assert url.job_id == plan.job_id
+    assert run is not None and run.status == SourceRunStatus.RUNNING
+    assert plan.count == 1
+    assert plan.source_run_ids == [run_id]
+    assert plan.dataset == "memes"
+    assert plan.workflow_id == f"source-retry-workflow-{plan.job_id}"
+    assert plan.workflow_id != f"ingest-workflow-{plan.job_id}"
 
-    def test_leaves_succeeded_urls_untouched(self, db_session: Session) -> None:
-        src = create_ingestion_source(session=db_session)
-        run = create_source_run(session=db_session, source=src, source_id=src.id)
-        item = create_source_item(session=db_session, source=src, source_id=src.id)
-        other = create_source_item(session=db_session, source=src, source_id=src.id)
-        image = create_image(session=db_session)
-        done_job = create_job(session=db_session)
+
+async def test_retry_run_leaves_successful_urls_untouched(
+    run_sync_seed, async_db_session: AsyncSession
+) -> None:
+    def seed(session: Session) -> tuple[int, int, int, str, int]:
+        source = create_ingestion_source(session=session)
+        run = create_source_run(session=session, source=source)
+        failed_item = create_source_item(session=session, source=source)
+        done_item = create_source_item(session=session, source=source)
+        image = create_image(session=session)
+        done_job = create_job(session=session)
         done = create_ingest_url(
-            session=db_session,
+            session=session,
             job=done_job,
-            source_id=run.source_id,
+            source_id=source.id,
             source_run_id=run.id,
-            source_item_id=other.id,
+            source_item_id=done_item.id,
             status=ProcessingStatus.DONE,
             image_id=image.id,
         )
-        failed = _failed_url(db_session, run, item)
+        failed = _failed_url(session, run, failed_item)
+        return source.id, run.id, done.id, done_job.id, failed.id
 
-        plan = SourceRetry(db_session).retry_run(src.id, run.id)
+    source_id, run_id, done_id, done_job_id, failed_id = await run_sync_seed(seed)
+    plan = await SourceRetry().retry_run(source_id, run_id)
 
-        db_session.refresh(done)
-        db_session.refresh(failed)
-        assert done.status == ProcessingStatus.DONE
-        assert done.job_id == done_job.id
-        assert failed.job_id == plan.job_id
-        assert plan.count == 1
-
-    def test_marks_affected_run_running(self, db_session: Session) -> None:
-        src = create_ingestion_source(session=db_session)
-        run = create_source_run(
-            session=db_session, source=src, source_id=src.id, status=SourceRunStatus.PARTIAL
-        )
-        item = create_source_item(session=db_session, source=src, source_id=src.id)
-        _failed_url(db_session, run, item)
-
-        SourceRetry(db_session).retry_run(src.id, run.id)
-
-        db_session.refresh(run)
-        assert run.status == SourceRunStatus.RUNNING
-
-    def test_no_failed_items_raises(self, db_session: Session) -> None:
-        src = create_ingestion_source(session=db_session)
-        run = create_source_run(session=db_session, source=src, source_id=src.id)
-
-        with pytest.raises(NothingToRetryError):
-            SourceRetry(db_session).retry_run(src.id, run.id)
-
-    def test_unknown_run_raises(self, db_session: Session) -> None:
-        src = create_ingestion_source(session=db_session)
-
-        with pytest.raises(RunNotFoundError):
-            SourceRetry(db_session).retry_run(src.id, 999999)
-
-    def test_unknown_source_raises(self, db_session: Session) -> None:
-        with pytest.raises(SourceNotFoundError):
-            SourceRetry(db_session).retry_run(999999, 1)
+    done = await async_db_session.get(IngestURL, done_id)
+    failed = await async_db_session.get(IngestURL, failed_id)
+    assert done is not None and done.status == ProcessingStatus.DONE
+    assert done.job_id == done_job_id
+    assert failed is not None and failed.job_id == plan.job_id
+    assert plan.count == 1
 
 
-class TestRetrySource:
-    def test_resets_failed_across_all_runs(self, db_session: Session) -> None:
-        src = create_ingestion_source(session=db_session, dataset="memes")
-        run_a = create_source_run(session=db_session, source=src, source_id=src.id)
-        run_b = create_source_run(session=db_session, source=src, source_id=src.id)
-        item_a = create_source_item(session=db_session, source=src, source_id=src.id)
-        item_b = create_source_item(session=db_session, source=src, source_id=src.id)
-        url_a = _failed_url(db_session, run_a, item_a)
-        url_b = _failed_url(db_session, run_b, item_b)
+async def test_retry_run_errors(run_sync_seed) -> None:
+    def seed(session: Session) -> tuple[int, int]:
+        source = create_ingestion_source(session=session)
+        run = create_source_run(session=session, source=source)
+        return source.id, run.id
 
-        plan = SourceRetry(db_session).retry_source(src.id)
-
-        db_session.refresh(url_a)
-        db_session.refresh(url_b)
-        assert url_a.status == ProcessingStatus.PENDING
-        assert url_b.status == ProcessingStatus.PENDING
-        assert url_a.job_id == plan.job_id
-        assert plan.count == 2
-        assert sorted(plan.source_run_ids) == sorted([run_a.id, run_b.id])
-
-    def test_no_failures_raises(self, db_session: Session) -> None:
-        src = create_ingestion_source(session=db_session)
-
-        with pytest.raises(NothingToRetryError):
-            SourceRetry(db_session).retry_source(src.id)
-
-    def test_unknown_source_raises(self, db_session: Session) -> None:
-        with pytest.raises(SourceNotFoundError):
-            SourceRetry(db_session).retry_source(999999)
+    source_id, run_id = await run_sync_seed(seed)
+    retry = SourceRetry()
+    with pytest.raises(NothingToRetryError):
+        await retry.retry_run(source_id, run_id)
+    with pytest.raises(RunNotFoundError):
+        await retry.retry_run(source_id, 999_999)
+    with pytest.raises(SourceNotFoundError):
+        await retry.retry_run(999_999, run_id)
 
 
-class TestRetryItem:
-    def test_resets_single_items_failed_attempt(self, db_session: Session) -> None:
-        src = create_ingestion_source(session=db_session, dataset="memes")
-        run = create_source_run(session=db_session, source=src, source_id=src.id)
-        item = create_source_item(session=db_session, source=src, source_id=src.id)
-        url = _failed_url(db_session, run, item)
+async def test_retry_source_resets_failures_across_runs(
+    run_sync_seed, async_db_session: AsyncSession
+) -> None:
+    def seed(session: Session) -> tuple[int, list[int], list[int]]:
+        source = create_ingestion_source(session=session, dataset="memes")
+        runs = [create_source_run(session=session, source=source) for _ in range(2)]
+        items = [create_source_item(session=session, source=source) for _ in range(2)]
+        urls = [_failed_url(session, run, item) for run, item in zip(runs, items, strict=True)]
+        return source.id, [run.id for run in runs], [url.id for url in urls]
 
-        plan = SourceRetry(db_session).retry_item(src.id, item.id)
+    source_id, run_ids, url_ids = await run_sync_seed(seed)
+    plan = await SourceRetry().retry_source(source_id)
 
-        db_session.refresh(url)
-        assert url.status == ProcessingStatus.PENDING
-        assert url.job_id == plan.job_id
-        assert plan.count == 1
-        assert plan.source_run_ids == [run.id]
-        assert plan.dataset == "memes"
+    urls = [await async_db_session.get(IngestURL, url_id) for url_id in url_ids]
+    assert all(url is not None and url.status == ProcessingStatus.PENDING for url in urls)
+    assert all(url is not None and url.job_id == plan.job_id for url in urls)
+    assert plan.count == 2
+    assert sorted(plan.source_run_ids) == sorted(run_ids)
 
-    def test_unknown_item_raises(self, db_session: Session) -> None:
-        src = create_ingestion_source(session=db_session)
 
-        with pytest.raises(SourceItemNotFoundError):
-            SourceRetry(db_session).retry_item(src.id, 999999)
+async def test_retry_source_errors(run_sync_seed) -> None:
+    source_id = await run_sync_seed(lambda session: create_ingestion_source(session=session).id)
 
-    def test_item_with_no_failed_attempt_raises(self, db_session: Session) -> None:
-        src = create_ingestion_source(session=db_session)
-        run = create_source_run(session=db_session, source=src, source_id=src.id)
-        item = create_source_item(session=db_session, source=src, source_id=src.id)
-        image = create_image(session=db_session)
-        job = create_job(session=db_session)
+    with pytest.raises(NothingToRetryError):
+        await SourceRetry().retry_source(source_id)
+    with pytest.raises(SourceNotFoundError):
+        await SourceRetry().retry_source(999_999)
+
+
+async def test_retry_item_resets_its_failed_attempt(
+    run_sync_seed, async_db_session: AsyncSession
+) -> None:
+    def seed(session: Session) -> tuple[int, int, int, int]:
+        source = create_ingestion_source(session=session, dataset="memes")
+        run = create_source_run(session=session, source=source)
+        item = create_source_item(session=session, source=source)
+        url = _failed_url(session, run, item)
+        return source.id, run.id, item.id, url.id
+
+    source_id, run_id, item_id, url_id = await run_sync_seed(seed)
+    plan = await SourceRetry().retry_item(source_id, item_id)
+
+    url = await async_db_session.get(IngestURL, url_id)
+    assert url is not None and url.status == ProcessingStatus.PENDING
+    assert url.job_id == plan.job_id
+    assert plan.source_run_ids == [run_id]
+    assert plan.dataset == "memes"
+
+
+async def test_retry_item_errors(run_sync_seed) -> None:
+    def seed(session: Session) -> tuple[int, int]:
+        source = create_ingestion_source(session=session)
+        run = create_source_run(session=session, source=source)
+        item = create_source_item(session=session, source=source)
+        image = create_image(session=session)
+        job = create_job(session=session)
         create_ingest_url(
-            session=db_session,
+            session=session,
             job=job,
-            source_id=run.source_id,
+            source_id=source.id,
             source_run_id=run.id,
             source_item_id=item.id,
             status=ProcessingStatus.DONE,
             image_id=image.id,
         )
+        return source.id, item.id
 
-        with pytest.raises(NothingToRetryError):
-            SourceRetry(db_session).retry_item(src.id, item.id)
+    source_id, item_id = await run_sync_seed(seed)
+    with pytest.raises(SourceItemNotFoundError):
+        await SourceRetry().retry_item(source_id, 999_999)
+    with pytest.raises(NothingToRetryError):
+        await SourceRetry().retry_item(source_id, item_id)

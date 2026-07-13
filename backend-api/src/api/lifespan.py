@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Any
 
 import structlog
 from fastapi import FastAPI
+from sqlalchemy import select
 
-from api.deps import get_index_manager
+from api.deps import get_index_manager, get_storage_probe
 from api.services.text_encoder import SearchTextEncoder
 from domain.search_index import (
     SearchEncoderIncompatibleError,
@@ -19,7 +21,6 @@ from shared.config import settings
 from shared.db import get_db
 from shared.logging import setup_logging
 from shared.models import IndexBuild
-from shared.services.storage import get_storage_service
 
 
 def _startup_env_snapshot() -> dict[str, object]:
@@ -63,6 +64,28 @@ def _index_files_snapshot(version: str | None) -> dict[str, object]:
     }
 
 
+async def loop_lag_probe(interval_s: float = 0.1) -> None:
+    log = structlog.get_logger()
+    while True:
+        started = time.monotonic()
+        await asyncio.sleep(interval_s)
+        lag_ms = (time.monotonic() - started - interval_s) * 1000
+        if lag_ms > settings.loop_lag_threshold_ms:
+            log.warning(
+                "event_loop_lag",
+                lag_ms=round(lag_ms, 2),
+                threshold_ms=settings.loop_lag_threshold_ms,
+            )
+
+
+def _preload_and_warm_text_encoder() -> None:
+    started = time.monotonic()
+    encoder = SearchTextEncoder.get_instance()
+    encoder.encode("warmup")
+    duration_ms = int((time.monotonic() - started) * 1000)
+    structlog.get_logger().info("text_encoder_warmed", duration_ms=duration_ms)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     log = structlog.get_logger()
@@ -73,7 +96,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     settings.index_cache_dir.mkdir(parents=True, exist_ok=True)
 
-    storage = get_storage_service()
+    storage = get_storage_probe()
     try:
         storage.ensure_bucket_exists()
         log.info("s3_bucket_ready", bucket=storage.bucket)
@@ -88,7 +111,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         db_gen = get_db()
         db = next(db_gen)
         try:
-            active_build = db.query(IndexBuild).filter(IndexBuild.is_active).first()
+            active_build = db.scalars(
+                select(IndexBuild).where(IndexBuild.is_active.is_(True))
+            ).first()
             db_active_version = active_build.version if active_build else None
             db_embed_model = active_build.embed_model if active_build else None
             if not db_active_version:
@@ -110,7 +135,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         startup_tasks.append(asyncio.to_thread(index_manager.load_index_version, db_active_version))
     if settings.preload_text_encoder_on_startup:
         log.info("preloading_text_encoder")
-        startup_tasks.append(asyncio.to_thread(SearchTextEncoder.get_instance))
+        startup_tasks.append(asyncio.to_thread(_preload_and_warm_text_encoder))
 
     if startup_tasks:
         results = await asyncio.gather(*startup_tasks, return_exceptions=True)
@@ -152,6 +177,13 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         **_index_files_snapshot(active_version),
     )
 
-    yield
+    lag_probe_task = asyncio.create_task(loop_lag_probe())
+
+    try:
+        yield
+    finally:
+        lag_probe_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await lag_probe_task
 
     log.info("shutting_down_app")

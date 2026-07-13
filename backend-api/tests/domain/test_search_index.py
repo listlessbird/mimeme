@@ -24,10 +24,12 @@ from domain.search_index import (
 class _TextEncoder:
     def __init__(self, *, fails: bool = False, source_model: str | None = None) -> None:
         self.fails = fails
+        self.queries: list[str] = []
         if source_model is not None:
             self.source_model = source_model
 
     def encode(self, query: str) -> np.ndarray:
+        self.queries.append(query)
         if self.fails:
             raise RuntimeError("encoder failed")
         return np.array([0.1, 0.2], dtype=np.float32)
@@ -37,15 +39,75 @@ class _TextEncoder:
 def _reset_index_check(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(search_index, "_last_index_check", 0.0)
     monkeypatch.setattr(search_index, "_active_embed_model", None)
+    with search_index._embedding_cache_lock:
+        search_index._embedding_cache.clear()
 
 
-def _patch_session_scope(monkeypatch: pytest.MonkeyPatch, db_session: Session) -> None:
+def _patch_read_session_scope(monkeypatch: pytest.MonkeyPatch, db_session: Session) -> None:
     @contextmanager
-    def _test_session_scope() -> Iterator[Session]:
+    def _test_read_session_scope() -> Iterator[Session]:
         yield db_session
         db_session.flush()
 
-    monkeypatch.setattr(search_index, "session_scope", _test_session_scope)
+    monkeypatch.setattr(search_index, "read_session_scope", _test_read_session_scope)
+
+
+def test_query_embedding_cache_reuses_normalized_query(monkeypatch: pytest.MonkeyPatch) -> None:
+    encoder = _TextEncoder()
+
+    def get_instance() -> _TextEncoder:
+        return encoder
+
+    monkeypatch.setattr(search_index.SearchTextEncoder, "get_instance", get_instance)
+    execution = SearchIndexExecution(
+        MagicMock(),
+        text_encoder_factory=search_index.SearchTextEncoder.get_instance,
+    )
+
+    execution._encode_query("Cat Meme ", "image")
+    execution._encode_query("cat meme", "image")
+
+    assert encoder.queries == ["Cat Meme "]
+
+
+def test_query_embedding_cache_misses_for_different_queries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    encoder = _TextEncoder()
+
+    def get_instance() -> _TextEncoder:
+        return encoder
+
+    monkeypatch.setattr(search_index.SearchTextEncoder, "get_instance", get_instance)
+    execution = SearchIndexExecution(
+        MagicMock(),
+        text_encoder_factory=search_index.SearchTextEncoder.get_instance,
+    )
+
+    execution._encode_query("cat meme", "image")
+    execution._encode_query("dog meme", "image")
+
+    assert encoder.queries == ["cat meme", "dog meme"]
+
+
+def test_query_embedding_cache_evicts_oldest_entry(monkeypatch: pytest.MonkeyPatch) -> None:
+    encoder = _TextEncoder()
+
+    def get_instance() -> _TextEncoder:
+        return encoder
+
+    monkeypatch.setattr(search_index.SearchTextEncoder, "get_instance", get_instance)
+    monkeypatch.setattr(search_index, "_EMBEDDING_CACHE_MAX", 1)
+    execution = SearchIndexExecution(
+        MagicMock(),
+        text_encoder_factory=search_index.SearchTextEncoder.get_instance,
+    )
+
+    execution._encode_query("first", "image")
+    execution._encode_query("second", "image")
+    execution._encode_query("first", "image")
+
+    assert encoder.queries == ["first", "second", "first"]
 
 
 def test_no_active_index_raises_unavailable(
@@ -53,7 +115,7 @@ def test_no_active_index_raises_unavailable(
     mock_index_manager: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_session_scope(monkeypatch, db_session)
+    _patch_read_session_scope(monkeypatch, db_session)
     mock_index_manager.is_loaded = False
 
     execution = SearchIndexExecution(
@@ -70,7 +132,7 @@ def test_stale_loaded_index_triggers_active_index_load(
     mock_index_manager: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_session_scope(monkeypatch, db_session)
+    _patch_read_session_scope(monkeypatch, db_session)
     create_index_build(session=db_session, version="v2", is_active=True)
     db_session.flush()
     mock_index_manager.is_loaded = True
@@ -86,7 +148,7 @@ def test_query_encoding_failure_is_domain_error(
     mock_index_manager: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_session_scope(monkeypatch, db_session)
+    _patch_read_session_scope(monkeypatch, db_session)
     create_index_build(session=db_session, version="v1-test", is_active=True)
     db_session.flush()
     mock_index_manager.is_loaded = True
@@ -106,7 +168,7 @@ def test_encoder_index_model_mismatch_raises_incompatible(
     mock_index_manager: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_session_scope(monkeypatch, db_session)
+    _patch_read_session_scope(monkeypatch, db_session)
     create_index_build(
         session=db_session,
         version="v1-test",
@@ -132,7 +194,7 @@ def test_encoder_index_model_match_searches_normally(
     mock_storage: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_session_scope(monkeypatch, db_session)
+    _patch_read_session_scope(monkeypatch, db_session)
     image = create_image(session=db_session)
     create_index_build(
         session=db_session,
@@ -163,7 +225,7 @@ def test_encoder_without_source_model_skips_guard(
     mock_storage: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_session_scope(monkeypatch, db_session)
+    _patch_read_session_scope(monkeypatch, db_session)
     image = create_image(session=db_session)
     create_index_build(
         session=db_session,
@@ -192,7 +254,7 @@ def test_search_hydrates_results_and_paginates(
     mock_storage: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_session_scope(monkeypatch, db_session)
+    _patch_read_session_scope(monkeypatch, db_session)
     first = create_image(session=db_session)
     second = create_image(session=db_session)
     create_annotation(session=db_session, image=second, caption_text="Second", ocr_text="LOL")
@@ -293,7 +355,7 @@ def test_find_similar_excludes_query_image(
     mock_storage: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_session_scope(monkeypatch, db_session)
+    _patch_read_session_scope(monkeypatch, db_session)
     query = create_image(session=db_session)
     second = create_image(session=db_session)
     third = create_image(session=db_session)
@@ -319,7 +381,7 @@ def test_find_similar_missing_vector_raises_domain_not_found(
     mock_storage: MagicMock,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    _patch_session_scope(monkeypatch, db_session)
+    _patch_read_session_scope(monkeypatch, db_session)
     create_index_build(session=db_session, version="v1-test", is_active=True)
     db_session.flush()
     mock_index_manager.is_loaded = True

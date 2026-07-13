@@ -96,7 +96,7 @@ The worker must be running for ingest and rebuild jobs to execute.
 
 - API: `http://localhost:8000`
 - API docs: `http://localhost:8000/docs`
-- Health check: `http://localhost:8000/live`
+- Health check: `http://localhost:8000/ready`
 - Temporal UI: `http://localhost:8233`
 - MinIO console: `http://localhost:9001`
 
@@ -111,7 +111,7 @@ minioadmin / minioadmin
 Check service health:
 
 ```bash
-curl http://localhost:8000/live
+curl http://localhost:8000/ready
 ```
 
 Queue one image for ingestion:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Any, Protocol
 
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from shared.models import IndexBuild
@@ -20,10 +21,10 @@ class StoredIndexArtifacts(Protocol):
 
 class ActiveIndexCatalog:
     def active_build(self, db: Session) -> IndexBuild | None:
-        return db.query(IndexBuild).filter(IndexBuild.is_active).first()
+        return db.scalars(select(IndexBuild).where(IndexBuild.is_active.is_(True))).first()
 
     def list_builds_newest_first(self, db: Session) -> Sequence[IndexBuild]:
-        return db.query(IndexBuild).order_by(IndexBuild.created_at.desc()).all()
+        return db.scalars(select(IndexBuild).order_by(IndexBuild.created_at.desc())).all()
 
     def add_inactive_build(
         self,
@@ -57,12 +58,15 @@ class ActiveIndexCatalog:
         metadata: dict[str, Any],
         artifacts: StoredIndexArtifacts,
     ) -> None:
-        db.query(IndexBuild).filter(
-            IndexBuild.is_active,
-            IndexBuild.version != version,
-        ).update({"is_active": False})
 
-        build = db.query(IndexBuild).filter(IndexBuild.version == version).first()
+        db.execute(
+            update(IndexBuild)
+            .where(IndexBuild.is_active.is_(True), IndexBuild.version != version)
+            .values(is_active=False)
+        )
+
+        build = db.scalars(select(IndexBuild).where(IndexBuild.version == version)).first()
+
         if build is None:
             db.add(
                 IndexBuild(
@@ -91,8 +95,9 @@ class ActiveIndexCatalog:
         db.commit()
 
     def swap_to_version(self, version: str, db: Session) -> None:
-        db.query(IndexBuild).filter(IndexBuild.is_active).update({"is_active": False})
-        db.query(IndexBuild).filter(IndexBuild.version == version).update({"is_active": True})
+        db.execute(update(IndexBuild).where(IndexBuild.is_active.is_(True)).values(is_active=False))
+        db.execute(update(IndexBuild).where(IndexBuild.version == version).values(is_active=True))
+
         db.commit()
 
     def garbage_collect(

@@ -5,10 +5,11 @@ from collections.abc import Sequence
 
 from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from domain.source_item_browse import RunNotFoundError
 from domain.source_registry import SourceNotFoundError
+from shared import db
 from shared.models import ProcessingStatus, SourceRunStatus
 from shared.models.orm import IngestionSource, IngestURL, Job, JobType, SourceItem, SourceRun
 
@@ -30,82 +31,102 @@ class RetryPlan(BaseModel, frozen=True):
 
 
 class SourceRetry:
-    def __init__(self, db: Session) -> None:
-        self._db = db
+    async def retry_run(self, source_id: int, run_id: int) -> RetryPlan:
 
-    def retry_run(self, source_id: int, run_id: int) -> RetryPlan:
-        dataset = self._live_source_dataset_or_raise(source_id)
-        run = self._db.execute(
-            select(SourceRun).where(SourceRun.id == run_id, SourceRun.source_id == source_id)
-        ).scalar_one_or_none()
-        if run is None:
-            raise RunNotFoundError(run_id)
-
-        urls = (
-            self._db.execute(
-                select(IngestURL).where(
-                    IngestURL.source_run_id == run_id,
-                    IngestURL.status == ProcessingStatus.FAILED,
+        async with db.write_session() as session:
+            dataset = await self._live_source_dataset_or_raise(session, source_id)
+            run = (
+                await session.execute(
+                    select(SourceRun).where(
+                        SourceRun.id == run_id, SourceRun.source_id == source_id
+                    )
                 )
-            )
-            .scalars()
-            .all()
-        )
-        return self._reset_and_queue(urls, dataset)
+            ).scalar_one_or_none()
+            if run is None:
+                raise RunNotFoundError(run_id)
 
-    def retry_source(self, source_id: int) -> RetryPlan:
-        dataset = self._live_source_dataset_or_raise(source_id)
-        urls = (
-            self._db.execute(
-                select(IngestURL).where(
-                    IngestURL.source_id == source_id,
-                    IngestURL.status == ProcessingStatus.FAILED,
+            urls = (
+                (
+                    await session.execute(
+                        select(IngestURL).where(
+                            IngestURL.source_run_id == run_id,
+                            IngestURL.status == ProcessingStatus.FAILED,
+                        )
+                    )
                 )
+                .scalars()
+                .all()
             )
-            .scalars()
-            .all()
-        )
-        return self._reset_and_queue(urls, dataset)
+            return await self._reset_and_queue(session, urls, dataset)
 
-    def retry_item(self, source_id: int, source_item_id: int) -> RetryPlan:
-        dataset = self._live_source_dataset_or_raise(source_id)
-        item = self._db.execute(
-            select(SourceItem.id).where(
-                SourceItem.id == source_item_id, SourceItem.source_id == source_id
-            )
-        ).scalar_one_or_none()
-        if item is None:
-            raise SourceItemNotFoundError(source_item_id)
+    async def retry_source(self, source_id: int) -> RetryPlan:
 
-        urls = (
-            self._db.execute(
-                select(IngestURL).where(
-                    IngestURL.source_item_id == source_item_id,
-                    IngestURL.status == ProcessingStatus.FAILED,
+        async with db.write_session() as session:
+            dataset = await self._live_source_dataset_or_raise(session, source_id)
+            urls = (
+                (
+                    await session.execute(
+                        select(IngestURL).where(
+                            IngestURL.source_id == source_id,
+                            IngestURL.status == ProcessingStatus.FAILED,
+                        )
+                    )
                 )
+                .scalars()
+                .all()
             )
-            .scalars()
-            .all()
-        )
-        return self._reset_and_queue(urls, dataset)
+            return await self._reset_and_queue(session, urls, dataset)
 
-    def _live_source_dataset_or_raise(self, source_id: int) -> str | None:
-        source = self._db.execute(
-            select(IngestionSource).where(
-                IngestionSource.id == source_id, IngestionSource.deleted_at.is_(None)
+    async def retry_item(self, source_id: int, source_item_id: int) -> RetryPlan:
+        async with db.write_session() as session:
+            dataset = await self._live_source_dataset_or_raise(session, source_id)
+            item = (
+                await session.execute(
+                    select(SourceItem.id).where(
+                        SourceItem.id == source_item_id, SourceItem.source_id == source_id
+                    )
+                )
+            ).scalar_one_or_none()
+            if item is None:
+                raise SourceItemNotFoundError(source_item_id)
+
+            urls = (
+                (
+                    await session.execute(
+                        select(IngestURL).where(
+                            IngestURL.source_item_id == source_item_id,
+                            IngestURL.status == ProcessingStatus.FAILED,
+                        )
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            return await self._reset_and_queue(session, urls, dataset)
+
+    async def _live_source_dataset_or_raise(
+        self, session: AsyncSession, source_id: int
+    ) -> str | None:
+        source = (
+            await session.execute(
+                select(IngestionSource).where(
+                    IngestionSource.id == source_id, IngestionSource.deleted_at.is_(None)
+                )
             )
         ).scalar_one_or_none()
         if source is None:
             raise SourceNotFoundError(source_id)
         return source.dataset
 
-    def _reset_and_queue(self, urls: Sequence[IngestURL], dataset: str | None) -> RetryPlan:
+    async def _reset_and_queue(
+        self, session: AsyncSession, urls: Sequence[IngestURL], dataset: str | None
+    ) -> RetryPlan:
         if not urls:
             raise NothingToRetryError
 
         job_id = f"ingest-{uuid.uuid4().hex[:12]}"
-        self._db.add(Job(id=job_id, type=JobType.INGEST))
-        self._db.flush()
+        session.add(Job(id=job_id, type=JobType.INGEST))
+        await session.flush()
 
         run_ids: list[int] = []
         for url in urls:
@@ -119,11 +140,10 @@ class SourceRetry:
                 run_ids.append(url.source_run_id)
 
         for run_id in run_ids:
-            run = self._db.get(SourceRun, run_id)
+            run = await session.get(SourceRun, run_id)
             if run is not None:
                 run.status = SourceRunStatus.RUNNING
 
-        self._db.commit()
         return RetryPlan(
             job_id=job_id,
             workflow_id=f"source-retry-workflow-{job_id}",

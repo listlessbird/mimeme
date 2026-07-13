@@ -4,15 +4,15 @@
  */
 
 export interface paths {
-    "/live": {
+    "/ready": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Healthcheck */
-        get: operations["healthcheck_live_get"];
+        /** Check Readiness */
+        get: operations["check_readiness_ready_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1228,7 +1228,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    healthcheck_live_get: {
+    check_readiness_ready_get: {
         parameters: {
             query?: never;
             header?: never;
