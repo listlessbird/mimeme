@@ -13,6 +13,8 @@ api_origin_service = "http://localhost:8000"
 # Existing provisioned resource names from the old Terraform root. Keep these
 # values while adopting state; rename later with explicit resource migrations.
 app_r2_token_name          = "mimeme-prod-r2-app"
+artifact_r2_token_name     = "mimeme-prod-r2-artifacts"
+media_hostname             = "assets.mimeme.dev"
 axiom_dataset_name         = "findmeme-prod-api"
 axiom_token_name           = "mimeme-prod-api-ingest"
 database_name              = "findmeme"

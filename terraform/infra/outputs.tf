@@ -54,28 +54,58 @@ output "neon_project_id" {
   value = neon_project.mimeme.id
 }
 
-output "s3_access_key_id" {
+output "media_s3_access_key_id" {
   value     = cloudflare_account_token.app_r2.id
   sensitive = true
 }
 
-output "s3_bucket_name" {
-  value = cloudflare_r2_bucket.storage.name
+output "media_s3_bucket_name" {
+  value = cloudflare_r2_bucket.media.name
 }
 
-output "s3_endpoint_url" {
+output "media_s3_endpoint_url" {
   value = "https://${var.cloudflare_account_id}.r2.cloudflarestorage.com"
 }
 
-output "s3_force_path_style" {
+output "media_s3_force_path_style" {
   value = true
 }
 
-output "s3_region" {
+output "media_s3_region" {
   value = "auto"
 }
 
-output "s3_secret_access_key" {
+output "media_s3_secret_access_key" {
   value     = sha256(cloudflare_account_token.app_r2.value)
   sensitive = true
+}
+
+output "media_public_base_url" {
+  value = "https://${local.media_hostname}"
+}
+
+output "artifact_s3_access_key_id" {
+  value     = cloudflare_account_token.artifact_r2.id
+  sensitive = true
+}
+
+output "artifact_s3_secret_access_key" {
+  value     = sha256(cloudflare_account_token.artifact_r2.value)
+  sensitive = true
+}
+
+output "artifact_s3_bucket_name" {
+  value = cloudflare_r2_bucket.artifacts.name
+}
+
+output "artifact_s3_endpoint_url" {
+  value = "https://${var.cloudflare_account_id}.r2.cloudflarestorage.com"
+}
+
+output "artifact_s3_force_path_style" {
+  value = true
+}
+
+output "artifact_s3_region" {
+  value = "auto"
 }

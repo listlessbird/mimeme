@@ -55,6 +55,18 @@ variable "app_r2_token_name" {
   description = "Cloudflare token name for backend and Modal access to the app R2 bucket."
 }
 
+variable "artifact_r2_token_name" {
+  type        = string
+  description = "Cloudflare token name scoped to the private artifact bucket."
+  default     = "mimeme-prod-r2-artifacts"
+}
+
+variable "media_hostname" {
+  type        = string
+  description = "Canonical public hostname for media objects."
+  default     = "assets.mimeme.dev"
+}
+
 variable "axiom_dataset_name" {
   type        = string
   description = "Axiom dataset name for production API logs."
