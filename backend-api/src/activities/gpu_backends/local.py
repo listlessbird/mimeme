@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import cast
 
 from PIL import Image as PILImage
 
@@ -19,12 +18,12 @@ from domain.inference import (
     build_text_embedding_key_for_image_embedding,
     prepare_rgb_image_for_inference,
 )
-from shared.services import StorageService, get_storage_service
+from shared.services import get_artifact_storage_service, get_media_storage_service
 
 
 class LocalGpuBackend:
     async def annotate_image(self, input: AnnotateImageInput) -> AnnotateImageOutput:
-        storage = cast(StorageService, get_storage_service())
+        storage = get_media_storage_service()
         SiglipEmbedder.release_instance()
         model = Moondream2.get_instance()
 
@@ -42,7 +41,8 @@ class LocalGpuBackend:
             )
 
     async def embed_batch(self, input: EmbedBatchInput) -> EmbedBatchOutput:
-        storage = cast(StorageService, get_storage_service())
+        media_storage = get_media_storage_service()
+        artifact_storage = get_artifact_storage_service()
         Moondream2.release_instance()
         embedder = SiglipEmbedder.get_instance()
 
@@ -53,7 +53,7 @@ class LocalGpuBackend:
             try:
                 with tempfile.NamedTemporaryFile(suffix=".jpg", delete=True) as tmp:
                     tmp_path = Path(tmp.name)
-                    storage.download_file(item.s3_key, tmp_path)
+                    media_storage.download_file(item.s3_key, tmp_path)
 
                     pil_image = prepare_rgb_image_for_inference(PILImage.open(tmp_path))
 
@@ -68,8 +68,8 @@ class LocalGpuBackend:
                     )
                     text_embed_key = build_text_embedding_key_for_image_embedding(img_embed_key)
 
-                    storage.upload_numpy(img_feats[0], img_embed_key)
-                    storage.upload_numpy(txt_feats[0], text_embed_key)
+                    artifact_storage.upload_numpy(img_feats[0], img_embed_key)
+                    artifact_storage.upload_numpy(txt_feats[0], text_embed_key)
 
                     results.append(
                         EmbedImageOutput(

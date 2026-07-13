@@ -64,7 +64,10 @@ class TestBuildIndexActivity:
         inp = BuildIndexInput(model_name="siglip2-base", index_type="flat")
 
         with (
-            patch("activities.indexing.activities.get_storage_service", return_value=mock_storage),
+            patch(
+                "activities.indexing.activities.get_artifact_storage_service",
+                return_value=mock_storage,
+            ),
             patch(
                 "activities.indexing.activities.FaissIndexManager.get_instance",
                 return_value=mock_manager,
@@ -87,7 +90,10 @@ class TestBuildIndexActivity:
         inp = BuildIndexInput(model_name="siglip2-base")
 
         with (
-            patch("activities.indexing.activities.get_storage_service", return_value=mock_storage),
+            patch(
+                "activities.indexing.activities.get_artifact_storage_service",
+                return_value=mock_storage,
+            ),
             patch(
                 "activities.indexing.activities.FaissIndexManager.get_instance",
                 return_value=mock_manager,
@@ -133,7 +139,10 @@ class TestBuildIndexActivity:
         inp = BuildIndexInput(model_name="siglip2-base")
 
         with (
-            patch("activities.indexing.activities.get_storage_service", return_value=mock_storage),
+            patch(
+                "activities.indexing.activities.get_artifact_storage_service",
+                return_value=mock_storage,
+            ),
             patch(
                 "activities.indexing.activities.FaissIndexManager.get_instance",
                 return_value=mock_manager,

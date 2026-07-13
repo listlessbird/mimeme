@@ -75,7 +75,7 @@ def test_artifact_store_lists_versions_by_timestamp_and_requires_image_artifacts
     assert store.has_required_artifacts("v20260101-010000-b") is False
 
 
-def test_artifact_store_reports_cached_text_index_by_index_file(
+def test_artifact_store_requires_cached_text_index_and_mapping(
     tmp_path: Path,
 ) -> None:
     from activities.indexing.index_artifacts import IndexArtifactStore
@@ -86,6 +86,10 @@ def test_artifact_store_reports_cached_text_index_by_index_file(
     (cached / "text_index.faiss").write_bytes(b"cached")
 
     store = IndexArtifactStore(storage=storage, cache_dir=tmp_path)
+
+    assert store.has_text_artifacts_cached("v1") is False
+
+    (cached / "text_mapping.json").write_text("{}", encoding="utf-8")
 
     assert store.has_text_artifacts_cached("v1") is True
 

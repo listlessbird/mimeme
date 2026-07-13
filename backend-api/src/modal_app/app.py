@@ -20,12 +20,10 @@ from domain.inference import (
     pooled_features_to_numpy,
     prepare_rgb_image_for_inference,
 )
+from shared.config import Settings, settings
+from shared.services.storage import S3Config, get_artifact_s3_config, get_media_s3_config
 
-MODAL_APP_NAME = os.environ.get("MODAL_APP_NAME", "findmeme-gpu")
-MODAL_HF_CACHE_VOLUME_NAME = os.environ.get("MODAL_HF_CACHE_VOLUME_NAME", "findmeme-hf-cache")
-MODAL_S3_SECRET_NAME = os.environ.get("MODAL_S3_SECRET_NAME", "findmeme-s3")
-
-app = modal.App(MODAL_APP_NAME)
+app = modal.App(settings.modal_app_name)
 
 gpu_image = (
     modal.Image.debian_slim(python_version="3.12")
@@ -42,19 +40,21 @@ gpu_image = (
         "bitsandbytes==0.48.2",
         "pyvips==3.1.1",
         "structlog==25.5.0",
+        "pydantic-settings==2.13.1",
     )
     .add_local_python_source("domain")
+    .add_local_python_source("shared")
 )
 
-hf_cache = modal.Volume.from_name(MODAL_HF_CACHE_VOLUME_NAME, create_if_missing=True)
+hf_cache = modal.Volume.from_name(settings.modal_hf_cache_volume_name, create_if_missing=True)
 
 HF_CACHE_DIR = "/root/.cache/huggingface"
 
-s3_secret = modal.Secret.from_name(MODAL_S3_SECRET_NAME)
+s3_secret = modal.Secret.from_name(settings.modal_s3_secret_name)
 
 
 def _setup_logging() -> structlog.BoundLogger:
-    level_name = os.environ.get("LOG_LEVEL", "INFO").upper()
+    level_name = settings.log_level.upper()
     level = getattr(logging, level_name, logging.INFO)
     logging.basicConfig(level=level, format="%(message)s")
     structlog.configure(
@@ -72,8 +72,8 @@ def _setup_logging() -> structlog.BoundLogger:
     )
     return structlog.get_logger().bind(
         service="modal-gpu",
-        modal_app_name=MODAL_APP_NAME,
-        app_env=os.environ.get("APP_ENV", "production"),
+        modal_app_name=settings.modal_app_name,
+        app_env=settings.app_env,
     )
 
 
@@ -110,32 +110,26 @@ def _emit_modal_event(
     log.info("modal_wide_event", **event)
 
 
-def _s3_client():
+def _s3_client(config: S3Config):
     session = boto3.Session(
-        aws_access_key_id=os.environ["S3_ACCESS_KEY_ID"],
-        aws_secret_access_key=os.environ["S3_SECRET_ACCESS_KEY"],
-        region_name=os.environ.get("S3_REGION", "us-east-1"),
+        aws_access_key_id=config.access_key,
+        aws_secret_access_key=config.secret_key,
+        region_name=config.region,
     )
-    force_path = os.environ.get("S3_FORCE_PATH_STYLE", "true").lower() == "true"
-
     return session.client(
         "s3",
-        endpoint_url=os.environ.get("S3_ENDPOINT_URL"),
+        endpoint_url=config.endpoint_url,
         config=BotoConfig(
-            s3={"addressing_style": "path" if force_path else "auto"},
+            s3={"addressing_style": "path" if config.force_path_style else "auto"},
             signature_version="s3v4",
         ),
     )
 
 
-def _bucket() -> str:
-    return os.environ["S3_BUCKET"]
-
-
 def _download_image(s3_key: str) -> Path:
-    client = _s3_client()
+    config = get_media_s3_config(Settings())
     tmp = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
-    client.download_file(_bucket(), s3_key, tmp.name)
+    _s3_client(config).download_file(config.bucket, s3_key, tmp.name)
     return Path(tmp.name)
 
 
@@ -145,8 +139,12 @@ def _upload_numpy(arr, s3_key: str) -> None:
     buf = io.BytesIO()
     np.save(buf, arr)
     buf.seek(0)
-    _s3_client().upload_fileobj(
-        buf, _bucket(), s3_key, ExtraArgs={"ContentType": "application/octet-stream"}
+    config = get_artifact_s3_config(Settings())
+    _s3_client(config).upload_fileobj(
+        buf,
+        config.bucket,
+        s3_key,
+        ExtraArgs={"ContentType": "application/octet-stream"},
     )
 
 
