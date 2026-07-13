@@ -28,6 +28,7 @@ export function IngestionDetailView({ ingestUrlId }: { ingestUrlId: number }) {
 			const status = query.state.data?.status;
 			return status !== undefined && IN_FLIGHT.has(status) ? INGESTION_POLL_MS : false;
 		},
+		throwOnError: true,
 	});
 
 	if (isPending) return <DetailSkeleton />;

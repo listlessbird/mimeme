@@ -19,6 +19,7 @@ export function RunItemsGallery({ sourceId, runId }: { sourceId: number; runId: 
 	const { data, isPending, isFetching } = useQuery({
 		...runItemsQueryOptions(sourceId, runId, offset),
 		placeholderData: keepPreviousData,
+		throwOnError: true,
 	});
 
 	const retryRun = useRetryRun(sourceId, runId);

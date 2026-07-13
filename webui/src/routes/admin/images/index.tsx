@@ -1,8 +1,10 @@
+import { AdminSectionError } from "@/components/admin/admin-section-error";
 import { ImageIngestDialog } from "@/components/admin/image-ingest-dialog";
 import { ImagesBrowse } from "@/components/admin/images-browse";
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/admin/images/")({
+	errorComponent: AdminSectionError,
 	component: ImagesPage,
 });
 

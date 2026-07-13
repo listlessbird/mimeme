@@ -36,6 +36,7 @@ export function ImagesBrowse() {
 			sort: filters.sort,
 		}),
 		placeholderData: keepPreviousData,
+		throwOnError: true,
 	});
 
 	return (
