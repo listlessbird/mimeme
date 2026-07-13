@@ -57,6 +57,7 @@ async def test_retry_run_starts_workflow_and_resets_failed(
 async def test_retry_run_errors(
     async_client: AsyncClient,
     run_sync_seed,
+    mock_temporal: AsyncMock,
     _patch_async_domain_session_scope: None,
 ) -> None:
     def seed(session: Session) -> tuple[int, int]:
@@ -68,6 +69,7 @@ async def test_retry_run_errors(
     assert (await async_client.post(f"/sources/{source_id}/runs/{run_id}/retry")).status_code == 409
     assert (await async_client.post(f"/sources/{source_id}/runs/999999/retry")).status_code == 404
     assert (await async_client.post("/sources/999999/runs/1/retry")).status_code == 404
+    mock_temporal.start_workflow.assert_not_called()
 
 
 async def test_retry_source_starts_workflow_and_resets_failed(
@@ -82,7 +84,10 @@ async def test_retry_source_starts_workflow_and_resets_failed(
     response = await async_client.post(f"/sources/{source_id}/retry")
 
     assert response.status_code == 202
-    assert response.json()["queued"] == 1
+    body = response.json()
+    assert body["queued"] == 1
+    assert body["job_id"]
+    assert body["workflow_id"] == f"source-retry-workflow-{body['job_id']}"
     mock_temporal.start_workflow.assert_called_once()
     url = await async_db_session.get(IngestURL, url_id)
     assert url is not None and url.status == ProcessingStatus.PENDING
@@ -91,12 +96,14 @@ async def test_retry_source_starts_workflow_and_resets_failed(
 async def test_retry_source_errors(
     async_client: AsyncClient,
     run_sync_seed,
+    mock_temporal: AsyncMock,
     _patch_async_domain_session_scope: None,
 ) -> None:
     source_id = await run_sync_seed(lambda session: create_ingestion_source(session=session).id)
 
     assert (await async_client.post(f"/sources/{source_id}/retry")).status_code == 409
     assert (await async_client.post("/sources/999999/retry")).status_code == 404
+    mock_temporal.start_workflow.assert_not_called()
 
 
 async def test_retry_item_starts_workflow_and_resets_failed(
@@ -111,7 +118,10 @@ async def test_retry_item_starts_workflow_and_resets_failed(
     response = await async_client.post(f"/sources/{source_id}/items/{item_id}/retry")
 
     assert response.status_code == 202
-    assert response.json()["queued"] == 1
+    body = response.json()
+    assert body["queued"] == 1
+    assert body["job_id"]
+    assert body["workflow_id"] == f"source-retry-workflow-{body['job_id']}"
     mock_temporal.start_workflow.assert_called_once()
     url = await async_db_session.get(IngestURL, url_id)
     assert url is not None and url.status == ProcessingStatus.PENDING
@@ -120,8 +130,10 @@ async def test_retry_item_starts_workflow_and_resets_failed(
 async def test_retry_item_errors(
     async_client: AsyncClient,
     run_sync_seed,
+    mock_temporal: AsyncMock,
     _patch_async_domain_session_scope: None,
 ) -> None:
     source_id = await run_sync_seed(lambda session: create_ingestion_source(session=session).id)
 
     assert (await async_client.post(f"/sources/{source_id}/items/999999/retry")).status_code == 404
+    mock_temporal.start_workflow.assert_not_called()

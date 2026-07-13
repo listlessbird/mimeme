@@ -210,6 +210,9 @@ async def test_named_views_select_expected_attempts(
     failed = (await async_client.get("/ingestion", params={"view": "failed"})).json()
     assert failed["total"] == 1
     assert failed["rows"][0]["ingest_url_id"] == failed_id
+    assert failed["rows"][0]["status"] == "FAILED"
+    assert failed["rows"][0]["stage"] == "ANNOTATING"
+    assert failed["rows"][0]["outcome"] == "failed"
     assert failed["rows"][0]["error_message"] == "annotate boom"
 
 
@@ -247,6 +250,30 @@ async def test_detail_returns_attempt_fields_and_missing_404(
     assert body["source_id"] == source_id
     assert body["stage"] == "COMPLETE"
     assert (await async_client.get("/ingestion/999999")).status_code == 404
+
+
+async def test_detail_failed_attempt_preserves_error_fields(
+    async_client: AsyncClient,
+    run_sync_seed,
+    _patch_async_domain_session_scope: None,
+) -> None:
+    attempt_id = await run_sync_seed(
+        lambda session: (
+            _attempt(
+                session,
+                status=ProcessingStatus.FAILED,
+                stage=IngestStage.EMBEDDING,
+                error_message="embed boom",
+            ).id
+        )
+    )
+
+    body = (await async_client.get(f"/ingestion/{attempt_id}")).json()
+
+    assert body["status"] == "FAILED"
+    assert body["stage"] == "EMBEDDING"
+    assert body["error_message"] == "embed boom"
+    assert body["image_id"] is None
 
 
 def test_logs_unavailable_when_axiom_not_configured(

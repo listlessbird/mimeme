@@ -169,6 +169,22 @@ async def test_list_excludes_deleted_and_derives_stats(run_sync_seed) -> None:
     }
 
 
+async def test_list_stats_are_zero_for_fresh_source(run_sync_seed) -> None:
+    source_id = await run_sync_seed(
+        lambda session: create_ingestion_source(session=session, name="fresh").id
+    )
+
+    item = next(item for item in await SourceRegistry().list_sources() if item.id == source_id)
+
+    assert item.stats.model_dump() == {
+        "run_count": 0,
+        "items_discovered": 0,
+        "duplicate_count": 0,
+        "images_ingested": 0,
+        "failed_count": 0,
+    }
+
+
 async def test_get_returns_recent_runs_with_accounting(run_sync_seed) -> None:
     def seed(session: Session) -> tuple[int, int]:
         source = create_ingestion_source(session=session)
@@ -218,6 +234,19 @@ async def test_get_returns_recent_runs_with_accounting(run_sync_seed) -> None:
     assert (run.discovered, run.queued, run.duplicate, run.failed) == (4, 3, 1, 1)
 
 
+async def test_get_respects_recent_runs_limit(run_sync_seed) -> None:
+    def seed(session: Session) -> int:
+        source = create_ingestion_source(session=session)
+        for day in range(1, 4):
+            create_source_run(session=session, source=source, created_at=_at(day))
+        return source.id
+
+    source_id = await run_sync_seed(seed)
+    detail = await SourceRegistry().get_source(source_id, recent_runs_limit=2)
+
+    assert [run.created_at for run in detail.recent_runs] == [_at(3), _at(2)]
+
+
 async def test_get_missing_or_deleted_source_raises(run_sync_seed) -> None:
     source_id = await run_sync_seed(lambda session: create_ingestion_source(session=session).id)
     registry = SourceRegistry()
@@ -247,6 +276,25 @@ async def test_patch_updates_only_provided_fields(run_sync_seed) -> None:
     assert updated.enabled is False
     assert updated.dataset == "memes"
     assert updated.max_items_per_run == 50
+
+
+async def test_patch_can_disable_then_reenable(run_sync_seed) -> None:
+    source_id = await run_sync_seed(
+        lambda session: create_ingestion_source(session=session, enabled=True).id
+    )
+    registry = SourceRegistry()
+
+    assert (await registry.patch(source_id, enabled=False)).enabled is False
+    assert (await registry.patch(source_id, enabled=True)).enabled is True
+
+
+async def test_patch_rejects_soft_deleted_source(run_sync_seed) -> None:
+    source_id = await run_sync_seed(lambda session: create_ingestion_source(session=session).id)
+    registry = SourceRegistry()
+    await registry.soft_delete(source_id)
+
+    with pytest.raises(SourceNotFoundError):
+        await registry.patch(source_id, enabled=False)
 
 
 async def test_patch_and_delete_missing_source_raise() -> None:
