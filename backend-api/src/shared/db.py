@@ -119,5 +119,6 @@ def get_async_engine() -> AsyncEngine:
         pool_recycle=240,
         pool_size=settings.db_pool_size_async,
         max_overflow=settings.db_max_overflow_async,
+        pool_timeout=settings.db_pool_timeout_s,
         connect_args=connect_args,
     )

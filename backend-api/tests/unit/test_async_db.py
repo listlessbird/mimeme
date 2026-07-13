@@ -4,6 +4,7 @@ from collections.abc import AsyncIterator
 
 import pytest
 from sqlalchemy import Engine, delete, func, select, text
+from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import shared.db as db_module
@@ -48,6 +49,36 @@ async def test_read_session_executes_database_work(
         result = await session.execute(text("select 1"))
 
     assert result.scalar_one() == 1
+
+
+async def test_saturated_pool_raises_timeout_error(
+    db_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if db_engine.dialect.name != "postgresql":
+        pytest.skip("async DB tests require PostgreSQL")
+
+    sync_url = db_engine.url.render_as_string(hide_password=False)
+    engine = create_async_engine(
+        _async_url(sync_url),
+        echo=False,
+        future=True,
+        pool_size=1,
+        max_overflow=0,
+        pool_timeout=0.1,
+    )
+    factory = async_sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+    monkeypatch.setattr(db_module, "get_async_session_factory", lambda: factory)
+
+    try:
+        async with db_module.read_session() as held:
+            await held.execute(text("select 1"))
+
+            with pytest.raises(SQLAlchemyTimeoutError):
+                async with db_module.read_session() as starved:
+                    await starved.execute(text("select 1"))
+    finally:
+        await engine.dispose()
 
 
 def _delete_build(db_engine: Engine, version: str) -> None:

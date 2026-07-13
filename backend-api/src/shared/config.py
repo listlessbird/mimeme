@@ -20,8 +20,7 @@ class Settings(BaseSettings):
 
     db_pool_size_async: int = Field(default=10)
     db_max_overflow_async: int = Field(default=20)
-    db_gate_limit: int = Field(default=64)
-    db_gate_timeout_s: float = Field(default=5.0)
+    db_pool_timeout_s: float = Field(default=5.0)
     db_statement_cache_size: int = Field(default=100)
 
     # redis_url: RedisDsn = cast(RedisDsn, "redis://localhost:6379/0")
