@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+from pydantic import BaseModel
 from sqlalchemy import func, select
+from sqlalchemy.orm import Session
 
 from domain.image_ingest_input import ImageIngestInput, RemoteImageUrlInput
+from domain.index_freshness import (
+    IndexFreshness,
+    IndexFreshnessView,
+    RebuildClaimOwnershipError,
+    SearchIndexStateMissingError,
+)
 from domain.job_rules import (
     IndexBuildView,
     IngestJobCreation,
@@ -19,6 +27,11 @@ from domain.job_rules import (
 )
 from shared import db
 from shared.models import IndexBuild, IngestURL, Job, JobStatus, JobType
+
+
+class IndexFreshnessStatus(BaseModel, frozen=True):
+    view: IndexFreshnessView
+    active_version: str | None
 
 
 class ApiJobStore:
@@ -131,6 +144,14 @@ class ApiJobStore:
             )
             return [IndexBuildView.model_validate(row) for row in rows.all()]
 
+    async def get_index_freshness(self) -> IndexFreshnessStatus:
+        async with db.read_session() as session:
+            view = await session.run_sync(lambda sync_session: IndexFreshness(sync_session).get())
+            active_version = await session.scalar(
+                select(IndexBuild.version).where(IndexBuild.is_active.is_(True))
+            )
+        return IndexFreshnessStatus(view=view, active_version=active_version)
+
     async def request_cancellation(self, job_id: str) -> JobCancellation:
         async with db.read_session() as session:
             job = await session.get(Job, job_id)
@@ -146,3 +167,14 @@ class ApiJobStore:
                 raise JobLifecycleNotFoundError(f"Job {job_id} not found")
             job.status = JobStatus.CANCELLED
             await session.flush()
+
+    async def release_rebuild_claim(self, job_id: str) -> None:
+        async with db.write_session() as session:
+
+            def _release(sync_session: Session) -> None:
+                try:
+                    IndexFreshness(sync_session).release(job_id=job_id)
+                except (RebuildClaimOwnershipError, SearchIndexStateMissingError):
+                    pass
+
+            await session.run_sync(_release)

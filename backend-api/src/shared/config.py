@@ -60,6 +60,11 @@ class Settings(BaseSettings):
     faiss_hnsw_ef_search: int = Field(default=128)
     index_cache_dir: Path = Field(default=Path("data/cache/indexes"))
 
+    search_index_rebuild_claim_timeout_minutes: int = Field(default=180)
+    search_index_rebuild_schedule_enabled: bool = Field(default=True)
+    search_index_rebuild_schedule_cron: str = Field(default="* * * * *")
+    search_index_rebuild_schedule_timezone: str = Field(default="UTC")
+
     # modal integration in prod
     gpu_backend: Literal["local", "modal"] = Field(default="local")
     modal_app_name: str = Field(default="findmeme-gpu")

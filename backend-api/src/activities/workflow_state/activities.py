@@ -1,12 +1,19 @@
 from __future__ import annotations
 
 import time
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from sqlalchemy import select
 from temporalio import activity
 
+from domain.index_freshness import (
+    IndexFreshness,
+    RebuildClaimOwnershipError,
+    SearchIndexStateMissingError,
+)
 from domain.job_lifecycle import JobLifecycle
+from domain.rebuild_claim import RebuildCoordinator
 from shared.config import settings
 from shared.db import session_scope
 from shared.logging import emit_activity_event
@@ -19,14 +26,16 @@ from shared.models import (
 from .models import (
     CompleteIngestJobInput,
     CompleteRebuildJobInput,
-    CreateRebuildJobInput,
-    CreateRebuildJobOutput,
     FailRebuildJobInput,
     IngestInitOutput,
     IngestUrlItem,
     MarkIngestUrlDoneInput,
     MarkIngestUrlFailedInput,
+    PrepareRebuildInput,
+    PrepareRebuildOutput,
+    ReconcileGenerationInput,
     RecordIngestStageInput,
+    ReleaseRebuildClaimInput,
     SaveAnnotationsInput,
     SaveEmbeddingInfoInput,
     StartRebuildJobInput,
@@ -211,16 +220,24 @@ def save_annotations_activity(input: SaveAnnotationsInput) -> None:
 def save_embedding_info_activity(input: SaveEmbeddingInfoInput) -> None:
     started = time.monotonic()
     try:
+        index_changed = False
+        desired_generation: int | None = None
         with session_scope() as session:
             proc = session.scalars(
                 select(Processing).where(Processing.image_id == input.image_id)
             ).first()
             found = proc is not None
             if proc:
+                before = (proc.embed_status, proc.embed_model, proc.embed_dim, proc.embed_s3_key)
                 proc.embed_status = ProcessingStatus.DONE
                 proc.embed_model = input.model
                 proc.embed_dim = input.dimension
                 proc.embed_s3_key = input.image_embedding_key
+                after = (proc.embed_status, proc.embed_model, proc.embed_dim, proc.embed_s3_key)
+                if after != before:
+                    view = IndexFreshness(session).mark_dirty(reason="embedding_saved")
+                    index_changed = True
+                    desired_generation = view.desired_generation
         emit_activity_event(
             log=log,
             activity_name="save_embedding_info_activity",
@@ -229,6 +246,8 @@ def save_embedding_info_activity(input: SaveEmbeddingInfoInput) -> None:
             image_id=input.image_id,
             found=found,
             dimension=input.dimension,
+            index_changed=index_changed,
+            desired_generation=desired_generation,
         )
     except Exception as exc:
         emit_activity_event(
@@ -309,42 +328,105 @@ def complete_ingest_job_activity(input: CompleteIngestJobInput) -> None:
 
 
 @activity.defn
-def create_rebuild_job_activity(input: CreateRebuildJobInput) -> CreateRebuildJobOutput:
+def prepare_rebuild_activity(input: PrepareRebuildInput) -> PrepareRebuildOutput:
     started = time.monotonic()
     try:
         with session_scope() as session:
-            lifecycle = JobLifecycle(session)
-            rebuild = lifecycle.create_rebuild_job(
+            decision = RebuildCoordinator(session).prepare(
+                job_id=input.job_id,
+                workflow_id=input.workflow_id,
                 force=input.force,
-                model_name=settings.embed_model,
-                index_type=settings.index_type,
+                trigger=input.trigger,
+                now=datetime.now(UTC),
+                claim_timeout=timedelta(
+                    minutes=settings.search_index_rebuild_claim_timeout_minutes
+                ),
             )
-            lifecycle.record_workflow_id(rebuild.job.id, rebuild.workflow_id)
-            output = CreateRebuildJobOutput(
-                job_id=rebuild.job.id,
-                workflow_id=rebuild.workflow_id,
-                force=rebuild.force,
-                model_name=rebuild.model_name,
-                index_type=rebuild.index_type,
+            output = PrepareRebuildOutput(
+                decision=decision.decision,
+                job_id=decision.job_id,
+                target_generation=decision.target_generation,
             )
         emit_activity_event(
             log=log,
-            activity_name="create_rebuild_job_activity",
+            activity_name="prepare_rebuild_activity",
             started_at=started,
             outcome="success",
+            trigger=input.trigger.value,
+            force=input.force,
+            decision=output.decision,
             job_id=output.job_id,
-            workflow_id=output.workflow_id,
-            force=output.force,
-            model_name=output.model_name,
-            index_type=output.index_type,
+            target_generation=output.target_generation,
         )
         return output
     except Exception as exc:
         emit_activity_event(
             log=log,
-            activity_name="create_rebuild_job_activity",
+            activity_name="prepare_rebuild_activity",
             started_at=started,
             outcome="error",
+            trigger=input.trigger.value,
+            job_id=input.job_id,
+            error=str(exc),
+        )
+        raise
+
+
+@activity.defn
+def reconcile_generation_activity(input: ReconcileGenerationInput) -> None:
+    started = time.monotonic()
+    try:
+        with session_scope() as session:
+            IndexFreshness(session).activate(
+                job_id=input.job_id,
+                target_generation=input.target_generation,
+                reconciled_at=datetime.now(UTC),
+            )
+        emit_activity_event(
+            log=log,
+            activity_name="reconcile_generation_activity",
+            started_at=started,
+            outcome="success",
+            job_id=input.job_id,
+            target_generation=input.target_generation,
+        )
+    except Exception as exc:
+        emit_activity_event(
+            log=log,
+            activity_name="reconcile_generation_activity",
+            started_at=started,
+            outcome="error",
+            job_id=input.job_id,
+            error=str(exc),
+        )
+        raise
+
+
+@activity.defn
+def release_rebuild_claim_activity(input: ReleaseRebuildClaimInput) -> None:
+    started = time.monotonic()
+    released = True
+    try:
+        with session_scope() as session:
+            try:
+                IndexFreshness(session).release(job_id=input.job_id)
+            except (RebuildClaimOwnershipError, SearchIndexStateMissingError):
+                released = False
+        emit_activity_event(
+            log=log,
+            activity_name="release_rebuild_claim_activity",
+            started_at=started,
+            outcome="success",
+            job_id=input.job_id,
+            released=released,
+        )
+    except Exception as exc:
+        emit_activity_event(
+            log=log,
+            activity_name="release_rebuild_claim_activity",
+            started_at=started,
+            outcome="error",
+            job_id=input.job_id,
             error=str(exc),
         )
         raise

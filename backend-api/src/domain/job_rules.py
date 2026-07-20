@@ -28,9 +28,11 @@ class IngestJobResultPayload(BaseModel, frozen=True):
 class RebuildJobResultPayload(BaseModel, frozen=True):
     version: str
     num_vectors: int = Field(ge=0)
-    dimension: int = Field(ge=1)
+    dimension: int = Field(ge=0)
     removed_versions: list[str]
     text_num_vectors: int | None = Field(default=None, ge=0)
+    skipped: bool = False
+    skip_reason: str | None = None
 
 
 class RawJobResultPayload(BaseModel, frozen=True):

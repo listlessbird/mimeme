@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from activities.indexing.faiss_vectors import FaissVectorIndex
 from activities.indexing.index_artifacts import IndexArtifactStore
 from activities.indexing.index_catalog import ActiveIndexCatalog
+from domain.index_freshness import IndexFreshness
 from shared.config import settings
 from shared.services.storage import get_artifact_storage_service
 
@@ -221,6 +222,7 @@ class FaissIndexManager:
         db: Session | None = None,
         text_embeddings: np.ndarray | None = None,
         text_image_ids: list[int] | None = None,
+        source_generation: int | None = None,
     ) -> BuildResult:
         image_index = FaissVectorIndex.build(
             embeddings=embeddings,
@@ -242,6 +244,7 @@ class FaissIndexManager:
                     "dimension": dimension,
                     "num_vectors": n_vectors,
                     "index_type": index_type,
+                    "source_generation": source_generation,
                     "created_at": datetime.now(UTC).isoformat(),
                 },
                 indent=2,
@@ -286,10 +289,37 @@ class FaissIndexManager:
             text_s3_key=text_s3_key,
         )
 
-    def swap_to_version(self, version: str, db: Session) -> None:
+    def build_empty_index(
+        self,
+        *,
+        dimension: int,
+        model_name: str,
+        index_type: str,
+        db: Session | None = None,
+        source_generation: int | None = None,
+    ) -> BuildResult:
+        if index_type not in ("flat", "hnsw"):
+            raise ValueError(f"Cannot build empty index of type: {index_type}")
+        return self.build_index(
+            embeddings=np.empty((0, dimension), dtype=np.float32),
+            image_ids=[],
+            model_name=model_name,
+            index_type=index_type,
+            db=db,
+            source_generation=source_generation,
+        )
+
+    def swap_to_version(
+        self, version: str, db: Session, *, job_id: str, target_generation: int
+    ) -> None:
         with self._index_lock:
             self._load_index_version(version)
             self._catalog.swap_to_version(version, db)
+            IndexFreshness(db).activate(
+                job_id=job_id,
+                target_generation=target_generation,
+                reconciled_at=datetime.now(UTC),
+            )
 
     def garbage_collect(self, db: Session, retain_versions: int = 5) -> list[str]:
         return self._catalog.garbage_collect(

@@ -82,7 +82,7 @@ def test_rebuild_result_payload_is_validated_and_serializable() -> None:
         {
             "version": "v-1",
             "num_vectors": 1,
-            "dimension": 0,
+            "dimension": -1,
             "removed_versions": [],
             "text_num_vectors": None,
         },

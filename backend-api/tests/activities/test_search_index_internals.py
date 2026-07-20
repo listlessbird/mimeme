@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
+import pytest
 
 
 def test_artifact_store_fetches_text_artifacts_when_image_artifacts_are_cached(
@@ -144,6 +145,56 @@ def test_vector_index_search_maps_faiss_rows_to_image_ids() -> None:
     assert results[0][0] == 101
     assert vector_index.get_vector_by_image_id(202) is not None
     assert vector_index.get_vector_by_image_id(303) is None
+
+
+@pytest.mark.parametrize("index_type", ["flat", "hnsw"])
+def test_empty_index_writes_reads_and_searches(index_type: str, tmp_path: Path) -> None:
+    from activities.indexing.faiss_vectors import FaissVectorIndex
+
+    empty = FaissVectorIndex.build(
+        embeddings=np.empty((0, 8), dtype=np.float32), image_ids=[], index_type=index_type
+    )
+    assert empty.ntotal == 0
+    assert empty.dimension == 8
+
+    index_file = tmp_path / "empty.faiss"
+    empty.write(index_file)
+    reloaded = FaissVectorIndex.read(index_file=index_file, id_mapping={})
+
+    assert reloaded.ntotal == 0
+    assert reloaded.search(np.ones(8, dtype=np.float32), k=5) == []
+
+
+def test_build_empty_index_rejects_unknown_type() -> None:
+    from activities.indexing.faiss_manager import FaissIndexManager
+
+    with pytest.raises(ValueError, match="Cannot build empty index"):
+        FaissIndexManager().build_empty_index(
+            dimension=8, model_name="siglip2-base", index_type="ivf"
+        )
+
+
+def test_build_empty_index_registers_zero_vector_build(db_session) -> None:
+    from activities.indexing.faiss_manager import FaissIndexManager
+
+    manager = FaissIndexManager()
+    manager._artifacts = MagicMock()
+    manager._catalog = MagicMock()
+
+    result = manager.build_empty_index(
+        dimension=8,
+        model_name="siglip2-base",
+        index_type="hnsw",
+        db=db_session,
+        source_generation=7,
+    )
+
+    assert result.version
+    assert result.text_num_vectors is None
+    kwargs = manager._catalog.add_inactive_build.call_args.kwargs
+    assert kwargs["num_vectors"] == 0
+    assert kwargs["dimension"] == 8
+    assert kwargs["index_type"] == "hnsw"
 
 
 def test_active_index_catalog_swap_marks_only_requested_build_active(

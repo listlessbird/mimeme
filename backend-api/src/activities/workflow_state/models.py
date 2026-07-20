@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel
 
 from domain.image_ingest_input import ImageIngestInput
-from shared.models import DuplicateReason, IngestStage
+from shared.models import DuplicateReason, IngestStage, RebuildTrigger
 
 
 class IngestUrlItem(BaseModel):
@@ -60,16 +62,26 @@ class CompleteIngestJobInput(BaseModel):
     duplicates: int
 
 
-class CreateRebuildJobInput(BaseModel):
-    force: bool = False
-
-
-class CreateRebuildJobOutput(BaseModel):
-    job_id: str
+class PrepareRebuildInput(BaseModel):
+    job_id: str | None
     workflow_id: str
     force: bool
-    model_name: str
-    index_type: str
+    trigger: RebuildTrigger
+
+
+class PrepareRebuildOutput(BaseModel):
+    decision: Literal["build", "clean", "busy"]
+    job_id: str | None = None
+    target_generation: int | None = None
+
+
+class ReconcileGenerationInput(BaseModel):
+    job_id: str
+    target_generation: int
+
+
+class ReleaseRebuildClaimInput(BaseModel):
+    job_id: str
 
 
 class StartRebuildJobInput(BaseModel):

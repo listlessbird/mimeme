@@ -195,6 +195,9 @@ class JobLifecycle:
         dimension: int,
         removed_versions: list[str],
         text_num_vectors: int | None,
+        skipped: bool = False,
+        skip_reason: str | None = None,
+        message: str | None = None,
     ) -> None:
         job = self._db.get(Job, job_id)
         if job is None:
@@ -202,12 +205,16 @@ class JobLifecycle:
         job.status = JobStatus.COMPLETED
         job.progress = 100.0
         job.completed_at = datetime.now(UTC)
+        if message is not None:
+            job.message = message
         job.result = RebuildJobResultPayload(
             version=version,
             num_vectors=num_vectors,
             dimension=dimension,
             removed_versions=removed_versions,
             text_num_vectors=text_num_vectors,
+            skipped=skipped,
+            skip_reason=skip_reason,
         ).model_dump_json()
 
         self._db.flush()

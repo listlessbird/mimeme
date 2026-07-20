@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
-from shared.models import SourceRunStatus, SourceRunTrigger
+from shared.models import RebuildTrigger, SourceRunStatus, SourceRunTrigger
 
 
 class IngestWorkflowInput(BaseModel):
@@ -21,18 +23,20 @@ class IngestWorkflowOutput(BaseModel):
 
 
 class RebuildIndexWorkflowInput(BaseModel):
-    job_id: str
+    job_id: str | None = None
     force: bool = False
     model_name: str
     index_type: str
+    trigger: RebuildTrigger = RebuildTrigger.MANUAL
 
 
 class RebuildIndexWorkflowOutput(BaseModel):
-    job_id: str
-    version: str
-    num_vectors: int
-    dimension: int
-    removed_versions: list[str]
+    job_id: str | None
+    outcome: Literal["built", "empty_reconcile", "skipped", "busy"]
+    version: str | None = None
+    num_vectors: int = 0
+    dimension: int | None = None
+    removed_versions: list[str] = []
     text_num_vectors: int | None = None
 
 

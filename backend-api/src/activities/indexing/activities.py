@@ -11,6 +11,7 @@ from sqlalchemy import select
 from temporalio import activity
 
 from activities.indexing.faiss_manager import FaissIndexManager
+from activities.indexing.index_catalog import ActiveIndexCatalog
 from activities.indexing.models import (
     BuildIndexInput,
     BuildIndexOutput,
@@ -37,26 +38,59 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
     dimension: int | None = None
     version: str | None = None
     text_num_vectors: int | None = None
+    candidate_query_ms: float | None = None
+    embedding_download_ms: float | None = None
+    image_index_build_ms: float | None = None
     storage = get_artifact_storage_service()
     index_manager = FaissIndexManager.get_instance()
     try:
+        query_started = time.monotonic()
         with session_scope() as session:
             done_procs = session.execute(
                 select(Processing.image_id, Processing.embed_s3_key).where(
                     Processing.embed_status == ProcessingStatus.DONE,
                     Processing.embed_s3_key.isnot(None),
+                    Processing.embed_model == input.model_name,
                 )
             ).all()
+            active_build = ActiveIndexCatalog().active_build(session)
+            active_dimension = active_build.dimension if active_build else None
+            active_index_type = active_build.index_type if active_build else None
+            has_active_build = active_build is not None
+        candidate_query_ms = (time.monotonic() - query_started) * 1000
 
-        total_candidates = len(done_procs)
         candidates = [
             (image_id, embed_s3_key) for image_id, embed_s3_key in done_procs if embed_s3_key
         ]
-
-        if not done_procs:
-            raise ValueError("No embeddings found to build index")
-
         total_candidates = len(candidates)
+
+        if not candidates:
+            if not has_active_build:
+                num_vectors = 0
+                return BuildIndexOutput(outcome="empty_reconcile", num_vectors=0)
+            if active_dimension is None:
+                raise ValueError(
+                    "Active index has unknown dimension; cannot build an empty replacement"
+                )
+            empty_index_type = active_index_type or input.index_type
+            with session_scope() as session:
+                empty_result = index_manager.build_empty_index(
+                    dimension=active_dimension,
+                    model_name=input.model_name,
+                    index_type=empty_index_type,
+                    db=session,
+                    source_generation=input.target_generation,
+                )
+            version = empty_result.version
+            num_vectors = 0
+            dimension = active_dimension
+            return BuildIndexOutput(
+                outcome="built",
+                version=version,
+                num_vectors=0,
+                dimension=active_dimension,
+                s3_key=storage.build_index_key(version, "index.faiss"),
+            )
         image_ids: list[int] = [0] * total_candidates
         text_image_ids: list[int] = [0] * total_candidates
         embedding_matrix: np.ndarray | None = None
@@ -90,6 +124,7 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
                 pass
             return image_id, img_emb, txt_emb
 
+        download_started = time.monotonic()
         with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_DOWNLOAD_WORKERS) as executor:
             futures = [
                 executor.submit(_download_one, (image_id, embed_s3_key))
@@ -153,6 +188,8 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
                         text_embedding_matrix[text_loaded, :] = text_embedding
                         text_loaded += 1
 
+        embedding_download_ms = (time.monotonic() - download_started) * 1000
+
         if loaded == 0 or embedding_matrix is None:
             raise ValueError("Failed to load any embeddings from storage")
 
@@ -187,6 +224,7 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
                 "dimension": dimension,
             }
         )
+        build_started = time.monotonic()
         with session_scope() as session:
             build_result = index_manager.build_index(
                 embeddings=embedding_matrix,
@@ -196,13 +234,16 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
                 db=session,
                 text_embeddings=final_text_embeddings,
                 text_image_ids=final_text_image_ids,
+                source_generation=input.target_generation,
             )
 
+        image_index_build_ms = (time.monotonic() - build_started) * 1000
         version = build_result.version
         text_num_vectors = build_result.text_num_vectors
 
         index_key = storage.build_index_key(version, "index.faiss")
         return BuildIndexOutput(
+            outcome="built",
             version=version,
             num_vectors=num_vectors,
             dimension=dimension,
@@ -224,12 +265,17 @@ def build_index_activity(input: BuildIndexInput) -> BuildIndexOutput:
             model_name=input.model_name,
             index_type=input.index_type,
             force=input.force,
+            target_generation=input.target_generation,
             total_candidates=total_candidates,
             missing_vectors=missing_vectors,
             version=version,
             num_vectors=num_vectors,
             dimension=dimension,
             text_num_vectors=text_num_vectors,
+            candidate_query_ms=candidate_query_ms,
+            embedding_download_ms=embedding_download_ms,
+            image_index_build_ms=image_index_build_ms,
+            total_duration_ms=(time.monotonic() - started) * 1000,
         )
 
 
@@ -241,7 +287,12 @@ def swap_index_activity(input: SwapIndexInput) -> None:
     index_manager = FaissIndexManager.get_instance()
     try:
         with session_scope() as session:
-            index_manager.swap_to_version(input.version, session)
+            index_manager.swap_to_version(
+                input.version,
+                session,
+                job_id=input.job_id,
+                target_generation=input.target_generation,
+            )
     except Exception as exc:
         outcome = "error"
         error_message = str(exc)
@@ -254,6 +305,8 @@ def swap_index_activity(input: SwapIndexInput) -> None:
             outcome=outcome,
             error=error_message,
             version=input.version,
+            job_id=input.job_id,
+            target_generation=input.target_generation,
         )
 
 

@@ -97,8 +97,7 @@ class ActiveIndexCatalog:
     def swap_to_version(self, version: str, db: Session) -> None:
         db.execute(update(IndexBuild).where(IndexBuild.is_active.is_(True)).values(is_active=False))
         db.execute(update(IndexBuild).where(IndexBuild.version == version).values(is_active=True))
-
-        db.commit()
+        db.flush()
 
     def garbage_collect(
         self,

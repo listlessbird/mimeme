@@ -9,6 +9,7 @@ Uses the real test database with transaction rollback isolation.
 
 from __future__ import annotations
 
+import datetime
 import json
 
 import pytest
@@ -19,11 +20,13 @@ from temporalio.testing import ActivityEnvironment
 from activities.workflow_state.activities import (
     complete_ingest_job_activity,
     complete_rebuild_job_activity,
-    create_rebuild_job_activity,
     fail_rebuild_job_activity,
     ingest_initialize_activity,
     mark_ingest_url_done_activity,
     mark_ingest_url_failed_activity,
+    prepare_rebuild_activity,
+    reconcile_generation_activity,
+    release_rebuild_claim_activity,
     save_annotations_activity,
     save_embedding_info_activity,
     start_rebuild_job_activity,
@@ -32,14 +35,21 @@ from activities.workflow_state.activities import (
 from activities.workflow_state.models import (
     CompleteIngestJobInput,
     CompleteRebuildJobInput,
-    CreateRebuildJobInput,
     FailRebuildJobInput,
     MarkIngestUrlDoneInput,
     MarkIngestUrlFailedInput,
+    PrepareRebuildInput,
+    ReconcileGenerationInput,
+    ReleaseRebuildClaimInput,
     SaveAnnotationsInput,
     SaveEmbeddingInfoInput,
     StartRebuildJobInput,
     UpdateJobProgressInput,
+)
+from domain.index_freshness import (
+    IndexFreshness,
+    RebuildClaimOwnershipError,
+    SearchIndexStateMissingError,
 )
 from shared.models.orm import (
     Annotation,
@@ -50,12 +60,15 @@ from shared.models.orm import (
     JobType,
     Processing,
     ProcessingStatus,
+    RebuildTrigger,
+    SearchIndexState,
 )
 from tests.factories import (
     create_image,
     create_ingest_url,
     create_job,
     create_processing,
+    create_search_index_state,
 )
 
 
@@ -318,11 +331,16 @@ class TestSaveAnnotationsActivity:
 # ==========================================================================
 
 
+def _desired_generation(session: Session) -> int:
+    return IndexFreshness(session).get().desired_generation
+
+
 @pytest.mark.usefixtures("_patch_session_scope")
 class TestSaveEmbeddingInfoActivity:
     async def test_updates_processing_embed_fields(
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
+        create_search_index_state(session=db_session)
         image: Image = create_image(session=db_session)
         proc: Processing = create_processing(session=db_session, image=image)
         db_session.flush()
@@ -341,10 +359,28 @@ class TestSaveEmbeddingInfoActivity:
         assert proc.embed_dim == 768
         assert proc.embed_s3_key == "embeddings/test/abc.npy"
 
+    async def test_new_embedding_increments_desired_generation_once(
+        self, db_session: Session, activity_env: ActivityEnvironment
+    ) -> None:
+        create_search_index_state(session=db_session, desired_generation=1, active_generation=1)
+        image: Image = create_image(session=db_session)
+        create_processing(session=db_session, image=image)
+        db_session.flush()
+
+        inp = SaveEmbeddingInfoInput(
+            image_id=image.id,
+            model="siglip2-base",
+            dimension=768,
+            image_embedding_key="embeddings/test/abc.npy",
+        )
+        activity_env.run(save_embedding_info_activity, inp)
+
+        assert _desired_generation(db_session) == 2
+
     async def test_idempotent_on_retry(
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
-        """Calling twice should just overwrite, not crash."""
+        create_search_index_state(session=db_session, desired_generation=1, active_generation=1)
         image: Image = create_image(session=db_session)
         proc: Processing = create_processing(session=db_session, image=image)
         db_session.flush()
@@ -360,11 +396,37 @@ class TestSaveEmbeddingInfoActivity:
 
         db_session.refresh(proc)
         assert proc.embed_status == ProcessingStatus.DONE
+        assert _desired_generation(db_session) == 2
 
-    async def test_missing_processing_is_noop(
+    async def test_embedding_repair_increments_generation(
         self, db_session: Session, activity_env: ActivityEnvironment
     ) -> None:
-        """If no Processing row exists, activity completes without error."""
+        create_search_index_state(session=db_session, desired_generation=5, active_generation=5)
+        image: Image = create_image(session=db_session)
+        create_processing(
+            session=db_session,
+            image=image,
+            embed_status=ProcessingStatus.DONE,
+            embed_model="siglip2-base",
+            embed_dim=768,
+            embed_s3_key="embeddings/test/abc.npy",
+        )
+        db_session.flush()
+
+        inp = SaveEmbeddingInfoInput(
+            image_id=image.id,
+            model="siglip2-base",
+            dimension=1024,
+            image_embedding_key="embeddings/test/abc.npy",
+        )
+        activity_env.run(save_embedding_info_activity, inp)
+
+        assert _desired_generation(db_session) == 6
+
+    async def test_missing_processing_does_not_increment(
+        self, db_session: Session, activity_env: ActivityEnvironment
+    ) -> None:
+        create_search_index_state(session=db_session, desired_generation=3, active_generation=3)
         image: Image = create_image(session=db_session)
         db_session.flush()
 
@@ -375,6 +437,8 @@ class TestSaveEmbeddingInfoActivity:
             image_embedding_key="embeddings/test/abc.npy",
         )
         activity_env.run(save_embedding_info_activity, inp)
+
+        assert _desired_generation(db_session) == 3
 
 
 # ==========================================================================
@@ -469,24 +533,6 @@ class TestCompleteIngestJobActivity:
         activity_env.run(complete_ingest_job_activity, inp)
         db_session.refresh(job)
         assert job.status == JobStatus.COMPLETED
-
-
-@pytest.mark.usefixtures("_patch_session_scope")
-class TestCreateRebuildJobActivity:
-    async def test_creates_pending_rebuild_job_with_workflow_id(
-        self, db_session: Session, activity_env: ActivityEnvironment
-    ) -> None:
-        result = activity_env.run(create_rebuild_job_activity, CreateRebuildJobInput())
-
-        job = db_session.get(Job, result.job_id)
-        assert job is not None
-        assert job.type == JobType.REBUILD_INDEX
-        assert job.status == JobStatus.PENDING
-        assert job.workflow_id == result.workflow_id
-        assert result.workflow_id == f"rebuild-workflow-{result.job_id}"
-        assert result.force is False
-        assert result.model_name
-        assert result.index_type
 
 
 # ==========================================================================
@@ -603,6 +649,134 @@ class TestCompleteRebuildJobActivity:
         )
         with pytest.raises(ValueError, match="not found"):
             activity_env.run(complete_rebuild_job_activity, inp)
+
+
+# ==========================================================================
+# prepare_rebuild_activity / reconcile_generation_activity /
+# release_rebuild_claim_activity
+# ==========================================================================
+
+
+@pytest.mark.usefixtures("_patch_session_scope")
+class TestPrepareRebuildActivity:
+    async def test_manual_dirty_claims_and_returns_build(
+        self, db_session: Session, activity_env: ActivityEnvironment
+    ) -> None:
+        create_search_index_state(session=db_session, desired_generation=4, active_generation=1)
+        job: Job = create_job(session=db_session, type=JobType.REBUILD_INDEX)
+        db_session.flush()
+
+        inp = PrepareRebuildInput(
+            job_id=job.id, workflow_id="wf-1", force=False, trigger=RebuildTrigger.MANUAL
+        )
+        result = activity_env.run(prepare_rebuild_activity, inp)
+
+        assert result.decision == "build"
+        assert result.job_id == job.id
+        assert result.target_generation == 4
+        state = db_session.get(SearchIndexState, 1)
+        assert state is not None and state.rebuild_job_id == job.id
+
+    async def test_missing_state_row_raises(
+        self, db_session: Session, activity_env: ActivityEnvironment
+    ) -> None:
+        inp = PrepareRebuildInput(
+            job_id=None, workflow_id="wf-1", force=False, trigger=RebuildTrigger.SCHEDULED
+        )
+        with pytest.raises(SearchIndexStateMissingError):
+            activity_env.run(prepare_rebuild_activity, inp)
+
+
+@pytest.mark.usefixtures("_patch_session_scope")
+class TestReconcileGenerationActivity:
+    async def test_advances_active_generation(
+        self, db_session: Session, activity_env: ActivityEnvironment
+    ) -> None:
+        job: Job = create_job(session=db_session, type=JobType.REBUILD_INDEX)
+        db_session.flush()
+        create_search_index_state(
+            session=db_session,
+            desired_generation=5,
+            active_generation=1,
+            rebuild_job_id=job.id,
+            rebuild_target_generation=5,
+            rebuild_claimed_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        inp = ReconcileGenerationInput(job_id=job.id, target_generation=5)
+        activity_env.run(reconcile_generation_activity, inp)
+
+        state = db_session.get(SearchIndexState, 1)
+        assert state is not None and state.active_generation == 5
+        assert state.last_reconciled_at is not None
+
+    async def test_wrong_owner_propagates(
+        self, db_session: Session, activity_env: ActivityEnvironment
+    ) -> None:
+        owner: Job = create_job(session=db_session, type=JobType.REBUILD_INDEX)
+        other: Job = create_job(session=db_session, type=JobType.REBUILD_INDEX)
+        db_session.flush()
+        create_search_index_state(
+            session=db_session,
+            desired_generation=5,
+            active_generation=1,
+            rebuild_job_id=owner.id,
+            rebuild_target_generation=5,
+            rebuild_claimed_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        inp = ReconcileGenerationInput(job_id=other.id, target_generation=5)
+        with pytest.raises(RebuildClaimOwnershipError):
+            activity_env.run(reconcile_generation_activity, inp)
+
+
+@pytest.mark.usefixtures("_patch_session_scope")
+class TestReleaseRebuildClaimActivity:
+    async def test_releases_own_claim(
+        self, db_session: Session, activity_env: ActivityEnvironment
+    ) -> None:
+        job: Job = create_job(session=db_session, type=JobType.REBUILD_INDEX)
+        db_session.flush()
+        create_search_index_state(
+            session=db_session,
+            desired_generation=5,
+            active_generation=1,
+            rebuild_job_id=job.id,
+            rebuild_target_generation=5,
+            rebuild_claimed_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        activity_env.run(release_rebuild_claim_activity, ReleaseRebuildClaimInput(job_id=job.id))
+
+        state = db_session.get(SearchIndexState, 1)
+        assert state is not None and state.rebuild_job_id is None
+
+    async def test_foreign_claim_is_left_intact_without_raising(
+        self, db_session: Session, activity_env: ActivityEnvironment
+    ) -> None:
+        owner: Job = create_job(session=db_session, type=JobType.REBUILD_INDEX)
+        other: Job = create_job(session=db_session, type=JobType.REBUILD_INDEX)
+        db_session.flush()
+        create_search_index_state(
+            session=db_session,
+            desired_generation=5,
+            active_generation=1,
+            rebuild_job_id=owner.id,
+            rebuild_target_generation=5,
+            rebuild_claimed_at=datetime.datetime.now(datetime.UTC),
+        )
+
+        activity_env.run(release_rebuild_claim_activity, ReleaseRebuildClaimInput(job_id=other.id))
+
+        state = db_session.get(SearchIndexState, 1)
+        assert state is not None and state.rebuild_job_id == owner.id
+
+    async def test_missing_state_row_does_not_raise(
+        self, db_session: Session, activity_env: ActivityEnvironment
+    ) -> None:
+        activity_env.run(
+            release_rebuild_claim_activity, ReleaseRebuildClaimInput(job_id="rebuild-x")
+        )
 
 
 # ==========================================================================
