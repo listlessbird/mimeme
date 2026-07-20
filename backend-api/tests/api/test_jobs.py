@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import json
 from unittest.mock import MagicMock
 
@@ -10,8 +11,44 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from shared.models.orm import Job, JobStatus, JobType
-from tests.factories import create_index_build, create_job
+from shared.models.orm import Job, JobStatus, JobType, SearchIndexState
+from tests.factories import create_index_build, create_job, create_search_index_state
+
+
+class TestIndexFreshness:
+    async def test_reports_stale_state_and_active_version(
+        self, async_client: AsyncClient, run_sync_seed, _patch_async_domain_session_scope: None
+    ) -> None:
+        def seed(session) -> None:
+            create_search_index_state(session=session, desired_generation=3, active_generation=1)
+            create_index_build(session=session, version="v-cur", is_active=True)
+
+        await run_sync_seed(seed)
+
+        resp = await async_client.get("/jobs/indexes/freshness")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["desired_generation"] == 3
+        assert data["active_generation"] == 1
+        assert data["is_stale"] is True
+        assert data["active_version"] == "v-cur"
+
+    async def test_reports_current_when_generations_match(
+        self, async_client: AsyncClient, run_sync_seed, _patch_async_domain_session_scope: None
+    ) -> None:
+        await run_sync_seed(
+            lambda session: create_search_index_state(
+                session=session, desired_generation=4, active_generation=4
+            )
+        )
+
+        resp = await async_client.get("/jobs/indexes/freshness")
+
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["is_stale"] is False
+        assert data["active_version"] is None
 
 
 class TestGetJob:
@@ -72,6 +109,8 @@ class TestGetJob:
             "dimension": 768,
             "removed_versions": ["v-old"],
             "text_num_vectors": 9,
+            "skipped": False,
+            "skip_reason": None,
         }
 
     async def test_get_job_with_invalid_json_result(
@@ -185,6 +224,37 @@ class TestCancelJob:
         resp = await async_client.delete(f"/jobs/{job_id}")
         assert resp.status_code == 204
         mock_temporal.get_workflow_handle.assert_called_with("wf-123")
+
+    async def test_cancel_rebuild_job_releases_its_claim(
+        self,
+        async_client: AsyncClient,
+        async_db_session: AsyncSession,
+        run_sync_seed,
+        mock_temporal: MagicMock,
+        _patch_async_domain_session_scope: None,
+    ) -> None:
+        def seed(session) -> str:
+            job = create_job(session=session, type=JobType.REBUILD_INDEX, status=JobStatus.RUNNING)
+            session.flush()
+            create_search_index_state(
+                session=session,
+                desired_generation=5,
+                active_generation=1,
+                rebuild_job_id=job.id,
+                rebuild_target_generation=5,
+                rebuild_claimed_at=datetime.datetime.now(datetime.UTC),
+            )
+            return job.id
+
+        job_id = await run_sync_seed(seed)
+
+        resp = await async_client.delete(f"/jobs/{job_id}")
+        assert resp.status_code == 204
+
+        state = await async_db_session.get(SearchIndexState, 1)
+        assert state is not None
+        assert state.rebuild_job_id is None
+        assert state.rebuild_target_generation is None
 
     async def test_cancel_completed_job_returns_400(
         self, async_client: AsyncClient, run_sync_seed, _patch_async_domain_session_scope: None

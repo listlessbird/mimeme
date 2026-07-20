@@ -40,3 +40,16 @@ class RebuildIndexRequest(BaseModel):
 class JobListResponse(BaseModel):
     jobs: list[JobResponse]
     total: int
+
+
+class IndexFreshnessResponse(BaseModel):
+    desired_generation: int
+    active_generation: int
+    is_stale: bool
+    active_version: str | None
+    rebuild_job_id: str | None
+    rebuild_target_generation: int | None
+    rebuild_claimed_at: datetime | None
+    last_dirty_at: datetime | None
+    last_dirty_reason: str | None
+    last_reconciled_at: datetime | None

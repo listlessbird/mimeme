@@ -8,11 +8,16 @@ from api.auth import AdminRequired
 from api.deps import TemporalClientDep
 from api.models.errors import error_responses
 from api.models.health import IndexVersionResponse, IndexVersionsResponse
-from api.models.jobs import JobListResponse, JobResponse, RebuildIndexRequest
+from api.models.jobs import (
+    IndexFreshnessResponse,
+    JobListResponse,
+    JobResponse,
+    RebuildIndexRequest,
+)
 from domain.job_rules import JobLifecycleInvalidStateError, JobLifecycleNotFoundError
 from domain.job_store import ApiJobStore
 from shared.config import settings
-from shared.models import JobStatus, JobType
+from shared.models import JobStatus, JobType, RebuildTrigger
 from workflows import RebuildIndexWorkflow, RebuildIndexWorkflowInput
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"], responses=error_responses(403, 429, 500))
@@ -48,6 +53,7 @@ async def trigger_rebuild_index(
             force=rebuild.force,
             model_name=rebuild.model_name,
             index_type=rebuild.index_type,
+            trigger=RebuildTrigger.MANUAL,
         ),
         id=rebuild.workflow_id,
         task_queue=settings.temporal_task_queue,
@@ -80,6 +86,7 @@ async def cancel_job(_auth: AdminRequired, job_id: str, temporal: TemporalClient
         await handle.cancel()
 
     await store.mark_cancelled(job_id)
+    await store.release_rebuild_claim(job_id)
 
 
 @router.get("", response_model=JobListResponse)
@@ -94,6 +101,24 @@ async def list_jobs(
     return JobListResponse(
         jobs=[JobResponse.model_validate(job.model_dump()) for job in result.jobs],
         total=result.total,
+    )
+
+
+@router.get("/indexes/freshness", response_model=IndexFreshnessResponse)
+async def get_index_freshness(_auth: AdminRequired) -> IndexFreshnessResponse:
+    status = await ApiJobStore().get_index_freshness()
+    view = status.view
+    return IndexFreshnessResponse(
+        desired_generation=view.desired_generation,
+        active_generation=view.active_generation,
+        is_stale=view.is_stale,
+        active_version=status.active_version,
+        rebuild_job_id=view.rebuild_job_id,
+        rebuild_target_generation=view.rebuild_target_generation,
+        rebuild_claimed_at=view.rebuild_claimed_at,
+        last_dirty_at=view.last_dirty_at,
+        last_dirty_reason=view.last_dirty_reason,
+        last_reconciled_at=view.last_reconciled_at,
     )
 
 
