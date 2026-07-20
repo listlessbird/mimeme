@@ -29,6 +29,7 @@ from shared.models.orm import (
     JobType,
     Processing,
     ProcessingStatus,
+    SearchIndexState,
     SourceItem,
     SourceRun,
     SourceRunTrigger,
@@ -202,6 +203,24 @@ def create_artifact(*, session: Session, **kwargs: object) -> Artifact:
 
 def create_index_build(*, session: Session, **kwargs: object) -> IndexBuild:
     return cast(IndexBuild, IndexBuildFactory(session=session, **kwargs))
+
+
+def create_search_index_state(
+    *,
+    session: Session,
+    desired_generation: int = 1,
+    active_generation: int = 0,
+    **kwargs: object,
+) -> SearchIndexState:
+    state = SearchIndexState(
+        id=1,
+        desired_generation=desired_generation,
+        active_generation=active_generation,
+        **kwargs,
+    )
+    session.add(state)
+    session.flush()
+    return state
 
 
 class IngestionSourceFactory(factory.alchemy.SQLAlchemyModelFactory):
