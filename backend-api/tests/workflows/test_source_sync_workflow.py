@@ -31,13 +31,10 @@ from activities.ingestion.models import (
     StartSourceRunInput,
     StartSourceRunOutput,
 )
-from activities.workflow_state.models import CreateRebuildJobInput, CreateRebuildJobOutput
 from shared.models import SourceRunStatus, SourceRunTrigger
 from workflows.models import (
     IngestWorkflowInput,
     IngestWorkflowOutput,
-    RebuildIndexWorkflowInput,
-    RebuildIndexWorkflowOutput,
     SourceSyncWorkflowInput,
     SourceSyncWorkflowOutput,
 )
@@ -103,18 +100,6 @@ async def mock_fail(input: FailSourceRunInput) -> None:
     _calls.append("fail_source_run_activity")
 
 
-@activity.defn(name="create_rebuild_job_activity")
-async def mock_create_rebuild(input: CreateRebuildJobInput) -> CreateRebuildJobOutput:
-    _calls.append("create_rebuild_job_activity")
-    return CreateRebuildJobOutput(
-        job_id="rebuild-abc",
-        workflow_id="rebuild-workflow-rebuild-abc",
-        force=input.force,
-        model_name="test-model",
-        index_type="flat",
-    )
-
-
 # Unsandboxed: this mock lives in the test module, so sandboxing it would make
 # Temporal re-import the test module (and its heavy activity import chain) inside
 # the workflow sandbox. The real SourceSyncWorkflow under test stays sandboxed.
@@ -127,27 +112,12 @@ class MockIngestWorkflow:
         )
 
 
-@workflow.defn(name="RebuildIndexWorkflow", sandboxed=False)
-class MockRebuildIndexWorkflow:
-    @workflow.run
-    async def run(self, input: RebuildIndexWorkflowInput) -> RebuildIndexWorkflowOutput:
-        return RebuildIndexWorkflowOutput(
-            job_id=input.job_id,
-            version="v-test",
-            num_vectors=1,
-            dimension=2,
-            removed_versions=[],
-            text_num_vectors=1,
-        )
-
-
 ALL_MOCK_ACTIVITIES = [
     mock_start,
     mock_fetch,
     mock_discover,
     mock_finalize,
     mock_fail,
-    mock_create_rebuild,
 ]
 
 
@@ -168,7 +138,7 @@ async def _run(trigger: SourceRunTrigger = SourceRunTrigger.MANUAL) -> SourceSyn
         async with Worker(
             env.client,
             task_queue=task_queue,
-            workflows=[SourceSyncWorkflow, MockIngestWorkflow, MockRebuildIndexWorkflow],
+            workflows=[SourceSyncWorkflow, MockIngestWorkflow],
             activities=ALL_MOCK_ACTIVITIES,
         ):
             return await env.client.execute_workflow(
@@ -196,7 +166,7 @@ class TestSourceSyncWorkflow:
             "finalize_source_run_activity",
         ]
 
-    async def test_scheduled_ingest_starts_rebuild_child_after_finalizing(self) -> None:
+    async def test_scheduled_run_has_same_shape_as_manual(self) -> None:
         result = await _run(trigger=SourceRunTrigger.SCHEDULED)
 
         assert result.ingest_job_id == "ingest-abc"
@@ -206,11 +176,11 @@ class TestSourceSyncWorkflow:
             "fetch_source_activity",
             "discover_and_queue_activity",
             "finalize_source_run_activity",
-            "create_rebuild_job_activity",
         ]
 
-    async def test_scheduled_seen_items_still_start_rebuild(self) -> None:
+    async def test_scheduled_empty_run_skips_child(self) -> None:
         _state.ingest_job_id = None
+        _state.discovered = 0
         _state.queued = 0
 
         result = await _run(trigger=SourceRunTrigger.SCHEDULED)
@@ -222,19 +192,7 @@ class TestSourceSyncWorkflow:
             "fetch_source_activity",
             "discover_and_queue_activity",
             "finalize_source_run_activity",
-            "create_rebuild_job_activity",
         ]
-
-    async def test_scheduled_empty_run_skips_child_and_rebuild(self) -> None:
-        _state.ingest_job_id = None
-        _state.discovered = 0
-        _state.queued = 0
-
-        result = await _run(trigger=SourceRunTrigger.SCHEDULED)
-
-        assert result.ingest_job_id is None
-        assert result.status == SourceRunStatus.COMPLETED
-        assert "create_rebuild_job_activity" not in _calls
 
     async def test_hard_failure_marks_run_failed_and_reraises(self) -> None:
         _state.discover_raises = True

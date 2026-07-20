@@ -47,6 +47,7 @@ async def main() -> None:
         get_phash_index().load_from_db(session)
 
     from activities import ACTIVITIES
+    from activities.scheduling.rebuild_schedule import run_rebuild_schedule_reconciliation
     from activities.scheduling.reconcile import run_reconciliation
     from activities.scheduling.temporal_store import TemporalScheduleStore
     from workflows import ALL_WORKFLOWS
@@ -62,6 +63,12 @@ async def main() -> None:
         log.info("schedule_reconciliation completed")
     except Exception as e:
         log.exception("schedule_reconcialiation_failed", e=str(e))
+
+    try:
+        action = await run_rebuild_schedule_reconciliation(client)
+        log.info("rebuild_schedule_reconciliation_completed", action=action)
+    except Exception as e:
+        log.exception("rebuild_schedule_reconciliation_failed", e=str(e))
 
     activity_executor = ThreadPoolExecutor(max_workers=64, thread_name_prefix="activity")
 
