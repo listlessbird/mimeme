@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from domain.index_freshness import IndexFreshness
 from shared import db
 from shared.models import Annotation, Processing, ProcessingStatus
 from shared.models import ORMImage as Image
@@ -173,6 +174,12 @@ class ImageCatalog:
 
             image, processing = row
 
+            was_searchable = (
+                processing is not None
+                and processing.embed_status == ProcessingStatus.DONE
+                and processing.embed_s3_key is not None
+            )
+
             if image.s3_key:
                 try:
                     await self._media_storage.delete(image.s3_key)
@@ -200,6 +207,14 @@ class ImageCatalog:
                         )
 
             await session.delete(image)
+            await session.flush()
+
+            if was_searchable:
+                await session.run_sync(
+                    lambda sync_session: IndexFreshness(sync_session).mark_dirty(
+                        reason="image_deleted"
+                    )
+                )
 
     async def _load_images(
         self, session: AsyncSession, image_ids: list[int]

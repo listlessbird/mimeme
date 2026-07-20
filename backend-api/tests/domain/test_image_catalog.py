@@ -11,10 +11,18 @@ from tests.factories import (
     create_artifact,
     create_image,
     create_processing,
+    create_search_index_state,
 )
 
 from domain.image_catalog import ImageCatalog, ImageCatalogNotFoundError
-from shared.models.orm import Annotation, Artifact, Image, Processing, ProcessingStatus
+from shared.models.orm import (
+    Annotation,
+    Artifact,
+    Image,
+    Processing,
+    ProcessingStatus,
+    SearchIndexState,
+)
 from shared.services.media_url import MediaUrlResolver
 
 pytestmark = pytest.mark.usefixtures(
@@ -232,6 +240,97 @@ async def test_delete_image_removes_database_rows_and_storage_artifacts(
     media_storage.delete.assert_awaited_once_with("images/test/example.jpg")
     assert artifact_storage.delete.await_args_list[0].args == ("embeddings/test/example.npy",)
     assert artifact_storage.delete.await_args_list[1].args == ("embeddings/test/example_text.npy",)
+
+
+async def _desired_generation(session: AsyncSession) -> int:
+    value = await session.scalar(
+        select(SearchIndexState.desired_generation).where(SearchIndexState.id == 1)
+    )
+    assert value is not None
+    return value
+
+
+async def test_delete_searchable_image_increments_generation(
+    async_db_session: AsyncSession,
+    run_sync_seed,
+) -> None:
+    media_storage = MagicMock()
+    media_storage.delete = AsyncMock()
+    artifact_storage = MagicMock()
+    artifact_storage.delete = AsyncMock()
+
+    def seed(session) -> int:
+        create_search_index_state(session=session, desired_generation=5, active_generation=5)
+        image = create_image(session=session, s3_key="images/test/x.jpg")
+        create_processing(
+            session=session,
+            image=image,
+            embed_status=ProcessingStatus.DONE,
+            embed_s3_key="embeddings/test/x.npy",
+        )
+        return image.id
+
+    image_id = await run_sync_seed(seed)
+
+    await catalog(media_storage, artifact_storage).delete_image(image_id)
+
+    assert await async_db_session.get(Image, image_id) is None
+    assert await _desired_generation(async_db_session) == 6
+
+
+@pytest.mark.parametrize(
+    "embed_status",
+    [ProcessingStatus.PENDING, ProcessingStatus.DONE],
+    ids=["pending", "done-no-key"],
+)
+async def test_delete_non_searchable_image_does_not_increment(
+    async_db_session: AsyncSession,
+    run_sync_seed,
+    embed_status: ProcessingStatus,
+) -> None:
+    media_storage = MagicMock()
+    media_storage.delete = AsyncMock()
+
+    def seed(session) -> int:
+        create_search_index_state(session=session, desired_generation=5, active_generation=5)
+        image = create_image(session=session, s3_key="images/test/x.jpg")
+        create_processing(
+            session=session, image=image, embed_status=embed_status, embed_s3_key=None
+        )
+        return image.id
+
+    image_id = await run_sync_seed(seed)
+
+    await catalog(media_storage).delete_image(image_id)
+
+    assert await async_db_session.get(Image, image_id) is None
+    assert await _desired_generation(async_db_session) == 5
+
+
+async def test_delete_searchable_image_increments_even_when_storage_delete_fails(
+    async_db_session: AsyncSession,
+    run_sync_seed,
+) -> None:
+    storage = MagicMock()
+    storage.delete = AsyncMock(side_effect=RuntimeError("storage unavailable"))
+
+    def seed(session) -> int:
+        create_search_index_state(session=session, desired_generation=2, active_generation=2)
+        image = create_image(session=session, s3_key="images/test/x.jpg")
+        create_processing(
+            session=session,
+            image=image,
+            embed_status=ProcessingStatus.DONE,
+            embed_s3_key="embeddings/test/x.npy",
+        )
+        return image.id
+
+    image_id = await run_sync_seed(seed)
+
+    await catalog(storage).delete_image(image_id)
+
+    assert await async_db_session.get(Image, image_id) is None
+    assert await _desired_generation(async_db_session) == 3
 
 
 async def test_delete_image_missing(mock_storage: MagicMock) -> None:
