@@ -5,15 +5,13 @@ import asyncio
 import structlog
 from fastapi import APIRouter, Response, status
 from sqlalchemy import text
-
 from temporalio.client import Client
 
-from mimeme.api.deps import DbDep, TemporalClientDep
+from mimeme import storage
+from mimeme.api.deps import ArtifactStorageDep, DbDep, MediaStorageDep, TemporalClientDep
 from mimeme.api.models.errors import error_responses
 from mimeme.api.models.health import HealthResponse
 from mimeme.db import Db
-from mimeme.shared.services.api_storage import AsyncApiStorage
-from mimeme.shared.services.storage import S3Config, get_artifact_s3_config, get_media_s3_config
 
 router = APIRouter(tags=["Health"], responses=error_responses(429, 500))
 log = structlog.get_logger()
@@ -29,9 +27,10 @@ async def _check_postgres(db: Db) -> bool:
         return False
 
 
-async def _check_storage(role: str, config: S3Config) -> bool:
+async def _check_storage(role: str, store: storage.Store) -> bool:
     try:
-        return await AsyncApiStorage(config).bucket_exists()
+        await store.probe()
+        return True
     except Exception as e:
         log.warning("healthcheck_storage_failed", role=role, error=str(e))
         return False
@@ -52,12 +51,16 @@ async def _check_temporal(client: Client) -> bool:
     responses={503: {"model": HealthResponse, "description": "Dependency unavailable"}},
 )
 async def check_readiness(
-    response: Response, db: DbDep, temporal: TemporalClientDep
+    response: Response,
+    db: DbDep,
+    temporal: TemporalClientDep,
+    media: MediaStorageDep,
+    artifacts: ArtifactStorageDep,
 ) -> HealthResponse:
     pg_ok, media_ok, artifact_ok = await asyncio.gather(
         _check_postgres(db),
-        _check_storage("media", get_media_s3_config()),
-        _check_storage("artifact", get_artifact_s3_config()),
+        _check_storage("media", media),
+        _check_storage("artifact", artifacts),
     )
 
     temporal_ok = await _check_temporal(temporal)

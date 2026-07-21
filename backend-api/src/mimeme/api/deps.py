@@ -5,11 +5,11 @@ from typing import Annotated
 from fastapi import Depends, Request
 from temporalio.client import Client
 
+from mimeme import storage
 from mimeme.activities.indexing import FaissIndexManager
 from mimeme.db import Db
 from mimeme.env import Env
 from mimeme.shared.config import Settings
-from mimeme.shared.services.api_storage import ApiStorage
 from mimeme.shared.services.media_url import MediaUrlResolver
 
 
@@ -34,18 +34,18 @@ def get_db(request: Request) -> Db:
 DbDep = Annotated[Db, Depends(get_db)]
 
 
-def get_media_storage(request: Request) -> ApiStorage:
-    return request.app.state.env.media_storage
+def get_media_storage(request: Request) -> storage.Store:
+    return request.app.state.env.media
 
 
-MediaStorageDep = Annotated[ApiStorage, Depends(get_media_storage)]
+MediaStorageDep = Annotated[storage.Store, Depends(get_media_storage)]
 
 
-def get_artifact_storage(request: Request) -> ApiStorage:
-    return request.app.state.env.artifact_storage
+def get_artifact_storage(request: Request) -> storage.Store:
+    return request.app.state.env.artifacts
 
 
-ArtifactStorageDep = Annotated[ApiStorage, Depends(get_artifact_storage)]
+ArtifactStorageDep = Annotated[storage.Store, Depends(get_artifact_storage)]
 
 
 def get_media_url_resolver(request: Request) -> MediaUrlResolver:
