@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from domain.source_schedule_spec import (
+from mimeme.domain.source_schedule_spec import (
     DesiredScheduleState,
     ScheduleOverlapPolicy,
     ScheduleSpec,

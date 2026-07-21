@@ -20,7 +20,7 @@ from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
-from activities.ingestion.models import (
+from mimeme.activities.ingestion.models import (
     DiscoverAndQueueInput,
     DiscoverAndQueueOutput,
     FailSourceRunInput,
@@ -31,14 +31,14 @@ from activities.ingestion.models import (
     StartSourceRunInput,
     StartSourceRunOutput,
 )
-from shared.models import SourceRunStatus, SourceRunTrigger
-from workflows.models import (
+from mimeme.db.schema import SourceRunStatus, SourceRunTrigger
+from mimeme.workflows.models import (
     IngestWorkflowInput,
     IngestWorkflowOutput,
     SourceSyncWorkflowInput,
     SourceSyncWorkflowOutput,
 )
-from workflows.source_sync import SourceSyncWorkflow
+from mimeme.workflows.source_sync import SourceSyncWorkflow
 
 # ---------------------------------------------------------------------------
 # Mock activities + child workflow

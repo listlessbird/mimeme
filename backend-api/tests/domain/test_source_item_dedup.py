@@ -26,8 +26,8 @@ Prior art: tests/domain/test_source_run_accounting.py (pure frozen-result module
 
 from __future__ import annotations
 
-from domain.adapters.base import DiscoveredItem
-from domain.source_item_dedup import SourceItemDedup, dedup_source_items
+from mimeme.domain.adapters.base import DiscoveredItem
+from mimeme.domain.source_item_dedup import SourceItemDedup, dedup_source_items
 
 
 def _item(external_item_id: str, *, title: str | None = None) -> DiscoveredItem:

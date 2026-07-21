@@ -4,12 +4,12 @@ from unittest.mock import AsyncMock
 
 import pytest
 from httpx import AsyncClient
+from pydantic import SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from shared.config import settings
-from shared.models import IngestionSource, ProcessingStatus, SourceRunStatus
-from shared.models.orm import DuplicateReason
+from mimeme.db.schema import DuplicateReason, IngestionSource, ProcessingStatus, SourceRunStatus
+from mimeme.shared.config import settings
 from tests.factories import (
     create_image,
     create_ingest_url,
@@ -433,7 +433,7 @@ async def test_all_source_endpoints_reject_non_admin(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(settings, "app_env", "production")
-    monkeypatch.setattr(settings, "api_key_admin", "secret-admin-key")
+    monkeypatch.setattr(settings.http, "api_key_admin", SecretStr("secret-admin-key"))
     source_id = 1
 
     responses = [

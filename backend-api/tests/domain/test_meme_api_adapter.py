@@ -33,8 +33,8 @@ from typing import Any
 
 import pytest
 
-from domain.adapters.base import DiscoveredItem, FetchRequest
-from domain.adapters.meme_api import (
+from mimeme.domain.adapters.base import DiscoveredItem, FetchRequest
+from mimeme.domain.adapters.meme_api import (
     MemeApiAdapter,
     is_still_image_url,
     parse_external_item_id,

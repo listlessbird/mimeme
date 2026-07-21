@@ -11,7 +11,7 @@ import pytest
 def test_artifact_store_fetches_text_artifacts_when_image_artifacts_are_cached(
     tmp_path: Path,
 ) -> None:
-    from activities.indexing.index_artifacts import IndexArtifactStore
+    from mimeme.activities.indexing.index_artifacts import IndexArtifactStore
 
     storage = MagicMock()
     storage.INDEXES_PREFIX = "indexes"
@@ -45,7 +45,7 @@ def test_artifact_store_fetches_text_artifacts_when_image_artifacts_are_cached(
 def test_artifact_store_lists_versions_by_timestamp_and_requires_image_artifacts(
     tmp_path: Path,
 ) -> None:
-    from activities.indexing.index_artifacts import IndexArtifactStore
+    from mimeme.activities.indexing.index_artifacts import IndexArtifactStore
 
     storage = MagicMock()
     storage.INDEXES_PREFIX = "indexes"
@@ -79,7 +79,7 @@ def test_artifact_store_lists_versions_by_timestamp_and_requires_image_artifacts
 def test_artifact_store_requires_cached_text_index_and_mapping(
     tmp_path: Path,
 ) -> None:
-    from activities.indexing.index_artifacts import IndexArtifactStore
+    from mimeme.activities.indexing.index_artifacts import IndexArtifactStore
 
     storage = MagicMock()
     cached = tmp_path / "v1"
@@ -96,7 +96,7 @@ def test_artifact_store_requires_cached_text_index_and_mapping(
 
 
 def test_artifact_store_cleans_uploaded_objects_on_upload_failure(tmp_path: Path) -> None:
-    from activities.indexing.index_artifacts import IndexArtifactStore
+    from mimeme.activities.indexing.index_artifacts import IndexArtifactStore
 
     storage = MagicMock()
     storage.INDEXES_PREFIX = "indexes"
@@ -125,7 +125,7 @@ def test_artifact_store_cleans_uploaded_objects_on_upload_failure(tmp_path: Path
 
 
 def test_vector_index_search_maps_faiss_rows_to_image_ids() -> None:
-    from activities.indexing.faiss_vectors import FaissVectorIndex
+    from mimeme.activities.indexing.faiss_vectors import FaissVectorIndex
 
     embeddings = np.array(
         [
@@ -149,7 +149,7 @@ def test_vector_index_search_maps_faiss_rows_to_image_ids() -> None:
 
 @pytest.mark.parametrize("index_type", ["flat", "hnsw"])
 def test_empty_index_writes_reads_and_searches(index_type: str, tmp_path: Path) -> None:
-    from activities.indexing.faiss_vectors import FaissVectorIndex
+    from mimeme.activities.indexing.faiss_vectors import FaissVectorIndex
 
     empty = FaissVectorIndex.build(
         embeddings=np.empty((0, 8), dtype=np.float32), image_ids=[], index_type=index_type
@@ -166,7 +166,7 @@ def test_empty_index_writes_reads_and_searches(index_type: str, tmp_path: Path) 
 
 
 def test_build_empty_index_rejects_unknown_type() -> None:
-    from activities.indexing.faiss_manager import FaissIndexManager
+    from mimeme.activities.indexing.faiss_manager import FaissIndexManager
 
     with pytest.raises(ValueError, match="Cannot build empty index"):
         FaissIndexManager().build_empty_index(
@@ -175,7 +175,7 @@ def test_build_empty_index_rejects_unknown_type() -> None:
 
 
 def test_build_empty_index_registers_zero_vector_build(db_session) -> None:
-    from activities.indexing.faiss_manager import FaissIndexManager
+    from mimeme.activities.indexing.faiss_manager import FaissIndexManager
 
     manager = FaissIndexManager()
     manager._artifacts = MagicMock()
@@ -200,7 +200,7 @@ def test_build_empty_index_registers_zero_vector_build(db_session) -> None:
 def test_active_index_catalog_swap_marks_only_requested_build_active(
     db_session,
 ) -> None:
-    from activities.indexing.index_catalog import ActiveIndexCatalog
+    from mimeme.activities.indexing.index_catalog import ActiveIndexCatalog
     from tests.factories import create_index_build
 
     create_index_build(session=db_session, version="v1", is_active=True)
@@ -220,7 +220,7 @@ def test_active_index_catalog_swap_marks_only_requested_build_active(
 def test_active_index_catalog_garbage_collection_retains_newest_and_skips_active(
     db_session,
 ) -> None:
-    from activities.indexing.index_catalog import ActiveIndexCatalog
+    from mimeme.activities.indexing.index_catalog import ActiveIndexCatalog
     from tests.factories import create_index_build
 
     base = datetime(2026, 1, 1, 12, 0, 0)
@@ -263,8 +263,8 @@ def test_active_index_catalog_garbage_collection_retains_newest_and_skips_active
 def test_hnsw_index_gets_configured_ef_search(tmp_path: Path) -> None:
     import faiss  # type: ignore[import-untyped]
 
-    from activities.indexing.faiss_vectors import FaissVectorIndex
-    from shared.config import settings
+    from mimeme.activities.indexing.faiss_vectors import FaissVectorIndex
+    from mimeme.shared.config import settings
 
     rng = np.random.default_rng(0)
     embeddings = rng.random((32, 8), dtype=np.float32)
@@ -275,7 +275,7 @@ def test_hnsw_index_gets_configured_ef_search(tmp_path: Path) -> None:
     )
 
     assert isinstance(vector_index.index, faiss.IndexHNSW)
-    assert vector_index.index.hnsw.efSearch == settings.faiss_hnsw_ef_search
+    assert vector_index.index.hnsw.efSearch == settings.index.faiss_hnsw_ef_search
 
     index_file = tmp_path / "i.faiss"
     vector_index.index.hnsw.efSearch = 7
@@ -283,11 +283,11 @@ def test_hnsw_index_gets_configured_ef_search(tmp_path: Path) -> None:
     reloaded = FaissVectorIndex.read(index_file=index_file, id_mapping=vector_index.id_mapping)
 
     assert isinstance(reloaded.index, faiss.IndexHNSW)
-    assert reloaded.index.hnsw.efSearch == settings.faiss_hnsw_ef_search
+    assert reloaded.index.hnsw.efSearch == settings.index.faiss_hnsw_ef_search
 
 
 def test_flat_index_unaffected_by_search_params() -> None:
-    from activities.indexing.faiss_vectors import FaissVectorIndex
+    from mimeme.activities.indexing.faiss_vectors import FaissVectorIndex
 
     embeddings = np.array(
         [

@@ -15,23 +15,23 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from temporalio.testing import ActivityEnvironment
 
-from activities.storage.activities import (
+from mimeme.activities.storage.activities import (
     cleanup_temp_file_activity,
     download_image_activity,
     process_image_activity,
 )
-from activities.storage.models import (
+from mimeme.activities.storage.models import (
     DownloadImageInput,
     ProcessImageInput,
 )
-from domain.image_ingest_input import RemoteImageUrlInput, StagedUploadInput
-from shared.models.orm import (
+from mimeme.db.schema import (
     Annotation,
     Artifact,
     Image,
     Processing,
     ProcessingStatus,
 )
+from mimeme.domain.image_ingest_input import RemoteImageUrlInput, StagedUploadInput
 from tests.factories import (
     create_annotation,
     create_artifact,
@@ -63,7 +63,7 @@ class TestDownloadImageActivity:
         )
 
         with patch(
-            "activities.storage.activities.get_artifact_storage_service",
+            "mimeme.activities.storage.activities.get_artifact_storage_service",
             return_value=artifact_storage,
         ):
             result = activity_env.run(download_image_activity, inp)
@@ -92,7 +92,7 @@ class TestDownloadImageActivity:
             ingest_url_id=1,
         )
 
-        with patch("activities.storage.activities.httpx.Client", return_value=fake_client):
+        with patch("mimeme.activities.storage.activities.httpx.Client", return_value=fake_client):
             result = activity_env.run(download_image_activity, inp)
 
         assert result.success is True
@@ -122,7 +122,7 @@ class TestDownloadImageActivity:
             ingest_url_id=2,
         )
 
-        with patch("activities.storage.activities.httpx.Client", return_value=fake_client):
+        with patch("mimeme.activities.storage.activities.httpx.Client", return_value=fake_client):
             result = activity_env.run(download_image_activity, inp)
 
         assert result.success is False
@@ -153,7 +153,7 @@ class TestDownloadImageActivity:
             ingest_url_id=3,
         )
 
-        with patch("activities.storage.activities.httpx.Client", return_value=fake_client):
+        with patch("mimeme.activities.storage.activities.httpx.Client", return_value=fake_client):
             result = activity_env.run(download_image_activity, inp)
 
         assert result.success is False
@@ -182,7 +182,7 @@ class TestDownloadImageActivity:
         )
 
         with (
-            patch("activities.storage.activities.httpx.Client", return_value=fake_client),
+            patch("mimeme.activities.storage.activities.httpx.Client", return_value=fake_client),
             pytest.raises(httpx.HTTPStatusError),
         ):
             activity_env.run(download_image_activity, inp)
@@ -205,7 +205,7 @@ class TestDownloadImageActivity:
         )
 
         with (
-            patch("activities.storage.activities.httpx.Client", return_value=fake_client),
+            patch("mimeme.activities.storage.activities.httpx.Client", return_value=fake_client),
             pytest.raises(httpx.ConnectError),
         ):
             activity_env.run(download_image_activity, inp)
@@ -241,13 +241,18 @@ class TestProcessImageActivity:
 
         with (
             patch(
-                "activities.storage.activities.get_media_storage_service", return_value=mock_storage
+                "mimeme.activities.storage.activities.get_media_storage_service",
+                return_value=mock_storage,
             ),
             patch(
-                "activities.storage.activities.compute_sha256", return_value="unique-sha256-hash"
+                "mimeme.activities.storage.activities.compute_sha256",
+                return_value="unique-sha256-hash",
             ),
-            patch("activities.storage.activities.compute_phash", return_value="abcd1234"),
-            patch("activities.storage.activities.get_image_info", return_value=(800, 600, "jpeg")),
+            patch("mimeme.activities.storage.activities.compute_phash", return_value="abcd1234"),
+            patch(
+                "mimeme.activities.storage.activities.get_image_info",
+                return_value=(800, 600, "jpeg"),
+            ),
         ):
             result = activity_env.run(process_image_activity, inp)
 
@@ -290,9 +295,12 @@ class TestProcessImageActivity:
 
         with (
             patch(
-                "activities.storage.activities.get_media_storage_service", return_value=mock_storage
+                "mimeme.activities.storage.activities.get_media_storage_service",
+                return_value=mock_storage,
             ),
-            patch("activities.storage.activities.compute_sha256", return_value="existing-hash"),
+            patch(
+                "mimeme.activities.storage.activities.compute_sha256", return_value="existing-hash"
+            ),
         ):
             result = activity_env.run(process_image_activity, inp)
 
@@ -342,9 +350,12 @@ class TestProcessImageActivity:
 
         with (
             patch(
-                "activities.storage.activities.get_media_storage_service", return_value=mock_storage
+                "mimeme.activities.storage.activities.get_media_storage_service",
+                return_value=mock_storage,
             ),
-            patch("activities.storage.activities.compute_sha256", return_value="processed-hash"),
+            patch(
+                "mimeme.activities.storage.activities.compute_sha256", return_value="processed-hash"
+            ),
         ):
             result = activity_env.run(process_image_activity, inp)
 

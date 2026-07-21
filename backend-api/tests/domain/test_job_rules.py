@@ -5,7 +5,8 @@ from datetime import UTC, datetime
 import pytest
 from pydantic import ValidationError
 
-from domain.job_rules import (
+from mimeme.db.schema import JobStatus, JobType
+from mimeme.domain.job_rules import (
     INGEST_URL_ERROR_LIMIT,
     JOB_ERROR_LIMIT,
     IngestJobResultPayload,
@@ -22,7 +23,6 @@ from domain.job_rules import (
     project_job,
     truncate_error,
 )
-from shared.models import JobStatus, JobType
 
 
 @pytest.mark.parametrize(

@@ -5,14 +5,14 @@ import json
 from sqlalchemy.orm import Session
 from tests.factories import create_image, create_ingest_url, create_job
 
-from domain.job_lifecycle import JobLifecycle
-from shared.models.orm import (
+from mimeme.db.schema import (
     DuplicateReason,
     IngestStage,
     JobStatus,
     JobType,
     ProcessingStatus,
 )
+from mimeme.domain.job_lifecycle import JobLifecycle
 
 
 def test_create_rebuild_job_uses_rebuild_workflow_id(db_session: Session) -> None:

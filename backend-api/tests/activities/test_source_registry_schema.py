@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from shared.models import (
+from mimeme.db.schema import (
     IngestionSource,
     SourceItem,
     SourceRunStatus,

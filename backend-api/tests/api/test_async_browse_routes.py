@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from httpx import AsyncClient
 
-from shared.models import IngestStage, ProcessingStatus
+from mimeme.db.schema import IngestStage, ProcessingStatus
 from tests.factories import (
     create_image,
     create_ingest_url,

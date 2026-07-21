@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from domain.source_run_accounting import (
+from mimeme.db.schema import DuplicateReason, ProcessingStatus, SourceRunStatus
+from mimeme.domain.source_run_accounting import (
     RunAccounting,
     UrlOutcome,
     derive_run_accounting,
 )
-from shared.models import DuplicateReason, ProcessingStatus, SourceRunStatus
 
 
 def _done(reason: DuplicateReason | None = None) -> UrlOutcome:

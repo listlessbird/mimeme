@@ -6,11 +6,12 @@ from unittest.mock import MagicMock
 
 import pytest
 from httpx import AsyncClient
+from pydantic import SecretStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from shared.config import settings
-from shared.models.orm import IngestURL, Job, JobType, ProcessingStatus
+from mimeme.db.schema import IngestURL, Job, JobType, ProcessingStatus
+from mimeme.shared.config import settings
 from tests.factories import (
     create_annotation,
     create_image,
@@ -146,7 +147,7 @@ class TestUploadImage:
         self, async_client: AsyncClient, api_storage, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(settings, "app_env", "production")
-        monkeypatch.setattr(settings, "api_key_admin", "secret-admin-key")
+        monkeypatch.setattr(settings.http, "api_key_admin", SecretStr("secret-admin-key"))
 
         resp = await async_client.post(
             "/images/upload",

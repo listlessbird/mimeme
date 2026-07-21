@@ -11,13 +11,13 @@ from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
-from activities.indexing.models import (
+from mimeme.activities.indexing.models import (
     BuildIndexInput,
     BuildIndexOutput,
     GarbageCollectOutput,
     SwapIndexInput,
 )
-from activities.workflow_state.models import (
+from mimeme.activities.workflow_state.models import (
     CompleteRebuildJobInput,
     FailRebuildJobInput,
     PrepareRebuildInput,
@@ -27,9 +27,9 @@ from activities.workflow_state.models import (
     StartRebuildJobInput,
     UpdateJobProgressInput,
 )
-from shared.models import RebuildTrigger
-from workflows.models import RebuildIndexWorkflowInput
-from workflows.rebuild_index import RETRY_INDEX_BUILD, RebuildIndexWorkflow
+from mimeme.db.schema import RebuildTrigger
+from mimeme.workflows.models import RebuildIndexWorkflowInput
+from mimeme.workflows.rebuild_index import RETRY_INDEX_BUILD, RebuildIndexWorkflow
 
 _activity_calls: list[str] = []
 _progress_values: list[float] = []

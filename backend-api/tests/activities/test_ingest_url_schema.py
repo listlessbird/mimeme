@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from shared.models import DuplicateReason
+from mimeme.db.schema import DuplicateReason
 from tests.factories import create_image, create_ingest_url, create_job
 
 

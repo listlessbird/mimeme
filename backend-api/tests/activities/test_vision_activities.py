@@ -7,8 +7,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from temporalio.testing import ActivityEnvironment
 
-from activities.vision.activities import annotate_image_activity
-from activities.vision.models import AnnotateImageInput, AnnotateImageOutput
+from mimeme.activities.vision.activities import annotate_image_activity
+from mimeme.activities.vision.models import AnnotateImageInput, AnnotateImageOutput
 
 
 @pytest.fixture()
@@ -29,7 +29,9 @@ class TestAnnotateImageActivity:
 
         inp = AnnotateImageInput(image_id=42, s3_key="images/test/cat.jpg")
 
-        with patch("activities.vision.activities.get_gpu_backend", return_value=mock_backend):
+        with patch(
+            "mimeme.activities.vision.activities.get_gpu_backend", return_value=mock_backend
+        ):
             result = await activity_env.run(annotate_image_activity, inp)
 
         assert result.image_id == 42
@@ -51,7 +53,9 @@ class TestAnnotateImageActivity:
 
         inp = AnnotateImageInput(image_id=1, s3_key="images/test/img.jpg", length="short")
 
-        with patch("activities.vision.activities.get_gpu_backend", return_value=mock_backend):
+        with patch(
+            "mimeme.activities.vision.activities.get_gpu_backend", return_value=mock_backend
+        ):
             await activity_env.run(annotate_image_activity, inp)
 
         called_input = mock_backend.annotate_image.call_args[0][0]
@@ -63,6 +67,8 @@ class TestAnnotateImageActivity:
 
         inp = AnnotateImageInput(image_id=1, s3_key="images/test/img.jpg")
 
-        with patch("activities.vision.activities.get_gpu_backend", return_value=mock_backend):
+        with patch(
+            "mimeme.activities.vision.activities.get_gpu_backend", return_value=mock_backend
+        ):
             with pytest.raises(RuntimeError, match="CUDA out of memory"):
                 await activity_env.run(annotate_image_activity, inp)

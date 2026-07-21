@@ -8,10 +8,11 @@ from pathlib import Path
 # allow `python scripts/clean.py` from the backend-api directory
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from shared.db import get_engine
-from shared.models.orm import Base
-from shared.services.storage import StorageService, get_s3_config
 from sqlalchemy import text
+
+from mimeme.db.schema import Base
+from mimeme.shared.db import get_engine
+from mimeme.shared.services.storage import StorageService, get_s3_config
 
 
 def purge_bucket(storage: StorageService) -> int:

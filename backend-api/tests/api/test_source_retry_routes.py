@@ -6,8 +6,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from shared.models import ProcessingStatus
-from shared.models.orm import IngestURL
+from mimeme.db.schema import IngestURL, ProcessingStatus
 from tests.factories import (
     create_ingest_url,
     create_ingestion_source,

@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import BinaryIO
 from unittest.mock import AsyncMock, MagicMock
 
-from domain.image_upload import UPLOAD_STAGING_PREFIX, ImageUploadStager, staging_key
+from mimeme.domain.image_upload import UPLOAD_STAGING_PREFIX, ImageUploadStager, staging_key
 
 
 class TestStagingKey:

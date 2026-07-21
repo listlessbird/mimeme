@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from activities.scheduling.rebuild_schedule import reconcile_rebuild_schedule
-from domain.index_rebuild_schedule import (
+from mimeme.activities.scheduling.rebuild_schedule import reconcile_rebuild_schedule
+from mimeme.domain.index_rebuild_schedule import (
     ExistingRebuildSchedule,
     RebuildScheduleSpec,
     derive_rebuild_schedule_spec,

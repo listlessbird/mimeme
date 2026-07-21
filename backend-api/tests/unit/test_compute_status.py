@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from domain.image_catalog import project_image_status
-from shared.models.orm import ProcessingStatus
+from mimeme.db.schema import ProcessingStatus
+from mimeme.domain.image_catalog import project_image_status
 
 
 def _make_proc(**overrides: object) -> MagicMock:

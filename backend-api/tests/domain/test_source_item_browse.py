@@ -13,9 +13,9 @@ from tests.factories import (
     create_source_run,
 )
 
-from domain.source_item_browse import SourceItemBrowser
-from shared.models.orm import ProcessingStatus
-from shared.services.media_url import MediaUrlResolver
+from mimeme.db.schema import ProcessingStatus
+from mimeme.domain.source_item_browse import SourceItemBrowser
+from mimeme.shared.services.media_url import MediaUrlResolver
 
 pytestmark = pytest.mark.usefixtures(
     "_patch_domain_session_scope", "_patch_async_domain_session_scope"

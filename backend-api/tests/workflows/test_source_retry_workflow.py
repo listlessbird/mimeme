@@ -19,15 +19,15 @@ from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
-from activities.ingestion.models import FinalizeSourceRunInput, FinalizeSourceRunOutput
-from shared.models import SourceRunStatus
-from workflows.models import (
+from mimeme.activities.ingestion.models import FinalizeSourceRunInput, FinalizeSourceRunOutput
+from mimeme.db.schema import SourceRunStatus
+from mimeme.workflows.models import (
     IngestWorkflowInput,
     IngestWorkflowOutput,
     SourceRetryWorkflowInput,
     SourceRetryWorkflowOutput,
 )
-from workflows.source_retry import SourceRetryWorkflow
+from mimeme.workflows.source_retry import SourceRetryWorkflow
 
 _finalized: list[int] = []
 _ingested: list[str] = []

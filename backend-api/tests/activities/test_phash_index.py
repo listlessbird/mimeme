@@ -25,7 +25,7 @@ from __future__ import annotations
 import pytest
 from sqlalchemy.orm import Session
 
-from activities.storage.phash_index import (
+from mimeme.activities.storage.phash_index import (
     PhashIndex,
     get_phash_index,
     reset_phash_index,

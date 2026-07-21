@@ -6,9 +6,9 @@ from unittest.mock import MagicMock
 import pytest
 from tests.factories import create_image, create_ingest_url, create_job
 
-from domain.ingestion_browse import IngestionBrowser, IngestionView
-from shared.models.orm import ProcessingStatus
-from shared.services.media_url import MediaUrlResolver
+from mimeme.db.schema import ProcessingStatus
+from mimeme.domain.ingestion_browse import IngestionBrowser, IngestionView
+from mimeme.shared.services.media_url import MediaUrlResolver
 
 MEDIA_URLS = MediaUrlResolver("https://assets.mimeme.dev")
 

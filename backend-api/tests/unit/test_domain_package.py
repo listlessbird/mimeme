@@ -4,6 +4,6 @@ from __future__ import annotations
 
 
 def test_domain_package_imports() -> None:
-    import domain
+    import mimeme.domain
 
-    assert domain.__doc__
+    assert mimeme.domain.__doc__

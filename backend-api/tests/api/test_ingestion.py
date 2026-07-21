@@ -4,11 +4,11 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
+from pydantic import SecretStr
 from sqlalchemy.orm import Session
 
-from shared.config import settings
-from shared.models import IngestStage, ProcessingStatus, SourceRunTrigger
-from shared.models.orm import DuplicateReason
+from mimeme.db.schema import DuplicateReason, IngestStage, ProcessingStatus, SourceRunTrigger
+from mimeme.shared.config import settings
 from tests.factories import (
     create_image,
     create_ingest_url,
@@ -282,8 +282,8 @@ async def test_logs_unavailable_when_axiom_not_configured(
     _patch_async_domain_session_scope: None,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(settings, "axiom_api_token", "")
-    monkeypatch.setattr(settings, "axiom_dataset", "")
+    monkeypatch.setattr(settings.logging, "axiom_api_token", SecretStr(""))
+    monkeypatch.setattr(settings.logging, "axiom_dataset", "")
     attempt_id = await run_sync_seed(lambda session: _attempt(session).id)
 
     response = await async_client.get(f"/ingestion/{attempt_id}/logs")
@@ -306,7 +306,7 @@ async def test_endpoints_reject_non_admin(
 ) -> None:
     attempt_id = await run_sync_seed(lambda session: _attempt(session).id)
     monkeypatch.setattr(settings, "app_env", "production")
-    monkeypatch.setattr(settings, "api_key_admin", "secret-admin-key")
+    monkeypatch.setattr(settings.http, "api_key_admin", SecretStr("secret-admin-key"))
 
     assert (await async_client.get("/ingestion")).status_code == 403
     assert (await async_client.get(f"/ingestion/{attempt_id}")).status_code == 403

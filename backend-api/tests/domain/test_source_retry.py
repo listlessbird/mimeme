@@ -12,11 +12,10 @@ from tests.factories import (
     create_source_run,
 )
 
-from domain.source_item_browse import RunNotFoundError
-from domain.source_registry import SourceNotFoundError
-from domain.source_retry import NothingToRetryError, SourceItemNotFoundError, SourceRetry
-from shared.models import ProcessingStatus, SourceRunStatus
-from shared.models.orm import IngestURL, SourceRun
+from mimeme.db.schema import IngestURL, ProcessingStatus, SourceRun, SourceRunStatus
+from mimeme.domain.source_item_browse import RunNotFoundError
+from mimeme.domain.source_registry import SourceNotFoundError
+from mimeme.domain.source_retry import NothingToRetryError, SourceItemNotFoundError, SourceRetry
 
 pytestmark = pytest.mark.usefixtures("_patch_async_domain_session_scope")
 

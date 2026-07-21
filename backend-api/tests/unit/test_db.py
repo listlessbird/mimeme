@@ -6,8 +6,8 @@ import pytest
 from sqlalchemy import Engine, delete, func, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
-import shared.db as db_module
-from shared.models import IndexBuild
+import mimeme.shared.db as db_module
+from mimeme.db.schema import IndexBuild
 
 
 @pytest.fixture()

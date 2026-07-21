@@ -6,10 +6,10 @@ import pytest
 import torch
 from PIL import Image
 
-from activities.embedding.models import EmbedBatchInput, EmbedImageInput
-from activities.vision.models import VisionModelConfig
-from activities.vision.moondream import Moondream2
-from domain.inference import (
+from mimeme.activities.embedding.models import EmbedBatchInput, EmbedImageInput
+from mimeme.activities.vision.models import VisionModelConfig
+from mimeme.activities.vision.moondream import Moondream2
+from mimeme.domain.inference import (
     build_image_embedding_key,
     build_text_embedding_key_for_image_embedding,
     pooled_features_to_numpy,

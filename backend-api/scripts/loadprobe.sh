@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-DB_URL="${DB_URL:-postgresql://postgres:postgres@localhost:5432/mimeme}"
+DATABASE_URL="${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/mimeme}"
 PG_CONTAINER="${PG_CONTAINER:-mimeme-postgres}"
 API_PORT="${API_PORT:-8000}"
 DURATION="${DURATION:-30s}"
@@ -24,18 +24,18 @@ if ! docker ps --format '{{.Names}}' | grep -qx "$PG_CONTAINER"; then
   sleep 3
 fi
 
-export DB_URL
+export DATABASE_URL
 SEED_COUNT="$SEED_COUNT" uv run python - <<'PY'
 import os
 
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session
 
-from shared.config import settings
-from shared.models.orm import Base, Image
+from mimeme.shared.config import settings
+from mimeme.db.schema import Base, Image
 
 seed_count = int(os.environ["SEED_COUNT"])
-engine = create_engine(settings.db_url_str)
+engine = create_engine(settings.database.url_str)
 Base.metadata.create_all(engine)
 with Session(engine) as session:
     existing = session.scalar(select(func.count()).select_from(Image)) or 0
@@ -57,8 +57,8 @@ print(f"images in db: {total}")
 PY
 
 APP_ENV=development DEBUG=false LOG_LEVEL=INFO \
-RATE_LIMIT_ENABLED=false PRELOAD_TEXT_ENCODER_ON_STARTUP=false GPU_BACKEND=local \
-AXIOM_API_TOKEN= AXIOM_DATASET= \
+HTTP_RATE_LIMIT_ENABLED=false INFERENCE_PRELOAD_TEXT_ENCODER_ON_STARTUP=false COMPUTE_GPU_BACKEND=local \
+LOG_AXIOM_API_TOKEN= LOG_AXIOM_DATASET= \
 MEDIA_S3_ENDPOINT_URL=http://127.0.0.1:9 \
 ARTIFACT_S3_ENDPOINT_URL=http://127.0.0.1:9 \
 uv run uvicorn api.main:app --host 127.0.0.1 --port "$API_PORT" --log-level warning \

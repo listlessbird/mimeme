@@ -4,8 +4,8 @@ import datetime
 
 from sqlalchemy.orm import Session
 
-from activities.scheduling.desired_specs import load_desired_specs
-from domain.source_schedule_spec import DesiredScheduleState
+from mimeme.activities.scheduling.desired_specs import load_desired_specs
+from mimeme.domain.source_schedule_spec import DesiredScheduleState
 from tests.factories import create_ingestion_source
 
 

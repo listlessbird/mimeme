@@ -2,7 +2,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from shared.services.media_url import MediaUrlResolver
+from mimeme.shared.services.media_url import MediaUrlResolver
 
 
 @pytest.mark.parametrize(

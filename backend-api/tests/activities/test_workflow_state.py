@@ -17,7 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from temporalio.testing import ActivityEnvironment
 
-from activities.workflow_state.activities import (
+from mimeme.activities.workflow_state.activities import (
     complete_ingest_job_activity,
     complete_rebuild_job_activity,
     fail_rebuild_job_activity,
@@ -32,7 +32,7 @@ from activities.workflow_state.activities import (
     start_rebuild_job_activity,
     update_job_progress_activity,
 )
-from activities.workflow_state.models import (
+from mimeme.activities.workflow_state.models import (
     CompleteIngestJobInput,
     CompleteRebuildJobInput,
     FailRebuildJobInput,
@@ -46,12 +46,7 @@ from activities.workflow_state.models import (
     StartRebuildJobInput,
     UpdateJobProgressInput,
 )
-from domain.index_freshness import (
-    IndexFreshness,
-    RebuildClaimOwnershipError,
-    SearchIndexStateMissingError,
-)
-from shared.models.orm import (
+from mimeme.db.schema import (
     Annotation,
     Image,
     IngestURL,
@@ -62,6 +57,11 @@ from shared.models.orm import (
     ProcessingStatus,
     RebuildTrigger,
     SearchIndexState,
+)
+from mimeme.domain.index_freshness import (
+    IndexFreshness,
+    RebuildClaimOwnershipError,
+    SearchIndexStateMissingError,
 )
 from tests.factories import (
     create_image,

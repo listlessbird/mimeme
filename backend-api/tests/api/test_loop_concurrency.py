@@ -7,9 +7,9 @@ from datetime import UTC, datetime
 import pytest
 from httpx import AsyncClient
 
-from domain.job_rules import JobView
-from domain.job_store import ApiJobStore
-from shared.models import JobStatus, JobType
+from mimeme.db.schema import JobStatus, JobType
+from mimeme.domain.job_rules import JobView
+from mimeme.domain.job_store import ApiJobStore
 
 
 async def test_concurrent_requests_overlap_on_the_loop(

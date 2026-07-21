@@ -43,7 +43,7 @@ local-gpu = [
 ]
 
 [project.scripts]
-api = "api.main:run"
+api = "mimeme.api.main:run"
 
 
 [build-system]
@@ -51,15 +51,7 @@ requires = ["hatchling>=1.24"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = [
-    "src/activities",
-    "src/api",
-    "src/domain",
-    "src/modal_app",
-    "src/shared",
-    "src/workers",
-    "src/workflows",
-]
+packages = ["src/mimeme"]
 
 [dependency-groups]
 dev = [
@@ -117,15 +109,7 @@ ignore = ["E501"]
 # `src = ["src"]` path resolves differently when ruff runs from the repo root
 # (VS Code Ruff extension) vs from backend-api/ (`just fmt`), which otherwise
 # makes the editor and CLI disagree on import grouping.
-known-first-party = [
-    "activities",
-    "api",
-    "domain",
-    "modal_app",
-    "shared",
-    "workers",
-    "workflows",
-]
+known-first-party = ["mimeme"]
 
 [tool.pyright]
 include = ["src"]
@@ -138,19 +122,19 @@ executionEnvironments = [
 ]
 typeCheckingMode = "basic"
 strict = [
-    "src/shared/db.py",
-    "src/shared/services/api_storage.py",
-    "src/shared/services/api_storage_client.py",
-    "src/shared/services/media_url.py",
-    "src/shared/services/storage.py",
-    "src/domain/image_ingest_input.py",
-    "src/domain/job_rules.py",
-    "src/domain/job_store.py",
-    "src/domain/image_catalog.py",
-    "src/domain/ingestion_browse.py",
-    "src/domain/source_item_browse.py",
-    "src/domain/source_registry.py",
-    "src/domain/source_retry.py",
+    "src/mimeme/shared/db.py",
+    "src/mimeme/shared/services/api_storage.py",
+    "src/mimeme/shared/services/api_storage_client.py",
+    "src/mimeme/shared/services/media_url.py",
+    "src/mimeme/shared/services/storage.py",
+    "src/mimeme/domain/image_ingest_input.py",
+    "src/mimeme/domain/job_rules.py",
+    "src/mimeme/domain/job_store.py",
+    "src/mimeme/domain/image_catalog.py",
+    "src/mimeme/domain/ingestion_browse.py",
+    "src/mimeme/domain/source_item_browse.py",
+    "src/mimeme/domain/source_registry.py",
+    "src/mimeme/domain/source_retry.py",
 ]
 useLibraryCodeForTypes = true
 reportMissingTypeStubs = false

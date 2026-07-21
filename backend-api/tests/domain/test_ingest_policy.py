@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from domain.ingest_policy import IngestPolicy
+from mimeme.domain.ingest_policy import IngestPolicy
 
 
 def test_empty_url_list_progress_is_zero() -> None:

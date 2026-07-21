@@ -31,7 +31,7 @@ from sqlalchemy.pool import StaticPool
 os.environ.setdefault("APP_ENV", "development")
 os.environ.setdefault("PRELOAD_TEXT_ENCODER_ON_STARTUP", "false")
 
-from shared.models.orm import Base  # noqa: E402
+from mimeme.db.schema import Base  # noqa: E402
 
 T = TypeVar("T")
 
@@ -195,21 +195,21 @@ def _patch_session_scope(db_session: Session, monkeypatch: pytest.MonkeyPatch) -
         yield db_session
         db_session.flush()
 
-    monkeypatch.setattr("shared.db.session_scope", _test_session_scope)
+    monkeypatch.setattr("mimeme.shared.db.session_scope", _test_session_scope)
 
     # Also patch at every import site so local references pick up the override
     for module_path in [
-        "activities.workflow_state.activities.session_scope",
-        "activities.storage.activities.session_scope",
-        "activities.indexing.activities.session_scope",
-        "activities.ingestion.activities.session_scope",
+        "mimeme.activities.workflow_state.activities.session_scope",
+        "mimeme.activities.storage.activities.session_scope",
+        "mimeme.activities.indexing.activities.session_scope",
+        "mimeme.activities.ingestion.activities.session_scope",
     ]:
         monkeypatch.setattr(module_path, _test_session_scope)
 
     def _test_get_db() -> Iterator[Session]:
         yield db_session
 
-    monkeypatch.setattr("shared.db.get_db", _test_get_db)
+    monkeypatch.setattr("mimeme.shared.db.get_db", _test_get_db)
 
 
 @pytest.fixture()
@@ -222,8 +222,8 @@ def _patch_domain_session_scope(
         yield db_session
         db_session.flush()
 
-    monkeypatch.setattr("shared.db.session_scope", _test_session_scope)
-    monkeypatch.setattr("shared.db.read_session_scope", _test_session_scope)
+    monkeypatch.setattr("mimeme.shared.db.session_scope", _test_session_scope)
+    monkeypatch.setattr("mimeme.shared.db.read_session_scope", _test_session_scope)
 
 
 @pytest.fixture()
@@ -240,8 +240,8 @@ def _patch_async_domain_session_scope(
         yield async_db_session
         await async_db_session.flush()
 
-    monkeypatch.setattr("shared.db.read_session", _test_read_session)
-    monkeypatch.setattr("shared.db.write_session", _test_write_session)
+    monkeypatch.setattr("mimeme.shared.db.read_session", _test_read_session)
+    monkeypatch.setattr("mimeme.shared.db.write_session", _test_write_session)
 
 
 # ---------------------------------------------------------------------------
@@ -348,14 +348,14 @@ def client(
     """
     from contextlib import asynccontextmanager
 
-    from api.deps import (
+    from mimeme.api.deps import (
         get_artifact_storage,
         get_index_manager,
         get_media_storage,
         get_media_url_resolver,
         get_temporal_client,
     )
-    from api.main import create_app
+    from mimeme.api.main import create_app
 
     @asynccontextmanager
     async def _noop_lifespan(app: object):
@@ -376,7 +376,7 @@ def client(
         return mock_index_manager
 
     def _override_media_urls():
-        from shared.services.media_url import MediaUrlResolver
+        from mimeme.shared.services.media_url import MediaUrlResolver
 
         return MediaUrlResolver("https://assets.mimeme.dev")
 
@@ -400,14 +400,14 @@ async def async_client(
 ) -> AsyncIterator[AsyncClient]:
     from contextlib import asynccontextmanager
 
-    from api.deps import (
+    from mimeme.api.deps import (
         get_artifact_storage,
         get_index_manager,
         get_media_storage,
         get_media_url_resolver,
         get_temporal_client,
     )
-    from api.main import create_app
+    from mimeme.api.main import create_app
 
     @asynccontextmanager
     async def _noop_lifespan(app: object):
@@ -426,7 +426,7 @@ async def async_client(
         return mock_index_manager
 
     def _override_media_urls():
-        from shared.services.media_url import MediaUrlResolver
+        from mimeme.shared.services.media_url import MediaUrlResolver
 
         return MediaUrlResolver("https://assets.mimeme.dev")
 

@@ -1,4 +1,4 @@
-from shared.services.storage import S3Config, StorageService
+from mimeme.shared.services.storage import S3Config, StorageService
 
 
 def test_storage_services_address_their_assigned_bucket() -> None:

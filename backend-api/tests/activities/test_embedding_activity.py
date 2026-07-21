@@ -12,8 +12,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from temporalio.testing import ActivityEnvironment
 
-from activities.embedding.activity import embed_batch_activity
-from activities.embedding.models import (
+from mimeme.activities.embedding.activity import embed_batch_activity
+from mimeme.activities.embedding.models import (
     EmbedBatchInput,
     EmbedBatchOutput,
     EmbedImageInput,
@@ -57,7 +57,9 @@ class TestEmbedBatchActivity:
 
         inp = EmbedBatchInput(items=items, dataset="test")
 
-        with patch("activities.embedding.activity.get_gpu_backend", return_value=mock_backend):
+        with patch(
+            "mimeme.activities.embedding.activity.get_gpu_backend", return_value=mock_backend
+        ):
             result = await activity_env.run(embed_batch_activity, inp)
 
         assert len(result.results) == 2
@@ -90,7 +92,9 @@ class TestEmbedBatchActivity:
             ],
         )
 
-        with patch("activities.embedding.activity.get_gpu_backend", return_value=mock_backend):
+        with patch(
+            "mimeme.activities.embedding.activity.get_gpu_backend", return_value=mock_backend
+        ):
             result = await activity_env.run(embed_batch_activity, inp)
 
         assert len(result.results) == 1
@@ -104,7 +108,9 @@ class TestEmbedBatchActivity:
             items=[EmbedImageInput(image_id=1, s3_key="images/1.jpg", sha256="h1")],
         )
 
-        with patch("activities.embedding.activity.get_gpu_backend", return_value=mock_backend):
+        with patch(
+            "mimeme.activities.embedding.activity.get_gpu_backend", return_value=mock_backend
+        ):
             with pytest.raises(RuntimeError, match="GPU OOM"):
                 await activity_env.run(embed_batch_activity, inp)
 
@@ -115,7 +121,9 @@ class TestEmbedBatchActivity:
 
         inp = EmbedBatchInput(items=[])
 
-        with patch("activities.embedding.activity.get_gpu_backend", return_value=mock_backend):
+        with patch(
+            "mimeme.activities.embedding.activity.get_gpu_backend", return_value=mock_backend
+        ):
             result = await activity_env.run(embed_batch_activity, inp)
 
         assert result.results == []

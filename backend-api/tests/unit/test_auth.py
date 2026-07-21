@@ -6,8 +6,9 @@ from unittest.mock import patch
 
 import pytest
 from fastapi import HTTPException
+from pydantic import SecretStr
 
-from api.auth import ApiKeyRole, _resolve_role, require_admin, require_readonly
+from mimeme.api.auth import ApiKeyRole, _resolve_role, require_admin, require_readonly
 
 # ---------------------------------------------------------------------------
 # _resolve_role
@@ -19,27 +20,27 @@ class TestResolveRole:
         assert _resolve_role(None) is None
 
     def test_invalid_key_returns_none(self) -> None:
-        with patch("api.auth.settings") as mock_settings:
-            mock_settings.api_key_admin = "admin-secret"
-            mock_settings.api_key_readonly = "readonly-secret"
+        with patch("mimeme.api.auth.settings") as mock_settings:
+            mock_settings.http.api_key_admin = SecretStr("admin-secret")
+            mock_settings.http.api_key_readonly = SecretStr("readonly-secret")
             assert _resolve_role("wrong-key") is None
 
     def test_admin_key_returns_admin(self) -> None:
-        with patch("api.auth.settings") as mock_settings:
-            mock_settings.api_key_admin = "admin-secret"
-            mock_settings.api_key_readonly = "readonly-secret"
+        with patch("mimeme.api.auth.settings") as mock_settings:
+            mock_settings.http.api_key_admin = SecretStr("admin-secret")
+            mock_settings.http.api_key_readonly = SecretStr("readonly-secret")
             assert _resolve_role("admin-secret") == ApiKeyRole.ADMIN
 
     def test_readonly_key_returns_readonly(self) -> None:
-        with patch("api.auth.settings") as mock_settings:
-            mock_settings.api_key_admin = "admin-secret"
-            mock_settings.api_key_readonly = "readonly-secret"
+        with patch("mimeme.api.auth.settings") as mock_settings:
+            mock_settings.http.api_key_admin = SecretStr("admin-secret")
+            mock_settings.http.api_key_readonly = SecretStr("readonly-secret")
             assert _resolve_role("readonly-secret") == ApiKeyRole.READONLY
 
     def test_no_keys_configured_returns_none(self) -> None:
-        with patch("api.auth.settings") as mock_settings:
-            mock_settings.api_key_admin = None
-            mock_settings.api_key_readonly = None
+        with patch("mimeme.api.auth.settings") as mock_settings:
+            mock_settings.http.api_key_admin = None
+            mock_settings.http.api_key_readonly = None
             assert _resolve_role("any-key") is None
 
 
@@ -53,7 +54,7 @@ class TestRequireAdminDevMode:
         from unittest.mock import MagicMock
 
         request = MagicMock()
-        with patch("api.auth.settings") as mock_settings:
+        with patch("mimeme.api.auth.settings") as mock_settings:
             mock_settings.app_env = "development"
             role = require_admin(request, api_key=None)
             assert role == ApiKeyRole.ADMIN
@@ -62,7 +63,7 @@ class TestRequireAdminDevMode:
         from unittest.mock import MagicMock
 
         request = MagicMock()
-        with patch("api.auth.settings") as mock_settings:
+        with patch("mimeme.api.auth.settings") as mock_settings:
             mock_settings.app_env = "development"
             role = require_admin(request, api_key="garbage")
             assert role == ApiKeyRole.ADMIN
@@ -80,10 +81,10 @@ class TestRequireAdminProdMode:
         request = MagicMock()
         request.url.path = "/images"
         request.method = "POST"
-        with patch("api.auth.settings") as mock_settings:
+        with patch("mimeme.api.auth.settings") as mock_settings:
             mock_settings.app_env = "production"
-            mock_settings.api_key_admin = "real-admin-key"
-            mock_settings.api_key_readonly = "real-readonly-key"
+            mock_settings.http.api_key_admin = SecretStr("real-admin-key")
+            mock_settings.http.api_key_readonly = SecretStr("real-readonly-key")
             with pytest.raises(HTTPException) as exc_info:
                 require_admin(request, api_key=None)
             assert exc_info.value.status_code == 403
@@ -94,10 +95,10 @@ class TestRequireAdminProdMode:
         request = MagicMock()
         request.url.path = "/images"
         request.method = "POST"
-        with patch("api.auth.settings") as mock_settings:
+        with patch("mimeme.api.auth.settings") as mock_settings:
             mock_settings.app_env = "production"
-            mock_settings.api_key_admin = "real-admin-key"
-            mock_settings.api_key_readonly = "real-readonly-key"
+            mock_settings.http.api_key_admin = SecretStr("real-admin-key")
+            mock_settings.http.api_key_readonly = SecretStr("real-readonly-key")
             with pytest.raises(HTTPException) as exc_info:
                 require_admin(request, api_key="wrong-key")
             assert exc_info.value.status_code == 403
@@ -108,10 +109,10 @@ class TestRequireAdminProdMode:
         request = MagicMock()
         request.url.path = "/images"
         request.method = "POST"
-        with patch("api.auth.settings") as mock_settings:
+        with patch("mimeme.api.auth.settings") as mock_settings:
             mock_settings.app_env = "production"
-            mock_settings.api_key_admin = "real-admin-key"
-            mock_settings.api_key_readonly = "real-readonly-key"
+            mock_settings.http.api_key_admin = SecretStr("real-admin-key")
+            mock_settings.http.api_key_readonly = SecretStr("real-readonly-key")
             with pytest.raises(HTTPException) as exc_info:
                 require_admin(request, api_key="real-readonly-key")
             assert exc_info.value.status_code == 403
@@ -120,10 +121,10 @@ class TestRequireAdminProdMode:
         from unittest.mock import MagicMock
 
         request = MagicMock()
-        with patch("api.auth.settings") as mock_settings:
+        with patch("mimeme.api.auth.settings") as mock_settings:
             mock_settings.app_env = "production"
-            mock_settings.api_key_admin = "real-admin-key"
-            mock_settings.api_key_readonly = "real-readonly-key"
+            mock_settings.http.api_key_admin = SecretStr("real-admin-key")
+            mock_settings.http.api_key_readonly = SecretStr("real-readonly-key")
             role = require_admin(request, api_key="real-admin-key")
             assert role == ApiKeyRole.ADMIN
 
@@ -140,10 +141,10 @@ class TestRequireReadonlyProdMode:
         request = MagicMock()
         request.url.path = "/search"
         request.method = "GET"
-        with patch("api.auth.settings") as mock_settings:
+        with patch("mimeme.api.auth.settings") as mock_settings:
             mock_settings.app_env = "production"
-            mock_settings.api_key_admin = "real-admin-key"
-            mock_settings.api_key_readonly = "real-readonly-key"
+            mock_settings.http.api_key_admin = SecretStr("real-admin-key")
+            mock_settings.http.api_key_readonly = SecretStr("real-readonly-key")
             with pytest.raises(HTTPException) as exc_info:
                 require_readonly(request, api_key=None)
             assert exc_info.value.status_code == 403
@@ -152,10 +153,10 @@ class TestRequireReadonlyProdMode:
         from unittest.mock import MagicMock
 
         request = MagicMock()
-        with patch("api.auth.settings") as mock_settings:
+        with patch("mimeme.api.auth.settings") as mock_settings:
             mock_settings.app_env = "production"
-            mock_settings.api_key_admin = "real-admin-key"
-            mock_settings.api_key_readonly = "real-readonly-key"
+            mock_settings.http.api_key_admin = SecretStr("real-admin-key")
+            mock_settings.http.api_key_readonly = SecretStr("real-readonly-key")
             role = require_readonly(request, api_key="real-readonly-key")
             assert role == ApiKeyRole.READONLY
 
@@ -163,9 +164,9 @@ class TestRequireReadonlyProdMode:
         from unittest.mock import MagicMock
 
         request = MagicMock()
-        with patch("api.auth.settings") as mock_settings:
+        with patch("mimeme.api.auth.settings") as mock_settings:
             mock_settings.app_env = "production"
-            mock_settings.api_key_admin = "real-admin-key"
-            mock_settings.api_key_readonly = "real-readonly-key"
+            mock_settings.http.api_key_admin = SecretStr("real-admin-key")
+            mock_settings.http.api_key_readonly = SecretStr("real-readonly-key")
             role = require_readonly(request, api_key="real-admin-key")
             assert role == ApiKeyRole.ADMIN

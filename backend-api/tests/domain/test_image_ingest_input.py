@@ -4,12 +4,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from tests.factories import create_job
 
-from domain.image_ingest_input import (
+from mimeme.db.schema import IngestInputKind, IngestURL
+from mimeme.domain.image_ingest_input import (
     ImageIngestInput,
     RemoteImageUrlInput,
     StagedUploadInput,
 )
-from shared.models import IngestInputKind, IngestURL
 
 
 def test_image_ingest_input_serialization_is_exhaustively_discriminated() -> None:

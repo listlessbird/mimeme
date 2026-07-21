@@ -14,8 +14,7 @@ from tests.factories import (
     create_search_index_state,
 )
 
-from domain.image_catalog import ImageCatalog, ImageCatalogNotFoundError
-from shared.models.orm import (
+from mimeme.db.schema import (
     Annotation,
     Artifact,
     Image,
@@ -23,7 +22,8 @@ from shared.models.orm import (
     ProcessingStatus,
     SearchIndexState,
 )
-from shared.services.media_url import MediaUrlResolver
+from mimeme.domain.image_catalog import ImageCatalog, ImageCatalogNotFoundError
+from mimeme.shared.services.media_url import MediaUrlResolver
 
 pytestmark = pytest.mark.usefixtures(
     "_patch_domain_session_scope", "_patch_async_domain_session_scope"

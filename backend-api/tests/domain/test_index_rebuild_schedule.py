@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from domain.index_rebuild_schedule import (
+from mimeme.domain.index_rebuild_schedule import (
     REBUILD_ACTION_ID,
     REBUILD_SCHEDULE_ID,
     ExistingRebuildSchedule,

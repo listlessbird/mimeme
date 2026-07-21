@@ -11,7 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from shared.models.orm import Job, JobStatus, JobType, SearchIndexState
+from mimeme.db.schema import Job, JobStatus, JobType, SearchIndexState
 from tests.factories import create_index_build, create_job, create_search_index_state
 
 

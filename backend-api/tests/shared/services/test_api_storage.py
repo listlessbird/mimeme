@@ -5,8 +5,8 @@ from typing import Any
 import pytest
 from botocore.client import ClientError
 
-from shared.services.api_storage import AsyncApiStorage
-from shared.services.storage import S3Config
+from mimeme.shared.services.api_storage import AsyncApiStorage
+from mimeme.shared.services.storage import S3Config
 
 
 class FakeS3Client:
@@ -43,7 +43,7 @@ async def test_async_api_storage_uses_the_loop_client(monkeypatch: pytest.Monkey
     async def _fake_get_client(config: S3Config) -> FakeS3Client:
         return client
 
-    monkeypatch.setattr("shared.services.api_storage.get_loop_client", _fake_get_client)
+    monkeypatch.setattr("mimeme.shared.services.api_storage.get_loop_client", _fake_get_client)
     api_storage = AsyncApiStorage(
         S3Config(
             endpoint_url="http://example.test",

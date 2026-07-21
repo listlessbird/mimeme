@@ -20,14 +20,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from temporalio.testing import ActivityEnvironment
 
-from activities.indexing.activities import (
+from mimeme.activities.indexing.activities import (
     build_index_activity,
     garbage_collect_indexes_activity,
     swap_index_activity,
 )
-from activities.indexing.models import BuildIndexInput, SwapIndexInput
-from shared.models import IndexBuild
-from shared.models.orm import ProcessingStatus
+from mimeme.activities.indexing.models import BuildIndexInput, SwapIndexInput
+from mimeme.db.schema import IndexBuild, ProcessingStatus
 from tests.factories import create_image, create_index_build, create_processing
 
 
@@ -78,11 +77,11 @@ def _mock_manager(version: str = "v-test-001") -> MagicMock:
 def _patched_deps(storage: MagicMock, manager: MagicMock) -> Iterator[None]:
     with (
         patch(
-            "activities.indexing.activities.get_artifact_storage_service",
+            "mimeme.activities.indexing.activities.get_artifact_storage_service",
             return_value=storage,
         ),
         patch(
-            "activities.indexing.activities.FaissIndexManager.get_instance",
+            "mimeme.activities.indexing.activities.FaissIndexManager.get_instance",
             return_value=manager,
         ),
     ):
@@ -207,7 +206,7 @@ class TestBuildIndexActivity:
 
         with (
             _patched_deps(_mock_storage(), _mock_manager()),
-            patch("activities.indexing.activities.emit_activity_event", _capture),
+            patch("mimeme.activities.indexing.activities.emit_activity_event", _capture),
         ):
             activity_env.run(build_index_activity, inp)
 
@@ -303,7 +302,7 @@ class TestSwapIndexActivity:
         inp = SwapIndexInput(version="v-test-001", job_id="rebuild-1", target_generation=7)
 
         with patch(
-            "activities.indexing.activities.FaissIndexManager.get_instance",
+            "mimeme.activities.indexing.activities.FaissIndexManager.get_instance",
             return_value=mock_manager,
         ):
             activity_env.run(swap_index_activity, inp)
@@ -323,7 +322,7 @@ class TestSwapIndexActivity:
         inp = SwapIndexInput(version="v-nonexistent", job_id="rebuild-1", target_generation=7)
 
         with patch(
-            "activities.indexing.activities.FaissIndexManager.get_instance",
+            "mimeme.activities.indexing.activities.FaissIndexManager.get_instance",
             return_value=mock_manager,
         ):
             with pytest.raises(RuntimeError, match="Index not found"):
@@ -332,8 +331,8 @@ class TestSwapIndexActivity:
     def test_swap_activates_generation_in_one_transaction(
         self, db_session: Session, activity_env: ActivityEnvironment, monkeypatch
     ) -> None:
-        from activities.indexing.faiss_manager import FaissIndexManager
-        from shared.models import JobType, SearchIndexState
+        from mimeme.activities.indexing.faiss_manager import FaissIndexManager
+        from mimeme.db.schema import JobType, SearchIndexState
         from tests.factories import create_index_build, create_job, create_search_index_state
 
         job = create_job(session=db_session, type=JobType.REBUILD_INDEX)
@@ -355,7 +354,7 @@ class TestSwapIndexActivity:
 
         inp = SwapIndexInput(version="v-new", job_id=job.id, target_generation=5)
         with patch(
-            "activities.indexing.activities.FaissIndexManager.get_instance",
+            "mimeme.activities.indexing.activities.FaissIndexManager.get_instance",
             return_value=manager,
         ):
             activity_env.run(swap_index_activity, inp)
@@ -380,7 +379,7 @@ class TestGarbageCollectIndexesActivity:
         mock_manager.garbage_collect.return_value = ["v-old-001", "v-old-002"]
 
         with patch(
-            "activities.indexing.activities.FaissIndexManager.get_instance",
+            "mimeme.activities.indexing.activities.FaissIndexManager.get_instance",
             return_value=mock_manager,
         ):
             result = activity_env.run(garbage_collect_indexes_activity)
@@ -394,7 +393,7 @@ class TestGarbageCollectIndexesActivity:
         mock_manager.garbage_collect.return_value = []
 
         with patch(
-            "activities.indexing.activities.FaissIndexManager.get_instance",
+            "mimeme.activities.indexing.activities.FaissIndexManager.get_instance",
             return_value=mock_manager,
         ):
             result = activity_env.run(garbage_collect_indexes_activity)

@@ -1,5 +1,5 @@
-from api.deps import get_artifact_storage, get_media_storage, get_media_url_resolver
-from shared.services.api_storage import AsyncApiStorage
+from mimeme.api.deps import get_artifact_storage, get_media_storage, get_media_url_resolver
+from mimeme.shared.services.api_storage import AsyncApiStorage
 
 
 def test_storage_dependencies_are_role_specific() -> None:

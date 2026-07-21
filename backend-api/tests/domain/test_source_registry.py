@@ -15,21 +15,21 @@ from tests.factories import (
     create_source_run,
 )
 
-from domain.source_registry import (
+from mimeme.db.schema import (
+    DuplicateReason,
+    IngestionSource,
+    ProcessingStatus,
+    SourceRun,
+    SourceRunStatus,
+    SourceRunTrigger,
+)
+from mimeme.domain.source_registry import (
     DuplicateSourceNameError,
     SourceNotFoundError,
     SourceRegistry,
     UnknownAdapterKeyError,
 )
-from domain.source_schedule_spec import DesiredScheduleState
-from shared.models import (
-    DuplicateReason,
-    IngestionSource,
-    ProcessingStatus,
-    SourceRunStatus,
-    SourceRunTrigger,
-)
-from shared.models.orm import SourceRun
+from mimeme.domain.source_schedule_spec import DesiredScheduleState
 
 pytestmark = pytest.mark.usefixtures("_patch_async_domain_session_scope")
 

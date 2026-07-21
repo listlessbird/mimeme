@@ -18,9 +18,9 @@ import pytest
 from sqlalchemy.orm import Session
 from temporalio.testing import ActivityEnvironment
 
-from activities.ingestion.activities import discover_and_queue_activity
-from activities.ingestion.models import DiscoverAndQueueInput
-from shared.models.orm import IngestURL, Job, JobType, SourceItem
+from mimeme.activities.ingestion.activities import discover_and_queue_activity
+from mimeme.activities.ingestion.models import DiscoverAndQueueInput
+from mimeme.db.schema import IngestURL, Job, JobType, SourceItem
 from tests.factories import create_ingestion_source, create_source_item, create_source_run
 
 

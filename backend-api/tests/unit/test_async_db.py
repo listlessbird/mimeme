@@ -7,8 +7,8 @@ from sqlalchemy import Engine, delete, func, select, text
 from sqlalchemy.exc import TimeoutError as SQLAlchemyTimeoutError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-import shared.db as db_module
-from shared.models import IndexBuild
+import mimeme.shared.db as db_module
+from mimeme.db.schema import IndexBuild
 
 
 def _async_url(sync_url: str) -> str:

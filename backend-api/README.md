@@ -26,13 +26,13 @@ The defaults in `.env.example` point at local Docker services:
 For local CPU-only embedding runs, set:
 
 ```bash
-EMBED_DEVICE=cpu
+INFERENCE_EMBED_DEVICE=cpu
 ```
 
-The default `GPU_BACKEND=local` runs local model inference in the worker. To use Modal instead, complete the Modal setup below and set:
+The default `COMPUTE_GPU_BACKEND=local` runs local model inference in the worker. To use Modal instead, complete the Modal setup below and set:
 
 ```bash
-GPU_BACKEND=modal
+COMPUTE_GPU_BACKEND=modal
 ```
 
 ### 2. Start Infra
@@ -295,5 +295,5 @@ uv run alembic upgrade head
 Apply migrations against the production database:
 
 ```bash
-DB_URL=$(terraform -chdir=../terraform/infra output -raw db_url | sed 's|^postgres://|postgresql://|') uv run alembic upgrade head
+DATABASE_URL=$(terraform -chdir=../terraform/infra output -raw db_url | sed 's|^postgres://|postgresql://|') uv run alembic upgrade head
 ```

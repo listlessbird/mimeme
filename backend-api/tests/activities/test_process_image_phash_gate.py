@@ -27,10 +27,10 @@ import pytest
 from sqlalchemy.orm import Session
 from temporalio.testing import ActivityEnvironment
 
-from activities.storage.activities import process_image_activity
-from activities.storage.models import ProcessImageInput, ProcessImageOutput
-from activities.storage.phash_index import PhashIndex
-from shared.models import DuplicateReason
+from mimeme.activities.storage.activities import process_image_activity
+from mimeme.activities.storage.models import ProcessImageInput, ProcessImageOutput
+from mimeme.activities.storage.phash_index import PhashIndex
+from mimeme.db.schema import DuplicateReason
 from tests.factories import create_image
 
 PHASH_ZERO = "0000000000000000"
@@ -62,11 +62,15 @@ def _run(
     storage.build_image_key.return_value = "images/test/new.jpg"
     storage.upload_file.return_value = "etag"
     with (
-        patch("activities.storage.activities.get_media_storage_service", return_value=storage),
-        patch("activities.storage.activities.get_phash_index", return_value=index),
-        patch("activities.storage.activities.compute_sha256", return_value=sha256),
-        patch("activities.storage.activities.compute_phash", return_value=phash),
-        patch("activities.storage.activities.get_image_info", return_value=(800, 600, "jpeg")),
+        patch(
+            "mimeme.activities.storage.activities.get_media_storage_service", return_value=storage
+        ),
+        patch("mimeme.activities.storage.activities.get_phash_index", return_value=index),
+        patch("mimeme.activities.storage.activities.compute_sha256", return_value=sha256),
+        patch("mimeme.activities.storage.activities.compute_phash", return_value=phash),
+        patch(
+            "mimeme.activities.storage.activities.get_image_info", return_value=(800, 600, "jpeg")
+        ),
     ):
         return env.run(process_image_activity, inp), storage
 

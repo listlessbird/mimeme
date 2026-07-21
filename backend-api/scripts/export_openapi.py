@@ -7,7 +7,7 @@ import sys
 os.environ.setdefault("APP_ENV", "development")
 os.environ.setdefault("PRELOAD_TEXT_ENCODER_ON_STARTUP", "false")
 
-from api.main import create_app  # noqa: E402
+from mimeme.api.main import create_app  # noqa: E402
 
 
 def main() -> None:

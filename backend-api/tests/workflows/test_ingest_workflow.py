@@ -15,15 +15,15 @@ from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
-from activities.embedding.models import EmbedBatchInput, EmbedBatchOutput, EmbedImageOutput
-from activities.storage.models import (
+from mimeme.activities.embedding.models import EmbedBatchInput, EmbedBatchOutput, EmbedImageOutput
+from mimeme.activities.storage.models import (
     DownloadImageInput,
     DownloadImageOutput,
     ProcessImageInput,
     ProcessImageOutput,
 )
-from activities.vision.models import AnnotateImageInput, AnnotateImageOutput
-from activities.workflow_state.models import (
+from mimeme.activities.vision.models import AnnotateImageInput, AnnotateImageOutput
+from mimeme.activities.workflow_state.models import (
     CompleteIngestJobInput,
     IngestInitOutput,
     IngestUrlItem,
@@ -34,9 +34,9 @@ from activities.workflow_state.models import (
     SaveEmbeddingInfoInput,
     UpdateJobProgressInput,
 )
-from domain.image_ingest_input import RemoteImageUrlInput
-from workflows.ingest import IngestWorkflow
-from workflows.models import IngestWorkflowInput
+from mimeme.domain.image_ingest_input import RemoteImageUrlInput
+from mimeme.workflows.ingest import IngestWorkflow
+from mimeme.workflows.models import IngestWorkflowInput
 
 # ---------------------------------------------------------------------------
 # Mock activities — each returns a canned output

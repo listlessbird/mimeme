@@ -9,8 +9,8 @@ import pytest
 from sqlalchemy.orm import Session
 from tests.factories import create_annotation, create_image, create_index_build
 
-import domain.search_index as search_index
-from domain.search_index import (
+import mimeme.domain.search_index as search_index
+from mimeme.domain.search_index import (
     SearchEncoderIncompatibleError,
     SearchImageNotFoundError,
     SearchIndexExecution,
@@ -19,7 +19,7 @@ from domain.search_index import (
     SearchService,
     reciprocal_rank_fusion,
 )
-from shared.services.media_url import MediaUrlResolver
+from mimeme.shared.services.media_url import MediaUrlResolver
 
 MEDIA_URLS = MediaUrlResolver("https://assets.mimeme.dev")
 

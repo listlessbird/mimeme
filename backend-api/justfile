@@ -35,10 +35,10 @@ hooks:
     uv run pre-commit run --all-files
 
 api:
-    uv run uvicorn api.main:app --reload
+    uv run uvicorn mimeme.api.main:app --reload
 
 worker:
-    uv run python -m workers.worker
+    uv run python -m mimeme.workers.worker
 
 migrate:
     uv run alembic upgrade head

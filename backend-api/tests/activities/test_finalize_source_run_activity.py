@@ -14,9 +14,9 @@ import pytest
 from sqlalchemy.orm import Session
 from temporalio.testing import ActivityEnvironment
 
-from activities.ingestion.activities import finalize_source_run_activity
-from activities.ingestion.models import FinalizeSourceRunInput
-from shared.models import DuplicateReason, ProcessingStatus, SourceRunStatus
+from mimeme.activities.ingestion.activities import finalize_source_run_activity
+from mimeme.activities.ingestion.models import FinalizeSourceRunInput
+from mimeme.db.schema import DuplicateReason, ProcessingStatus, SourceRunStatus
 from tests.factories import (
     create_ingest_url,
     create_ingestion_source,

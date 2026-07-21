@@ -5,16 +5,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from tests.factories import create_job
 
-from domain.image_ingest_input import RemoteImageUrlInput
-from domain.job_rules import (
+from mimeme.db.schema import IngestURL, Job, JobStatus, JobType
+from mimeme.domain.image_ingest_input import RemoteImageUrlInput
+from mimeme.domain.job_rules import (
     IngestJobResultPayload,
     JobLifecycleInvalidStateError,
     JobLifecycleNotFoundError,
     RawJobResultPayload,
     RebuildJobResultPayload,
 )
-from domain.job_store import ApiJobStore
-from shared.models import IngestURL, Job, JobStatus, JobType
+from mimeme.domain.job_store import ApiJobStore
 
 pytestmark = pytest.mark.usefixtures(
     "_patch_domain_session_scope", "_patch_async_domain_session_scope"

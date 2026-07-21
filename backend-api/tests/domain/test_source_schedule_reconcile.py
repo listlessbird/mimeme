@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from domain.source_schedule_reconcile import (
+from mimeme.domain.source_schedule_reconcile import (
     CreateSchedule,
     DeleteSchedule,
     ExistingSchedule,
     UpdateSchedule,
     plan_reconciliation,
 )
-from domain.source_schedule_spec import derive_schedule_spec
+from mimeme.domain.source_schedule_spec import derive_schedule_spec
 
 
 def _spec(

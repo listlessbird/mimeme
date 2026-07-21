@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from shared.models.orm import Image
+from mimeme.db.schema import Image
 from tests.factories import create_image
 
 T = TypeVar("T")

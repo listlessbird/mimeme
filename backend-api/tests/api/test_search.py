@@ -6,8 +6,8 @@ from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-from api.models.search import SearchResult
-from domain.search_index import (
+from mimeme.api.models.search import SearchResult
+from mimeme.domain.search_index import (
     SearchEncoderIncompatibleError,
     SearchImageNotFoundError,
     SearchIndexPage,
@@ -52,7 +52,7 @@ class TestSearchEndpoint:
             search_time_ms=1.0,
             index_version="v1-test",
         )
-        with patch("api.routers.search.SearchIndexExecution") as execution_cls:
+        with patch("mimeme.api.routers.search.SearchIndexExecution") as execution_cls:
             execution_cls.return_value.search.return_value = page
 
             resp = client.get("/search?q=funny+cat")
@@ -74,7 +74,7 @@ class TestSearchEndpoint:
             search_time_ms=1.0,
             index_version="v1-test",
         )
-        with patch("api.routers.search.SearchIndexExecution") as execution_cls:
+        with patch("mimeme.api.routers.search.SearchIndexExecution") as execution_cls:
             execution_cls.return_value.search.return_value = page
 
             resp = client.get("/search?q=test&limit=3")
@@ -95,7 +95,7 @@ class TestSearchEndpoint:
         self, client: TestClient, mock_index_manager: MagicMock
     ) -> None:
         """When no index is loaded, search should return 503."""
-        with patch("api.routers.search.SearchIndexExecution") as execution_cls:
+        with patch("mimeme.api.routers.search.SearchIndexExecution") as execution_cls:
             execution_cls.return_value.search.side_effect = SearchIndexUnavailableError(
                 "Search index not loaded"
             )
@@ -105,7 +105,7 @@ class TestSearchEndpoint:
     def test_search_incompatible_encoder_returns_503(
         self, client: TestClient, mock_index_manager: MagicMock
     ) -> None:
-        with patch("api.routers.search.SearchIndexExecution") as execution_cls:
+        with patch("mimeme.api.routers.search.SearchIndexExecution") as execution_cls:
             execution_cls.return_value.search.side_effect = SearchEncoderIncompatibleError(
                 "Text encoder was exported from a different model"
             )
@@ -127,7 +127,7 @@ class TestSimilarEndpoint:
             search_time_ms=1.0,
             index_version="v1-test",
         )
-        with patch("api.routers.search.SearchIndexExecution") as execution_cls:
+        with patch("mimeme.api.routers.search.SearchIndexExecution") as execution_cls:
             execution_cls.return_value.find_similar.return_value = page
             resp = client.get("/search/similar/1")
 
@@ -153,7 +153,7 @@ class TestSimilarEndpoint:
             search_time_ms=1.0,
             index_version="v1-test",
         )
-        with patch("api.routers.search.SearchIndexExecution") as execution_cls:
+        with patch("mimeme.api.routers.search.SearchIndexExecution") as execution_cls:
             execution_cls.return_value.find_similar.return_value = page
             resp = client.get("/search/similar/1")
 
@@ -164,7 +164,7 @@ class TestSimilarEndpoint:
     def test_find_similar_unknown_image_returns_404(
         self, client: TestClient, mock_index_manager: MagicMock
     ) -> None:
-        with patch("api.routers.search.SearchIndexExecution") as execution_cls:
+        with patch("mimeme.api.routers.search.SearchIndexExecution") as execution_cls:
             execution_cls.return_value.find_similar.side_effect = SearchImageNotFoundError(
                 "Image not in index"
             )

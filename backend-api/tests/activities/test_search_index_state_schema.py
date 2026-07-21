@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from shared.models import Job, JobType, SearchIndexState
+from mimeme.db.schema import Job, JobType, SearchIndexState
 from tests.factories import create_job, create_search_index_state
 
 

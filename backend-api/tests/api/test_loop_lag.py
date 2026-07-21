@@ -6,7 +6,7 @@ from contextlib import suppress
 
 from structlog.testing import capture_logs
 
-from api.lifespan import loop_lag_probe
+from mimeme.api.lifespan import loop_lag_probe
 
 
 async def _run_probe_while(action_seconds: float, block_seconds: float = 0.0) -> list[dict]:

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from activities.scheduling.reconcile import reconcile
-from domain.source_schedule_reconcile import ExistingSchedule
-from domain.source_schedule_spec import (
+from mimeme.activities.scheduling.reconcile import reconcile
+from mimeme.domain.source_schedule_reconcile import ExistingSchedule
+from mimeme.domain.source_schedule_spec import (
     DesiredScheduleState,
     ScheduleSpec,
     derive_schedule_spec,

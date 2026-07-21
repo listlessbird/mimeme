@@ -7,13 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from tests.factories import create_job, create_search_index_state
 
-from domain.index_freshness import (
+from mimeme.db.schema import JobType
+from mimeme.domain.index_freshness import (
     IndexFreshness,
     RebuildClaimOwnershipError,
     RebuildClaimTargetError,
     SearchIndexStateMissingError,
 )
-from shared.models import JobType
 
 
 def _now() -> datetime.datetime:

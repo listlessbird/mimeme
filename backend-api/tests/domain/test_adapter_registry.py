@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import pytest
 
-from domain.adapters.meme_api import MemeApiAdapter
-from domain.adapters.registry import (
+from mimeme.domain.adapters.meme_api import MemeApiAdapter
+from mimeme.domain.adapters.registry import (
     ADAPTERS,
     KNOWN_ADAPTER_KEYS,
     UnknownAdapterKeyError,

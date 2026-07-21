@@ -10,9 +10,9 @@ from sqlalchemy import Engine, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from structlog.testing import capture_logs
 
-import shared.db as db_module
-from api.middleware import register_middleware
-from shared.config import settings
+import mimeme.shared.db as db_module
+from mimeme.api.middleware import register_middleware
+from mimeme.shared.config import settings
 
 
 def _async_url(sync_url: str) -> str:
@@ -106,7 +106,7 @@ async def test_handler_exceeding_deadline_returns_504(
     backpressure_client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(settings, "request_timeout_s", 0.1)
+    monkeypatch.setattr(settings.http, "request_timeout_s", 0.1)
 
     response = await backpressure_client.get("/slow")
 

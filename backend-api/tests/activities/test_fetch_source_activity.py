@@ -19,9 +19,9 @@ import httpx
 import pytest
 from temporalio.testing import ActivityEnvironment
 
-from activities.ingestion.activities import fetch_source_activity
-from activities.ingestion.models import FetchSourceInput
-from domain.adapters.base import FetchRequest
+from mimeme.activities.ingestion.activities import fetch_source_activity
+from mimeme.activities.ingestion.models import FetchSourceInput
+from mimeme.domain.adapters.base import FetchRequest
 
 
 @pytest.fixture()
@@ -50,7 +50,7 @@ class TestFetchSourceActivity:
         response.json.return_value = payload
 
         with patch(
-            "activities.ingestion.activities.httpx.Client",
+            "mimeme.activities.ingestion.activities.httpx.Client",
             return_value=_fake_client(response),
         ):
             result = activity_env.run(fetch_source_activity, _input())
@@ -73,7 +73,7 @@ class TestFetchSourceActivity:
             request=FetchRequest(url="https://meme-api.com/gimme/aww/10", method=HTTPMethod.GET)
         )
 
-        with patch("activities.ingestion.activities.httpx.Client", return_value=client):
+        with patch("mimeme.activities.ingestion.activities.httpx.Client", return_value=client):
             activity_env.run(fetch_source_activity, inp)
 
         method, url = client.request.call_args.args
@@ -88,7 +88,7 @@ class TestFetchSourceActivity:
         )
 
         with patch(
-            "activities.ingestion.activities.httpx.Client",
+            "mimeme.activities.ingestion.activities.httpx.Client",
             return_value=_fake_client(response),
         ):
             result = activity_env.run(fetch_source_activity, _input())
@@ -107,7 +107,7 @@ class TestFetchSourceActivity:
 
         with (
             patch(
-                "activities.ingestion.activities.httpx.Client",
+                "mimeme.activities.ingestion.activities.httpx.Client",
                 return_value=_fake_client(response),
             ),
             pytest.raises(httpx.HTTPStatusError),
@@ -125,7 +125,7 @@ class TestFetchSourceActivity:
 
         with (
             patch(
-                "activities.ingestion.activities.httpx.Client",
+                "mimeme.activities.ingestion.activities.httpx.Client",
                 return_value=_fake_client(response),
             ),
             pytest.raises(httpx.HTTPStatusError),
@@ -139,7 +139,7 @@ class TestFetchSourceActivity:
         client.__exit__ = MagicMock(return_value=False)
 
         with (
-            patch("activities.ingestion.activities.httpx.Client", return_value=client),
+            patch("mimeme.activities.ingestion.activities.httpx.Client", return_value=client),
             pytest.raises(httpx.ConnectError),
         ):
             activity_env.run(fetch_source_activity, _input())
@@ -151,7 +151,7 @@ class TestFetchSourceActivity:
         response.json.side_effect = ValueError("Expecting value")
 
         with patch(
-            "activities.ingestion.activities.httpx.Client",
+            "mimeme.activities.ingestion.activities.httpx.Client",
             return_value=_fake_client(response),
         ):
             result = activity_env.run(fetch_source_activity, _input())
@@ -166,7 +166,7 @@ class TestFetchSourceActivity:
         response.json.return_value = ["not", "an", "object"]
 
         with patch(
-            "activities.ingestion.activities.httpx.Client",
+            "mimeme.activities.ingestion.activities.httpx.Client",
             return_value=_fake_client(response),
         ):
             result = activity_env.run(fetch_source_activity, _input())

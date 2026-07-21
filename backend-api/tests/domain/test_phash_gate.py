@@ -30,7 +30,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from domain.phash_gate import find_near_duplicate, phash_to_uint64
+from mimeme.domain.phash_gate import find_near_duplicate, phash_to_uint64
 
 # Candidate every case compares against. Distance to any other value is just the
 # popcount (number of set bits) of that other value.

@@ -6,8 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 from tests.factories import create_index_build, create_job, create_search_index_state
 
-from domain.rebuild_claim import PrepareDecision, RebuildCoordinator
-from shared.models import Job, JobStatus, JobType, RebuildTrigger, SearchIndexState
+from mimeme.db.schema import Job, JobStatus, JobType, RebuildTrigger, SearchIndexState
+from mimeme.domain.rebuild_claim import PrepareDecision, RebuildCoordinator
 
 TIMEOUT = datetime.timedelta(minutes=180)
 
