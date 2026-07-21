@@ -5,7 +5,7 @@ from pathlib import Path
 import faiss  # type: ignore[import-untyped]
 import numpy as np
 
-from mimeme.shared.config import settings
+from mimeme.shared.runtime import settings
 
 
 def apply_search_params(index: faiss.Index) -> faiss.Index:

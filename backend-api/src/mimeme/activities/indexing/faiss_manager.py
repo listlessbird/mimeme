@@ -15,7 +15,7 @@ from mimeme.activities.indexing.faiss_vectors import FaissVectorIndex
 from mimeme.activities.indexing.index_artifacts import IndexArtifactStore
 from mimeme.activities.indexing.index_catalog import ActiveIndexCatalog
 from mimeme.domain.index_freshness import IndexFreshness
-from mimeme.shared.config import settings
+from mimeme.shared.runtime import settings
 from mimeme.shared.services.storage import get_artifact_storage_service
 
 log = structlog.get_logger()

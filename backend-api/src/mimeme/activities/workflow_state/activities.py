@@ -19,7 +19,7 @@ from mimeme.domain.index_freshness import (
 )
 from mimeme.domain.job_lifecycle import JobLifecycle
 from mimeme.domain.rebuild_claim import RebuildCoordinator
-from mimeme.shared.config import settings
+from mimeme.shared.runtime import settings
 from mimeme.shared.db import session_scope
 from mimeme.shared.logging import emit_activity_event
 

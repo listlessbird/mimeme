@@ -5,8 +5,10 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, Request, Upload
 from mimeme.api.auth import AdminRequired
 from mimeme.api.deps import (
     ArtifactStorageDep,
+    DbDep,
     MediaStorageDep,
     MediaUrlResolverDep,
+    SettingsDep,
     TemporalClientDep,
 )
 from mimeme.api.models.errors import error_responses
@@ -22,13 +24,16 @@ from mimeme.domain.image_catalog import ImageCatalog, ImageCatalogNotFoundError
 from mimeme.domain.image_ingest_input import ImageIngestInput, RemoteImageUrlInput
 from mimeme.domain.image_upload import ImageUploadStager
 from mimeme.domain.job_store import ApiJobStore
-from mimeme.shared.config import settings
+from mimeme.db import Db
+from mimeme.shared.config import Settings
 from mimeme.workflows import IngestWorkflow, IngestWorkflowInput
 
 router = APIRouter(prefix="/images", tags=["Images"], responses=error_responses(403, 429, 500))
 
 
 async def _launch_ingest(
+    db: Db,
+    settings: Settings,
     temporal: TemporalClientDep,
     *,
     inputs: list[ImageIngestInput],
@@ -36,7 +41,7 @@ async def _launch_ingest(
     tags: list[str],
     callback_url: str | None,
 ) -> ImageIngestResponse:
-    store = ApiJobStore()
+    store = ApiJobStore(db)
     job = await store.create_ingest_job(
         inputs=inputs, dataset=dataset, tags=tags, callback_url=callback_url
     )
@@ -67,10 +72,14 @@ async def _launch_ingest(
 async def ingest_images(
     request: Request,
     _auth: AdminRequired,
+    db: DbDep,
+    settings: SettingsDep,
     ingest_request: ImageIngestRequest,
     temporal: TemporalClientDep,
 ) -> ImageIngestResponse:
     return await _launch_ingest(
+        db,
+        settings,
         temporal,
         inputs=[RemoteImageUrlInput(url=str(url)) for url in ingest_request.urls],
         dataset=ingest_request.dataset,
@@ -84,6 +93,8 @@ async def ingest_images(
 async def upload_image(
     request: Request,
     _auth: AdminRequired,
+    db: DbDep,
+    settings: SettingsDep,
     artifact_storage: ArtifactStorageDep,
     temporal: TemporalClientDep,
     file: Annotated[UploadFile, File()],
@@ -99,6 +110,8 @@ async def upload_image(
     )
 
     return await _launch_ingest(
+        db,
+        settings,
         temporal,
         inputs=[staged],
         dataset=dataset,
@@ -112,6 +125,7 @@ async def upload_image(
 async def list_images(
     request: Request,
     _auth: AdminRequired,
+    db: DbDep,
     media_storage: MediaStorageDep,
     artifact_storage: ArtifactStorageDep,
     media_urls: MediaUrlResolverDep,
@@ -121,7 +135,7 @@ async def list_images(
     dataset: Annotated[str | None, Query()] = None,
     sort: Annotated[Literal["newest", "oldest"], Query()] = "newest",
 ) -> ImageListResponse:
-    page = await ImageCatalog(media_storage, artifact_storage, media_urls).list_images(
+    page = await ImageCatalog(db, media_storage, artifact_storage, media_urls).list_images(
         limit=limit,
         offset=offset,
         status=status.value if status else None,
@@ -147,13 +161,16 @@ async def list_images(
 @router.get("/{image_id}", response_model=ImageResponse, responses=error_responses(404))
 async def get_image(
     _auth: AdminRequired,
+    db: DbDep,
     image_id: int,
     media_storage: MediaStorageDep,
     artifact_storage: ArtifactStorageDep,
     media_urls: MediaUrlResolverDep,
 ) -> ImageResponse:
     try:
-        image = await ImageCatalog(media_storage, artifact_storage, media_urls).get_image(image_id)
+        image = await ImageCatalog(db, media_storage, artifact_storage, media_urls).get_image(
+            image_id
+        )
     except ImageCatalogNotFoundError:
         raise HTTPException(status_code=404, detail="Image not found")
     payload = image.model_dump()
@@ -164,12 +181,13 @@ async def get_image(
 @router.delete("/{image_id}", status_code=204, responses=error_responses(404))
 async def delete_image(
     _auth: AdminRequired,
+    db: DbDep,
     image_id: int,
     media_storage: MediaStorageDep,
     artifact_storage: ArtifactStorageDep,
     media_urls: MediaUrlResolverDep,
 ) -> None:
     try:
-        await ImageCatalog(media_storage, artifact_storage, media_urls).delete_image(image_id)
+        await ImageCatalog(db, media_storage, artifact_storage, media_urls).delete_image(image_id)
     except ImageCatalogNotFoundError:
         raise HTTPException(status_code=404, detail="Image not found")

@@ -12,7 +12,7 @@ import structlog
 from huggingface_hub import snapshot_download
 from tokenizers import Tokenizer
 
-from mimeme.shared.config import settings
+from mimeme.shared.runtime import settings
 
 _log = structlog.get_logger().bind(component="search_text_encoder")
 

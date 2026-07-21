@@ -18,7 +18,7 @@ from mimeme.db.schema import (
 from mimeme.domain.adapters.registry import KNOWN_ADAPTER_KEYS, UnknownAdapterKeyError
 from mimeme.domain.source_run_accounting import UrlOutcome, derive_run_accounting
 from mimeme.domain.source_schedule_spec import ScheduleSpec, derive_schedule_spec
-from mimeme.shared import db
+from mimeme.db import Db
 
 
 class SourceNotFoundError(Exception):
@@ -83,6 +83,9 @@ class SourceDetail(SourceView, frozen=True):
 
 
 class SourceRegistry:
+    def __init__(self, db: Db) -> None:
+        self._db = db
+
     async def create(
         self,
         *,
@@ -99,7 +102,7 @@ class SourceRegistry:
         if adapter_key not in KNOWN_ADAPTER_KEYS:
             raise UnknownAdapterKeyError(adapter_key)
 
-        async with db.write_session() as session:
+        async with self._db.write_session() as session:
             if await self._live_name_exists(session, name):
                 raise DuplicateSourceNameError(name)
 
@@ -122,7 +125,7 @@ class SourceRegistry:
 
     async def list_sources(self) -> list[SourceListItem]:
 
-        async with db.read_session() as session:
+        async with self._db.read_session() as session:
             sources = (
                 await session.scalars(
                     select(IngestionSource)
@@ -145,7 +148,7 @@ class SourceRegistry:
 
     async def get_source(self, source_id: int, *, recent_runs_limit: int = 20) -> SourceDetail:
 
-        async with db.read_session() as session:
+        async with self._db.read_session() as session:
             source = await self._live_source_or_raise(session, source_id)
 
             runs = (
@@ -175,7 +178,7 @@ class SourceRegistry:
         enabled: bool | _Unset = UNSET,
     ) -> SourceView:
 
-        async with db.write_session() as session:
+        async with self._db.write_session() as session:
             source = await self._live_source_or_raise(session, source_id)
 
             if not isinstance(adapter_config, _Unset):
@@ -203,14 +206,14 @@ class SourceRegistry:
 
     async def soft_delete(self, source_id: int) -> None:
 
-        async with db.write_session() as session:
+        async with self._db.write_session() as session:
             source = await self._live_source_or_raise(session, source_id)
 
             source.deleted_at = datetime.datetime.now(datetime.UTC)
             await session.flush()
 
     async def list_schedule_specs(self) -> list[ScheduleSpec]:
-        async with db.read_session() as session:
+        async with self._db.read_session() as session:
             sources = (
                 await session.scalars(
                     select(IngestionSource).where(IngestionSource.deleted_at.is_(None))

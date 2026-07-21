@@ -6,10 +6,12 @@ import structlog
 from fastapi import APIRouter, Response, status
 from sqlalchemy import text
 
-from mimeme.api.deps import get_temporal_client
+from temporalio.client import Client
+
+from mimeme.api.deps import DbDep, TemporalClientDep
 from mimeme.api.models.errors import error_responses
 from mimeme.api.models.health import HealthResponse
-from mimeme.shared.db import get_async_engine
+from mimeme.db import Db
 from mimeme.shared.services.api_storage import AsyncApiStorage
 from mimeme.shared.services.storage import S3Config, get_artifact_s3_config, get_media_s3_config
 
@@ -17,10 +19,9 @@ router = APIRouter(tags=["Health"], responses=error_responses(429, 500))
 log = structlog.get_logger()
 
 
-async def _check_postgres() -> bool:
+async def _check_postgres(db: Db) -> bool:
     try:
-        engine = get_async_engine()
-        async with engine.connect() as conn:
+        async with db.engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
         return True
     except Exception as e:
@@ -36,9 +37,8 @@ async def _check_storage(role: str, config: S3Config) -> bool:
         return False
 
 
-async def _check_temporal() -> bool:
+async def _check_temporal(client: Client) -> bool:
     try:
-        client = await get_temporal_client()
         await client.service_client.check_health()
         return True
     except Exception as e:
@@ -51,14 +51,16 @@ async def _check_temporal() -> bool:
     response_model=HealthResponse,
     responses={503: {"model": HealthResponse, "description": "Dependency unavailable"}},
 )
-async def check_readiness(response: Response) -> HealthResponse:
+async def check_readiness(
+    response: Response, db: DbDep, temporal: TemporalClientDep
+) -> HealthResponse:
     pg_ok, media_ok, artifact_ok = await asyncio.gather(
-        _check_postgres(),
+        _check_postgres(db),
         _check_storage("media", get_media_s3_config()),
         _check_storage("artifact", get_artifact_s3_config()),
     )
 
-    temporal_ok = await _check_temporal()
+    temporal_ok = await _check_temporal(temporal)
 
     healthy = pg_ok and media_ok and artifact_ok and temporal_ok
 

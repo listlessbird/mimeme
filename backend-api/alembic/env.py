@@ -4,9 +4,9 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from mimeme.db.schema import Base
+from mimeme.shared.config import Settings
 
-# Import your models and settings
-from mimeme.shared.config import settings
+settings = Settings()
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

@@ -8,7 +8,7 @@ import structlog
 from axiom_py import Client
 from axiom_py.client import AplOptions
 
-from mimeme.shared.config import settings
+from mimeme.shared.runtime import settings
 
 log = structlog.get_logger()
 

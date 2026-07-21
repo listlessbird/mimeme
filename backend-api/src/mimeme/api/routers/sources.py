@@ -9,7 +9,7 @@ from fastapi import APIRouter, HTTPException, Query
 from mimeme.activities.scheduling.reconcile import reconcile
 from mimeme.activities.scheduling.temporal_store import TemporalScheduleStore
 from mimeme.api.auth import AdminRequired
-from mimeme.api.deps import MediaUrlResolverDep, TemporalClientDep
+from mimeme.api.deps import DbDep, MediaUrlResolverDep, SettingsDep, TemporalClientDep
 from mimeme.api.models.errors import error_responses
 from mimeme.api.models.sources import (
     CreateSourceRequest,
@@ -43,7 +43,8 @@ from mimeme.domain.source_retry import (
     SourceItemNotFoundError,
     SourceRetry,
 )
-from mimeme.shared.config import settings
+from mimeme.db import Db
+from mimeme.shared.config import Settings
 from mimeme.workflows import (
     SourceRetryWorkflow,
     SourceRetryWorkflowInput,
@@ -55,9 +56,9 @@ router = APIRouter(prefix="/sources", tags=["Sources"], responses=error_response
 log = structlog.get_logger()
 
 
-async def _sync_schedules(temporal: TemporalClientDep) -> None:
+async def _sync_schedules(db: Db, temporal: TemporalClientDep) -> None:
     try:
-        desired = await SourceRegistry().list_schedule_specs()
+        desired = await SourceRegistry(db).list_schedule_specs()
         await reconcile(TemporalScheduleStore(temporal), desired=desired)
     except Exception as exc:
         log.warning(
@@ -74,10 +75,10 @@ async def _sync_schedules(temporal: TemporalClientDep) -> None:
     responses=error_responses(400, 409),
 )
 async def create_source(
-    _auth: AdminRequired, body: CreateSourceRequest, temporal: TemporalClientDep
+    _auth: AdminRequired, db: DbDep, body: CreateSourceRequest, temporal: TemporalClientDep
 ) -> SourceResponse:
     try:
-        view = await SourceRegistry().create(
+        view = await SourceRegistry(db).create(
             name=body.name,
             adapter_key=body.adapter_key,
             adapter_config=dict(body.adapter_config),
@@ -92,14 +93,14 @@ async def create_source(
     except DuplicateSourceNameError as exc:
         raise HTTPException(status_code=409, detail=f"Source name already in use: {exc}")
 
-    await _sync_schedules(temporal)
+    await _sync_schedules(db, temporal)
 
     return SourceResponse.model_validate(view.model_dump())
 
 
 @router.get("", response_model=SourceListResponse)
-async def list_sources(_auth: AdminRequired) -> SourceListResponse:
-    items = await SourceRegistry().list_sources()
+async def list_sources(_auth: AdminRequired, db: DbDep) -> SourceListResponse:
+    items = await SourceRegistry(db).list_sources()
     return SourceListResponse(
         sources=[SourceListItemResponse.model_validate(item.model_dump()) for item in items],
         total=len(items),
@@ -107,9 +108,9 @@ async def list_sources(_auth: AdminRequired) -> SourceListResponse:
 
 
 @router.get("/{source_id}", response_model=SourceDetailResponse, responses=error_responses(404))
-async def get_source(_auth: AdminRequired, source_id: int) -> SourceDetailResponse:
+async def get_source(_auth: AdminRequired, db: DbDep, source_id: int) -> SourceDetailResponse:
     try:
-        detail = await SourceRegistry().get_source(source_id)
+        detail = await SourceRegistry(db).get_source(source_id)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
 
@@ -119,6 +120,7 @@ async def get_source(_auth: AdminRequired, source_id: int) -> SourceDetailRespon
 @router.patch("/{source_id}", response_model=SourceResponse, responses=error_responses(404))
 async def update_source(
     _auth: AdminRequired,
+    db: DbDep,
     source_id: int,
     body: UpdateSourceRequest,
     temporal: TemporalClientDep,
@@ -127,11 +129,11 @@ async def update_source(
         patch = body.model_dump(exclude_unset=True)
         if patch.get("adapter_config") is None:
             patch.pop("adapter_config", None)
-        view = await SourceRegistry().patch(source_id, **patch)
+        view = await SourceRegistry(db).patch(source_id, **patch)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
 
-    await _sync_schedules(temporal)
+    await _sync_schedules(db, temporal)
 
     return SourceResponse.model_validate(view.model_dump())
 
@@ -143,10 +145,14 @@ async def update_source(
     responses=error_responses(404),
 )
 async def trigger_source_run(
-    _auth: AdminRequired, source_id: int, temporal: TemporalClientDep
+    _auth: AdminRequired,
+    db: DbDep,
+    settings: SettingsDep,
+    source_id: int,
+    temporal: TemporalClientDep,
 ) -> TriggerRunResponse:
     try:
-        await SourceRegistry().get_source(source_id)
+        await SourceRegistry(db).get_source(source_id)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
 
@@ -163,7 +169,9 @@ async def trigger_source_run(
     return TriggerRunResponse(workflow_id=workflow_id, message="Source run started")
 
 
-async def _start_retry(temporal: TemporalClientDep, plan: RetryPlan) -> RetryResponse:
+async def _start_retry(
+    settings: Settings, temporal: TemporalClientDep, plan: RetryPlan
+) -> RetryResponse:
     await temporal.start_workflow(
         SourceRetryWorkflow.run,
         SourceRetryWorkflowInput(
@@ -190,17 +198,19 @@ async def _start_retry(temporal: TemporalClientDep, plan: RetryPlan) -> RetryRes
 )
 async def retry_source(
     _auth: AdminRequired,
+    db: DbDep,
+    settings: SettingsDep,
     source_id: int,
     temporal: TemporalClientDep,
 ) -> RetryResponse:
     try:
-        plan = await SourceRetry().retry_source(source_id)
+        plan = await SourceRetry(db).retry_source(source_id)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
     except NothingToRetryError:
         raise HTTPException(status_code=409, detail="No failed items to retry")
 
-    return await _start_retry(temporal, plan)
+    return await _start_retry(settings, temporal, plan)
 
 
 @router.post(
@@ -211,12 +221,14 @@ async def retry_source(
 )
 async def retry_source_run(
     _auth: AdminRequired,
+    db: DbDep,
+    settings: SettingsDep,
     source_id: int,
     run_id: int,
     temporal: TemporalClientDep,
 ) -> RetryResponse:
     try:
-        plan = await SourceRetry().retry_run(source_id, run_id)
+        plan = await SourceRetry(db).retry_run(source_id, run_id)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
     except RunNotFoundError:
@@ -224,7 +236,7 @@ async def retry_source_run(
     except NothingToRetryError:
         raise HTTPException(status_code=409, detail="No failed items to retry")
 
-    return await _start_retry(temporal, plan)
+    return await _start_retry(settings, temporal, plan)
 
 
 @router.post(
@@ -235,12 +247,14 @@ async def retry_source_run(
 )
 async def retry_source_item(
     _auth: AdminRequired,
+    db: DbDep,
+    settings: SettingsDep,
     source_id: int,
     item_id: int,
     temporal: TemporalClientDep,
 ) -> RetryResponse:
     try:
-        plan = await SourceRetry().retry_item(source_id, item_id)
+        plan = await SourceRetry(db).retry_item(source_id, item_id)
     except SourceNotFoundError:
         raise HTTPException(status_code=404, detail="Source not found")
     except SourceItemNotFoundError:
@@ -248,7 +262,7 @@ async def retry_source_item(
     except NothingToRetryError:
         raise HTTPException(status_code=409, detail="No failed attempt to retry")
 
-    return await _start_retry(temporal, plan)
+    return await _start_retry(settings, temporal, plan)
 
 
 @router.get(
@@ -258,6 +272,7 @@ async def retry_source_item(
 )
 async def list_source_items(
     _auth: AdminRequired,
+    db: DbDep,
     source_id: int,
     media_urls: MediaUrlResolverDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
@@ -265,7 +280,7 @@ async def list_source_items(
     status: SourceItemIngestState | None = None,
 ) -> SourceItemListResponse:
     try:
-        page = await SourceItemBrowser(media_urls).list_items(
+        page = await SourceItemBrowser(db, media_urls).list_items(
             source_id, limit=limit, offset=offset, status=status
         )
     except SourceNotFoundError:
@@ -287,6 +302,7 @@ async def list_source_items(
 )
 async def list_run_items(
     _auth: AdminRequired,
+    db: DbDep,
     source_id: int,
     run_id: int,
     media_urls: MediaUrlResolverDep,
@@ -294,7 +310,7 @@ async def list_run_items(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> RunItemListResponse:
     try:
-        page = await SourceItemBrowser(media_urls).list_run_items(
+        page = await SourceItemBrowser(db, media_urls).list_run_items(
             source_id, run_id, limit=limit, offset=offset
         )
     except SourceNotFoundError:

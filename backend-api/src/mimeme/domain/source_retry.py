@@ -19,7 +19,7 @@ from mimeme.db.schema import (
 )
 from mimeme.domain.source_item_browse import RunNotFoundError
 from mimeme.domain.source_registry import SourceNotFoundError
-from mimeme.shared import db
+from mimeme.db import Db
 
 
 class NothingToRetryError(Exception):
@@ -39,9 +39,12 @@ class RetryPlan(BaseModel, frozen=True):
 
 
 class SourceRetry:
+    def __init__(self, db: Db) -> None:
+        self._db = db
+
     async def retry_run(self, source_id: int, run_id: int) -> RetryPlan:
 
-        async with db.write_session() as session:
+        async with self._db.write_session() as session:
             dataset = await self._live_source_dataset_or_raise(session, source_id)
             run = (
                 await session.execute(
@@ -69,7 +72,7 @@ class SourceRetry:
 
     async def retry_source(self, source_id: int) -> RetryPlan:
 
-        async with db.write_session() as session:
+        async with self._db.write_session() as session:
             dataset = await self._live_source_dataset_or_raise(session, source_id)
             urls = (
                 (
@@ -86,7 +89,7 @@ class SourceRetry:
             return await self._reset_and_queue(session, urls, dataset)
 
     async def retry_item(self, source_id: int, source_item_id: int) -> RetryPlan:
-        async with db.write_session() as session:
+        async with self._db.write_session() as session:
             dataset = await self._live_source_dataset_or_raise(session, source_id)
             item = (
                 await session.execute(

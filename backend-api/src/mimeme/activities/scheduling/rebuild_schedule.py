@@ -24,7 +24,7 @@ from mimeme.domain.index_rebuild_schedule import (
     derive_rebuild_schedule_spec,
     plan_rebuild_schedule,
 )
-from mimeme.shared.config import settings
+from mimeme.shared.runtime import settings
 from mimeme.workflows.models import RebuildIndexWorkflowInput
 from mimeme.workflows.rebuild_index import RebuildIndexWorkflow
 

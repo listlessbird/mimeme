@@ -14,10 +14,12 @@ from mimeme.api.lifespan import lifespan
 from mimeme.api.middleware import register_middleware
 from mimeme.api.rate_limit import limiter, rate_limit_exceeded_handler
 from mimeme.api.routers import health, images, ingestion, jobs, search, sources
-from mimeme.shared.config import settings
+from mimeme.shared.config import Settings
 
 
-def create_app() -> FastAPI:
+def create_app(settings: Settings) -> FastAPI:
+    limiter.enabled = settings.http.rate_limit_enabled
+
     middleware = [
         Middleware(SlowAPIMiddleware),
         Middleware(
@@ -38,6 +40,7 @@ def create_app() -> FastAPI:
         middleware=middleware,
     )
 
+    app.state.settings = settings
     app.state.limiter = limiter
     app.add_exception_handler(
         RateLimitExceeded, cast(ExceptionHandler, rate_limit_exceeded_handler)
@@ -55,10 +58,11 @@ def create_app() -> FastAPI:
     return app
 
 
-app = create_app()
+app = create_app(Settings())
 
 
 def run() -> None:
+    settings = Settings()
     uvicorn.run(
         "mimeme.api.main:app",
         host="0.0.0.0",

@@ -11,20 +11,19 @@ import structlog
 from fastapi import FastAPI
 from sqlalchemy import select
 
-from mimeme.api.deps import get_index_manager
 from mimeme.api.services.text_encoder import SearchTextEncoder
 from mimeme.db.schema import IndexBuild
 from mimeme.domain.search_index import (
     SearchEncoderIncompatibleError,
     check_encoder_index_compatibility,
 )
-from mimeme.shared.config import settings
+from mimeme.env import Env
+from mimeme.shared.config import Settings
 from mimeme.shared.db import get_db
 from mimeme.shared.logging import setup_logging
-from mimeme.shared.services.storage import get_artifact_storage_service, get_media_storage_service
 
 
-def _startup_env_snapshot() -> dict[str, object]:
+def _startup_env_snapshot(settings: Settings) -> dict[str, object]:
     return {
         "app_env": settings.app_env,
         "debug": settings.debug,
@@ -51,7 +50,7 @@ def _startup_env_snapshot() -> dict[str, object]:
     }
 
 
-def _index_files_snapshot(version: str | None) -> dict[str, object]:
+def _index_files_snapshot(settings: Settings, version: str | None) -> dict[str, object]:
     if not version:
         return {"cache_version": None}
 
@@ -68,18 +67,14 @@ def _index_files_snapshot(version: str | None) -> dict[str, object]:
     }
 
 
-async def loop_lag_probe(interval_s: float = 0.1) -> None:
+async def loop_lag_probe(threshold_ms: float, interval_s: float = 0.1) -> None:
     log = structlog.get_logger()
     while True:
         started = time.monotonic()
         await asyncio.sleep(interval_s)
         lag_ms = (time.monotonic() - started - interval_s) * 1000
-        if lag_ms > settings.http.loop_lag_threshold_ms:
-            log.warning(
-                "event_loop_lag",
-                lag_ms=round(lag_ms, 2),
-                threshold_ms=settings.http.loop_lag_threshold_ms,
-            )
+        if lag_ms > threshold_ms:
+            log.warning("event_loop_lag", lag_ms=round(lag_ms, 2), threshold_ms=threshold_ms)
 
 
 def _preload_and_warm_text_encoder() -> None:
@@ -92,27 +87,31 @@ def _preload_and_warm_text_encoder() -> None:
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    log = structlog.get_logger()
+    settings: Settings = app.state.settings
     setup_logging("api")
+    log = structlog.get_logger()
 
     log.info("starting_app", env=settings.app_env)
-    log.info("startup_env", **_startup_env_snapshot())
+    log.info("startup_env", **_startup_env_snapshot(settings))
 
     settings.index.cache_dir.mkdir(parents=True, exist_ok=True)
 
+    env = await Env.create(settings)
+    app.state.env = env
+
     for role, storage in (
-        ("media", get_media_storage_service()),
-        ("artifact", get_artifact_storage_service()),
+        ("media", env.media_storage),
+        ("artifact", env.artifact_storage),
     ):
         try:
-            if storage.bucket_exists():
+            if await storage.bucket_exists():
                 log.info("storage_bucket_ready", role=role, bucket=storage.bucket)
             else:
                 log.warning("storage_bucket_unavailable", role=role, bucket=storage.bucket)
         except Exception as e:
             log.warning("storage_bucket_check_failed", role=role, error=str(e))
 
-    index_manager = get_index_manager()
+    index_manager = env.index_manager
     db_active_version: str | None = None
     db_embed_model: str | None = None
     autoloaded_version: str | None = None
@@ -183,10 +182,10 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         manager_num_vectors=index_manager.num_vectors,
         manager_is_text_loaded=index_manager.is_text_loaded,
         manager_has_text_index=index_manager.has_text_index(),
-        **_index_files_snapshot(active_version),
+        **_index_files_snapshot(settings, active_version),
     )
 
-    lag_probe_task = asyncio.create_task(loop_lag_probe())
+    lag_probe_task = asyncio.create_task(loop_lag_probe(settings.http.loop_lag_threshold_ms))
 
     try:
         yield
@@ -194,5 +193,6 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         lag_probe_task.cancel()
         with suppress(asyncio.CancelledError):
             await lag_probe_task
+        await env.aclose()
 
     log.info("shutting_down_app")

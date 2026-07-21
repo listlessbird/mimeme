@@ -176,8 +176,3 @@ class Settings(BaseSettings):
     inference: InferenceConfig = Field(default_factory=InferenceConfig)
     index: IndexConfig = Field(default_factory=IndexConfig)
     logging: LogConfig = Field(default_factory=LogConfig)
-
-
-# Transitional module global. Removed at the end of this slice once every
-# consumer receives Settings through the process composition root (Env).
-settings: Settings = Settings()

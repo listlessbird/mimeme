@@ -13,7 +13,7 @@ from temporalio.client import ScheduleSpec as TemporalScheduleSpec
 from mimeme.db.schema import SourceRunTrigger
 from mimeme.domain.source_schedule_reconcile import ExistingSchedule
 from mimeme.domain.source_schedule_spec import DesiredScheduleState, ScheduleSpec
-from mimeme.shared.config import settings
+from mimeme.shared.runtime import settings
 from mimeme.workflows.models import SourceSyncWorkflowInput
 from mimeme.workflows.source_sync import SourceSyncWorkflow
 

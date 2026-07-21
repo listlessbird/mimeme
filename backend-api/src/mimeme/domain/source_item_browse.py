@@ -19,7 +19,7 @@ from mimeme.db.schema import (
 )
 from mimeme.domain.image_ingest_input import ImageIngestInput, restore_image_ingest_input
 from mimeme.domain.source_registry import SourceNotFoundError
-from mimeme.shared import db
+from mimeme.db import Db
 from mimeme.shared.services.media_url import MediaUrlResolver
 
 
@@ -113,7 +113,8 @@ class RunItemsPage(BaseModel, frozen=True):
 
 
 class SourceItemBrowser:
-    def __init__(self, media_urls: MediaUrlResolver) -> None:
+    def __init__(self, db: Db, media_urls: MediaUrlResolver) -> None:
+        self._db = db
         self.media_urls = media_urls
 
     async def list_items(
@@ -124,7 +125,7 @@ class SourceItemBrowser:
         offset: int,
         status: SourceItemIngestState | None = None,
     ) -> SourceItemsPage:
-        async with db.read_session() as session:
+        async with self._db.read_session() as session:
             await self._live_source_or_raise(session, source_id)
 
             predicates = [SourceItem.source_id == source_id]
@@ -196,7 +197,7 @@ class SourceItemBrowser:
         self, source_id: int, run_id: int, *, limit: int, offset: int
     ) -> RunItemsPage:
 
-        async with db.read_session() as session:
+        async with self._db.read_session() as session:
             await self._live_source_or_raise(session, source_id)
 
             run = (

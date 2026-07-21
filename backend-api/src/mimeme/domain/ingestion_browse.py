@@ -20,7 +20,7 @@ from mimeme.db.schema import (
 )
 from mimeme.domain.image_ingest_input import ImageIngestInput, restore_image_ingest_input
 from mimeme.domain.source_item_browse import preview_from_metadata, resolve_thumbnail_url
-from mimeme.shared import db
+from mimeme.db import Db
 from mimeme.shared.services.media_url import MediaUrlResolver
 
 DEFAULT_LIVE_WINDOW = datetime.timedelta(minutes=5)
@@ -109,7 +109,8 @@ _DEDUPED = and_(
 
 
 class IngestionBrowser:
-    def __init__(self, media_urls: MediaUrlResolver) -> None:
+    def __init__(self, db: Db, media_urls: MediaUrlResolver) -> None:
+        self._db = db
         self.media_urls = media_urls
 
     async def list_attempts(
@@ -129,7 +130,7 @@ class IngestionBrowser:
         now: datetime.datetime | None = None,
     ) -> IngestionPage:
 
-        async with db.read_session() as session:
+        async with self._db.read_session() as session:
             predicates = self._predicates(
                 view=view,
                 stage=stage,
@@ -178,7 +179,7 @@ class IngestionBrowser:
 
     async def get_attempt(self, ingest_url_id: int) -> IngestionDetail:
 
-        async with db.read_session() as session:
+        async with self._db.read_session() as session:
             row = (
                 await session.execute(
                     self._with_joins(

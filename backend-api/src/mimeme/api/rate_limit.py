@@ -5,8 +5,6 @@ from slowapi import Limiter
 from slowapi.errors import RateLimitExceeded
 from starlette.requests import Request
 
-from mimeme.shared.config import settings
-
 
 def _get_connecting_ip(request: Request) -> str:
     cf_ip = request.headers.get("CF-Connecting-IP")
@@ -31,7 +29,6 @@ limiter = Limiter(
     default_limits=[],
     application_limits=[GLOBAL_LIMIT],
     storage_uri="memory://",
-    enabled=settings.http.rate_limit_enabled,
 )
 
 

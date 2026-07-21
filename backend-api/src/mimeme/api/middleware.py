@@ -10,8 +10,7 @@ from sqlalchemy.exc import TimeoutError as PoolTimeoutError
 from sqlalchemy.pool import QueuePool
 
 from mimeme.api.rate_limit import _get_connecting_ip
-from mimeme.shared.config import settings
-from mimeme.shared.db import begin_request_metrics, get_async_engine
+from mimeme.db import begin_request_metrics
 
 _SKIP_TIMING_PATHS = {"/ready", "/health"}
 
@@ -22,8 +21,9 @@ def register_middleware(app: FastAPI) -> None:
         if request.url.path in _SKIP_TIMING_PATHS:
             return await call_next(request)
 
+        env = request.app.state.env
         metrics = begin_request_metrics()
-        pool = get_async_engine().pool
+        pool = env.db.engine.pool
         pool_in_use = pool.checkedout() if isinstance(pool, QueuePool) else 0
         started = time.monotonic()
         status_code = 500
@@ -31,7 +31,7 @@ def register_middleware(app: FastAPI) -> None:
 
         try:
             try:
-                async with asyncio.timeout(settings.http.request_timeout_s):
+                async with asyncio.timeout(env.settings.http.request_timeout_s):
                     response = await call_next(request)
             except TimeoutError:
                 timed_out = True

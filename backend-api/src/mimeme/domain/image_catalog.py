@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mimeme.db.schema import Annotation, Processing, ProcessingStatus
 from mimeme.db.schema import ORMImage as Image
 from mimeme.domain.index_freshness import IndexFreshness
-from mimeme.shared import db
+from mimeme.db import Db
 from mimeme.shared.services.api_storage import ApiStorage
 from mimeme.shared.services.media_url import MediaUrlResolver
 
@@ -93,10 +93,12 @@ def project_image_status(proc: Processing | None) -> ImageCatalogStatus:
 class ImageCatalog:
     def __init__(
         self,
+        db: Db,
         media_storage: ApiStorage,
         artifact_storage: ApiStorage,
         media_urls: MediaUrlResolver,
     ) -> None:
+        self._db = db
         self._media_storage = media_storage
         self._artifact_storage = artifact_storage
         self._media_urls = media_urls
@@ -111,7 +113,7 @@ class ImageCatalog:
         sort: Literal["newest", "oldest"] = "newest",
     ) -> ImageCatalogPage:
 
-        async with db.read_session() as session:
+        async with self._db.read_session() as session:
             id_query = select(Image.id)
 
             if dataset:
@@ -151,7 +153,7 @@ class ImageCatalog:
             )
 
     async def get_image(self, image_id: int) -> ImageCatalogImage:
-        async with db.read_session() as session:
+        async with self._db.read_session() as session:
             rows = await self._load_images(session, [image_id])
 
         if not rows:
@@ -160,7 +162,7 @@ class ImageCatalog:
 
     async def delete_image(self, image_id: int) -> None:
 
-        async with db.write_session() as session:
+        async with self._db.write_session() as session:
             row = (
                 await session.execute(
                     select(Image, Processing)

@@ -14,7 +14,8 @@ from botocore.client import ClientError
 from botocore.config import Config as BotoConfig
 from pydantic import BaseModel
 
-from mimeme.shared.config import Settings, settings
+from mimeme.shared.config import Settings
+from mimeme.shared.runtime import settings
 
 if TYPE_CHECKING:
     from types_boto3_s3 import S3Client

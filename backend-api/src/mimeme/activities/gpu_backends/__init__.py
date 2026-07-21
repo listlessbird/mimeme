@@ -13,7 +13,7 @@ def get_gpu_backend() -> GpuBackend:
     if _instance is None:
         with _lock:
             if _instance is None:
-                from mimeme.shared.config import settings
+                from mimeme.shared.runtime import settings
 
                 backend_type = getattr(settings, "gpu_backend", "local")
 

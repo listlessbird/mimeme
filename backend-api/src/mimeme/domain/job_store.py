@@ -26,7 +26,7 @@ from mimeme.domain.job_rules import (
     mint_rebuild_job,
     project_job,
 )
-from mimeme.shared import db
+from mimeme.db import Db
 
 
 class IndexFreshnessStatus(BaseModel, frozen=True):
@@ -35,6 +35,9 @@ class IndexFreshnessStatus(BaseModel, frozen=True):
 
 
 class ApiJobStore:
+    def __init__(self, db: Db) -> None:
+        self._db = db
+
     async def create_ingest_job(
         self,
         *,
@@ -47,7 +50,7 @@ class ApiJobStore:
         duplicates = len(inputs) - len(unique_inputs)
         job_id, workflow_id = mint_ingest_job()
 
-        async with db.write_session() as session:
+        async with self._db.write_session() as session:
             job = Job(id=job_id, type=JobType.INGEST)
             session.add(job)
             await session.flush()
@@ -85,7 +88,7 @@ class ApiJobStore:
     ) -> RebuildJobCreation:
         job_id, workflow_id = mint_rebuild_job()
 
-        async with db.write_session() as session:
+        async with self._db.write_session() as session:
             job = Job(id=job_id, type=JobType.REBUILD_INDEX)
             session.add(job)
             await session.flush()
@@ -100,7 +103,7 @@ class ApiJobStore:
         )
 
     async def record_workflow_id(self, job_id: str, workflow_id: str) -> None:
-        async with db.write_session() as session:
+        async with self._db.write_session() as session:
             job = await session.get(Job, job_id)
             if job is None:
                 raise JobLifecycleNotFoundError(f"Job {job_id} not found")
@@ -108,7 +111,7 @@ class ApiJobStore:
             await session.flush()
 
     async def get_job(self, job_id: str) -> JobView:
-        async with db.read_session() as session:
+        async with self._db.read_session() as session:
             job = await session.get(Job, job_id)
             if job is None:
                 raise JobLifecycleNotFoundError(f"Job {job_id} not found")
@@ -121,7 +124,7 @@ class ApiJobStore:
         job_type: JobType | None,
         limit: int,
     ) -> JobList:
-        async with db.read_session() as session:
+        async with self._db.read_session() as session:
             stmt = select(Job)
 
             if status:
@@ -138,14 +141,14 @@ class ApiJobStore:
             return JobList(jobs=views, total=total)
 
     async def list_index_builds(self, *, limit: int) -> list[IndexBuildView]:
-        async with db.read_session() as session:
+        async with self._db.read_session() as session:
             rows = await session.scalars(
                 select(IndexBuild).order_by(IndexBuild.created_at.desc()).limit(limit)
             )
             return [IndexBuildView.model_validate(row) for row in rows.all()]
 
     async def get_index_freshness(self) -> IndexFreshnessStatus:
-        async with db.read_session() as session:
+        async with self._db.read_session() as session:
             view = await session.run_sync(lambda sync_session: IndexFreshness(sync_session).get())
             active_version = await session.scalar(
                 select(IndexBuild.version).where(IndexBuild.is_active.is_(True))
@@ -153,7 +156,7 @@ class ApiJobStore:
         return IndexFreshnessStatus(view=view, active_version=active_version)
 
     async def request_cancellation(self, job_id: str) -> JobCancellation:
-        async with db.read_session() as session:
+        async with self._db.read_session() as session:
             job = await session.get(Job, job_id)
             if job is None:
                 raise JobLifecycleNotFoundError(f"Job {job_id} not found")
@@ -161,7 +164,7 @@ class ApiJobStore:
             return JobCancellation(workflow_id=job.workflow_id)
 
     async def mark_cancelled(self, job_id: str) -> None:
-        async with db.write_session() as session:
+        async with self._db.write_session() as session:
             job = await session.get(Job, job_id)
             if job is None:
                 raise JobLifecycleNotFoundError(f"Job {job_id} not found")
@@ -169,7 +172,7 @@ class ApiJobStore:
             await session.flush()
 
     async def release_rebuild_claim(self, job_id: str) -> None:
-        async with db.write_session() as session:
+        async with self._db.write_session() as session:
 
             def _release(sync_session: Session) -> None:
                 try:

@@ -12,7 +12,7 @@ from mimeme.activities.embedding.models import (
 )
 from mimeme.activities.vision.models import AnnotateImageInput, AnnotateImageOutput
 from mimeme.domain.inference import to_modal_embedding_item
-from mimeme.shared.config import settings
+from mimeme.shared.runtime import settings
 
 if TYPE_CHECKING:
     from mimeme.modal_app import EmbeddingService, VisionService

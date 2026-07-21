@@ -10,7 +10,7 @@ from axiom_py import Client
 from axiom_py.structlog import AxiomProcessor
 from temporalio import activity
 
-from mimeme.shared.config import settings
+from mimeme.shared.runtime import settings
 
 _axiom_client: Client | None = None
 

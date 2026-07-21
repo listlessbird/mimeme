@@ -8,7 +8,7 @@ import structlog
 from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader
 
-from mimeme.shared.config import settings
+from mimeme.shared.config import Settings
 
 log = structlog.getLogger()
 
@@ -20,7 +20,7 @@ class ApiKeyRole(StrEnum):
     READONLY = "readonly"
 
 
-def _resolve_role(api_key: str | None) -> ApiKeyRole | None:
+def _resolve_role(settings: Settings, api_key: str | None) -> ApiKeyRole | None:
     if api_key is None:
         return None
 
@@ -40,10 +40,11 @@ def _resolve_role(api_key: str | None) -> ApiKeyRole | None:
 def require_admin(
     request: Request, api_key: Annotated[str | None, Security(_api_key_header)] = None
 ) -> ApiKeyRole:
+    settings: Settings = request.app.state.env.settings
     if settings.app_env == "development":
         return ApiKeyRole.ADMIN
 
-    role = _resolve_role(api_key)
+    role = _resolve_role(settings, api_key)
 
     if role != ApiKeyRole.ADMIN:
         log.warning(
@@ -62,10 +63,11 @@ def require_readonly(
     request: Request,
     api_key: Annotated[str | None, Security(_api_key_header)] = None,
 ) -> ApiKeyRole:
+    settings: Settings = request.app.state.env.settings
     if settings.app_env == "development":
         return ApiKeyRole.ADMIN
 
-    role = _resolve_role(api_key)
+    role = _resolve_role(settings, api_key)
     if role is None:
         log.warning(
             "auth_denied",
