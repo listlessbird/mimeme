@@ -5,7 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 from mimeme.db.schema import JobStatus, JobType
-from mimeme.domain.job_rules import JobResultPayload
+from mimeme.job import Result as JobResultPayload
 
 
 class JobResponse(BaseModel):

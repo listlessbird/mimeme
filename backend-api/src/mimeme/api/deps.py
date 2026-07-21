@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from typing import Annotated
+from typing import TYPE_CHECKING, Annotated
 
 from fastapi import Depends, Request
 from temporalio.client import Client
 
 from mimeme import storage
-from mimeme.activities.indexing import FaissIndexManager
 from mimeme.db import Db
+
+if TYPE_CHECKING:
+    from mimeme.activities.indexing import FaissIndexManager
 from mimeme.env import Env
 from mimeme.shared.config import Settings
 from mimeme.shared.services.media_url import MediaUrlResolver
@@ -59,7 +61,7 @@ def get_index_manager(request: Request) -> FaissIndexManager:
     return request.app.state.env.index_manager
 
 
-IndexManagerDep = Annotated[FaissIndexManager, Depends(get_index_manager)]
+IndexManagerDep = Annotated["FaissIndexManager", Depends(get_index_manager)]
 
 
 async def get_temporal_client(request: Request) -> Client:

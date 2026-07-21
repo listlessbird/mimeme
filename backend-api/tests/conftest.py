@@ -199,7 +199,6 @@ def _patch_session_scope(db_session: Session, monkeypatch: pytest.MonkeyPatch) -
 
     # Also patch at every import site so local references pick up the override
     for module_path in [
-        "mimeme.activities.workflow_state.activities.session_scope",
         "mimeme.activities.storage.activities.session_scope",
         "mimeme.activities.indexing.activities.session_scope",
         "mimeme.activities.ingestion.activities.session_scope",
