@@ -107,7 +107,7 @@ function NavigateSearchBar({ isSearching }: { isSearching: boolean }) {
 					type="text"
 					value={query}
 					onChange={(e) => setQuery(e.target.value)}
-					placeholder="describe the meme you're looking for..."
+					placeholder="search..."
 					className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
 					// oxlint-disable-next-line jsx-a11y/no-autofocus -- hero search is the primary action on this page
 					autoFocus
