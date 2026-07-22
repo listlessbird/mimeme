@@ -1,4 +1,3 @@
-from mimeme.activities.embedding import embed_batch_activity
 from mimeme.activities.indexing import (
     build_index_activity,
     garbage_collect_indexes_activity,
@@ -17,7 +16,6 @@ from mimeme.activities.storage import (
     download_image_activity,
     process_image_activity,
 )
-from mimeme.activities.vision import annotate_image_activity
 from mimeme.activities.workflow_state import (
     complete_ingest_job_activity,
     complete_rebuild_job_activity,
@@ -45,8 +43,6 @@ ACTIVITIES = [
     cleanup_staged_upload_activity,
     process_image_activity,
     cleanup_temp_file_activity,
-    annotate_image_activity,
-    embed_batch_activity,
     build_index_activity,
     swap_index_activity,
     garbage_collect_indexes_activity,
@@ -78,8 +74,6 @@ __all__ = [
     "cleanup_staged_upload_activity",
     "process_image_activity",
     "cleanup_temp_file_activity",
-    "annotate_image_activity",
-    "embed_batch_activity",
     "build_index_activity",
     "swap_index_activity",
     "garbage_collect_indexes_activity",

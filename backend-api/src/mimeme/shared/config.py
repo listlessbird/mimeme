@@ -113,6 +113,20 @@ class ComputeConfig(BaseSettings):
     modal_hf_cache_volume_name: str = "findmeme-hf-cache"
     modal_s3_secret_name: str = "findmeme-s3"
 
+    gateway_url: str = "http://127.0.0.1:8010"
+    bind_host: str = "0.0.0.0"
+    bind_port: int = 8010
+    socket_dir: Path = Path("/tmp/mimeme-compute")
+    request_timeout_s: float = 60.0
+    poll_interval_s: float = 5.0
+    heartbeat_timeout_s: float = 30.0
+    child_grace_s: float = 5.0
+
+    @field_validator("socket_dir", mode="before")
+    @classmethod
+    def _parse_socket_dir(cls, v: str | Path) -> Path:
+        return Path(v)
+
 
 class InferenceConfig(BaseSettings):
     model_config = SettingsConfigDict(

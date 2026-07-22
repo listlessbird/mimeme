@@ -58,6 +58,42 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 CMD ["sh", "-c", "alembic upgrade head && uvicorn mimeme.api.main:app --host 0.0.0.0 --port 8000"]
 
+FROM builder AS compute-builder
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-editable --extra local-gpu
+
+FROM base AS compute
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 libglib2.0-0 libvips42 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --create-home --shell /bin/bash appuser
+
+WORKDIR /app
+
+COPY --from=compute-builder --chown=appuser:appuser /app/.venv /app/.venv
+
+RUN mkdir -p /app/.cache/huggingface /tmp/mimeme-compute && \
+    chown appuser:appuser /app/.cache/huggingface /tmp/mimeme-compute
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    HF_HOME="/app/.cache/huggingface" \
+    HUGGINGFACE_HUB_CACHE="/app/.cache/huggingface/hub" \
+    COMPUTE_BIND_HOST=0.0.0.0 \
+    COMPUTE_BIND_PORT=8010 \
+    COMPUTE_SOCKET_DIR=/tmp/mimeme-compute
+
+USER appuser
+
+EXPOSE 8010
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+    CMD curl -f http://localhost:8010/ready || exit 1
+
+CMD ["python", "-m", "mimeme.compute"]
+
 FROM base AS worker
 
 RUN useradd --create-home --shell /bin/bash appuser
