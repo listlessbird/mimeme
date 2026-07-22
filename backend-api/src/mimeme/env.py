@@ -9,6 +9,7 @@ from temporalio.contrib.pydantic import pydantic_data_converter
 from mimeme import inference, storage
 from mimeme.db import Db
 from mimeme.inference import Client as InferenceClient
+from mimeme.ingest.facts import ComputeImages, Images
 from mimeme.shared.config import ArtifactConfig, MediaConfig, Settings
 from mimeme.shared.services.media_url import MediaUrlResolver
 
@@ -36,6 +37,7 @@ class Env:
         media_urls: MediaUrlResolver,
         http: httpx.AsyncClient,
         inference: InferenceClient,
+        image_facts: Images,
     ) -> None:
         self.settings = settings
         self.db = db
@@ -45,6 +47,7 @@ class Env:
         self.media_urls = media_urls
         self.http = http
         self.inference = inference
+        self.image_facts = image_facts
 
     @classmethod
     async def create(cls, settings: Settings) -> Self:
@@ -58,6 +61,7 @@ class Env:
         media_urls = MediaUrlResolver(settings.media.public_base_url)
         http = httpx.AsyncClient(timeout=settings.compute.request_timeout_s)
         inference_client = inference.create(settings, http)
+        image_facts = ComputeImages(http, base_url=settings.compute.gateway_url)
         return cls(
             settings=settings,
             db=db,
@@ -67,6 +71,7 @@ class Env:
             media_urls=media_urls,
             http=http,
             inference=inference_client,
+            image_facts=image_facts,
         )
 
     async def aclose(self) -> None:

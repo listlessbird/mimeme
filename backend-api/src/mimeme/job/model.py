@@ -12,7 +12,7 @@ from mimeme.db.schema import (
     JobType,
     RebuildTrigger,
 )
-from mimeme.domain.image_ingest_input import ImageIngestInput
+from mimeme.ingest.model import Source
 
 JOB_ERROR_LIMIT = 2000
 INGEST_URL_ERROR_LIMIT = 1000
@@ -131,7 +131,7 @@ class SourceIngestItem(BaseModel, frozen=True, extra="forbid"):
 
 class IngestUrlRef(BaseModel, frozen=True, extra="forbid"):
     id: int
-    input: ImageIngestInput
+    input: Source
 
 
 class IngestInit(BaseModel, frozen=True, extra="forbid"):

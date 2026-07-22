@@ -1,4 +1,4 @@
-from mimeme.job.activity import INGEST_STATE, REBUILD_STATE, JobActivities
+from mimeme.job.activity import REBUILD_STATE, JobActivities
 from mimeme.job.model import (
     AnnotationSave,
     BuildView,
@@ -74,7 +74,6 @@ from mimeme.job.ops import (
 )
 
 __all__ = [
-    "INGEST_STATE",
     "REBUILD_STATE",
     "AnnotationSave",
     "BuildView",

@@ -17,7 +17,8 @@ from mimeme.db.schema import (
     RebuildTrigger,
     SearchIndexState,
 )
-from mimeme.domain.image_ingest_input import RemoteImageUrlInput, StagedUploadInput
+from mimeme.ingest.model import RemoteUrl as RemoteImageUrlInput
+from mimeme.ingest.model import Staged as StagedUploadInput
 from mimeme.job import ops
 from mimeme.job.model import (
     ClaimOwnership,

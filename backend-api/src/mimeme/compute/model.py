@@ -9,6 +9,8 @@ Role = Literal["image", "inference", "search", "index"]
 ENABLED_ROLES: tuple[Role, ...] = ("image", "inference")
 RESERVED_ROLES: tuple[Role, ...] = ("search", "index")
 
+StorageRole = Literal["media", "artifacts"]
+
 
 class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")

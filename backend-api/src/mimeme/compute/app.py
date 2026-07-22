@@ -16,6 +16,7 @@ from mimeme.compute.model import (
     JobSpec,
     JobState,
     Readiness,
+    StorageRole,
 )
 from mimeme.compute.supervisor import ChildDead, Supervisor
 from mimeme.compute.workspace import Workspace
@@ -26,6 +27,7 @@ _MAX_IMAGE_BYTES = 64 * 1024 * 1024
 
 class InspectRequest(BaseModel):
     key: str
+    role: StorageRole = "media"
 
 
 def _storage_config(config: MediaConfig | ArtifactConfig) -> storage.Config:
@@ -75,10 +77,12 @@ def create_app(settings: Settings) -> FastAPI:
     @app.post("/v1/image/inspect", response_model=ImageInfo)
     async def image_inspect(request: InspectRequest) -> ImageInfo:
         supervisor: Supervisor = app.state.supervisor
-        media: storage.Store = app.state.media
+        store: storage.Store = (
+            app.state.artifacts if request.role == "artifacts" else app.state.media
+        )
         workspace = Workspace.create(workspace_dir, "inspect")
         try:
-            data = await media.read_bytes(storage.Object(request.key), max_bytes=_MAX_IMAGE_BYTES)
+            data = await store.read_bytes(storage.Object(request.key), max_bytes=_MAX_IMAGE_BYTES)
             path = workspace.write_atomic("input", data)
             call = InspectCall(path=str(path))
             try:

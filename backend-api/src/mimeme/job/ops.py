@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from mimeme.db import Db
 from mimeme.db.schema import Job, JobStatus, JobType, RebuildTrigger
-from mimeme.domain.image_ingest_input import ImageIngestInput, RemoteImageUrlInput
+from mimeme.ingest.model import RemoteUrl, Source
 from mimeme.job import rule
 from mimeme.job.model import (
     BuildView,
@@ -32,7 +32,7 @@ _TERMINAL = (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED)
 async def create_ingest(
     db: Db,
     *,
-    inputs: list[ImageIngestInput],
+    inputs: list[Source],
     dataset: str | None,
     tags: list[str],
     callback_url: str | None,
@@ -44,7 +44,7 @@ async def create_ingest(
         store = Store(session)
         await store.add_job(job_id=job_id, job_type=JobType.INGEST)
         for item in unique:
-            if isinstance(item, RemoteImageUrlInput):
+            if isinstance(item, RemoteUrl):
                 await store.add_ingest_url(job_id=job_id, input_kind=item.kind, url=item.url)
             else:
                 await store.add_ingest_url(

@@ -19,7 +19,7 @@ from mimeme.db.schema import (
     ProcessingStatus,
     SearchIndexState,
 )
-from mimeme.domain.image_ingest_input import restore_image_ingest_input
+from mimeme.ingest.model import restore
 from mimeme.job import rule
 from mimeme.job.model import (
     INGEST_URL_ERROR_LIMIT,
@@ -179,7 +179,7 @@ class Store:
             urls=[
                 IngestUrlRef(
                     id=row.id,
-                    input=restore_image_ingest_input(
+                    input=restore(
                         kind=row.input_kind,
                         url=row.url,
                         artifact_key=row.artifact_key,
