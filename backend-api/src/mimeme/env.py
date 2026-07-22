@@ -12,6 +12,7 @@ from mimeme.inference import Client as InferenceClient
 from mimeme.ingest.facts import ComputeImages, Images
 from mimeme.shared.config import ArtifactConfig, MediaConfig, Settings
 from mimeme.shared.services.media_url import MediaUrlResolver
+from mimeme.source.http import Http as SourceHttp
 
 
 def _storage_config(config: MediaConfig | ArtifactConfig) -> storage.Config:
@@ -38,6 +39,7 @@ class Env:
         http: httpx.AsyncClient,
         inference: InferenceClient,
         image_facts: Images,
+        source_http: SourceHttp,
     ) -> None:
         self.settings = settings
         self.db = db
@@ -48,6 +50,7 @@ class Env:
         self.http = http
         self.inference = inference
         self.image_facts = image_facts
+        self.source_http = source_http
 
     @classmethod
     async def create(cls, settings: Settings) -> Self:
@@ -72,6 +75,7 @@ class Env:
             http=http,
             inference=inference_client,
             image_facts=image_facts,
+            source_http=SourceHttp(http),
         )
 
     async def aclose(self) -> None:
