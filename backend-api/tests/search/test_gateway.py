@@ -107,6 +107,19 @@ async def test_gateway_hydrates_and_verifies_generation_before_child_load(
     assert list(tmp_path.iterdir()) == []
 
 
+async def test_gateway_clear_restarts_search_without_a_serving_generation(tmp_path: Path) -> None:
+    store = Memory()
+    supervisor = _Supervisor()
+    gateway = Gateway(supervisor, artifacts=store, workspace_dir=tmp_path)
+    await gateway.load(await _generation(store, "v1"))
+    await gateway.switch("v1")
+
+    status = await gateway.clear()
+
+    assert supervisor.restarts == 1
+    assert status.serving_version is None
+
+
 async def test_gateway_restarts_a_dead_child_and_returns_bounded_unavailability(
     tmp_path: Path,
 ) -> None:

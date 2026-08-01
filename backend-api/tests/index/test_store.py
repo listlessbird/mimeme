@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy.orm import Session
 from tests.factories import (
     create_image,
@@ -51,6 +52,11 @@ class _Activation:
     async def status(self) -> search.Status:
         return search.Status(ready=self.serving is not None, serving_version=self.serving)
 
+    async def clear(self) -> search.Status:
+        self.serving = None
+        self.candidate = None
+        return await self.status()
+
 
 async def test_prepare_claims_and_freezes_object_reference_snapshot_atomically(
     index_db: SavepointDb, run_sync_seed
@@ -90,6 +96,58 @@ async def test_prepare_claims_and_freezes_object_reference_snapshot_atomically(
         )
     ]
     assert (await job_ops.find_exn(index_db, job_id)).status is JobStatus.RUNNING
+
+
+async def test_prepare_retry_resumes_its_own_claim(index_db: SavepointDb, run_sync_seed) -> None:
+    class FlakyMemory(Memory):
+        failed = False
+
+        async def stat(self, obj: storage.Object) -> storage.Info | None:
+            if not self.failed:
+                self.failed = True
+                raise storage.Unavailable("temporary outage")
+            return await super().stat(obj)
+
+    def seed(session: Session) -> str:
+        job = create_job(session=session, type=JobType.REBUILD_INDEX)
+        image = create_image(session=session)
+        processing = create_processing(session=session, image=image)
+        processing.embed_status = ProcessingStatus.DONE
+        processing.embed_model = "test/embed"
+        processing.embed_dim = 2
+        processing.embed_s3_key = "embeddings/retry.npy"
+        session.flush()
+        create_search_index_state(session=session, desired_generation=2, active_generation=1)
+        return job.id
+
+    job_id = await run_sync_seed(seed)
+    request = index.PrepareInput(
+        job_id=job_id,
+        workflow_id=rule.workflow_id(job_id),
+        trigger=index.Trigger.MANUAL,
+        model="test/embed",
+        index_type="flat",
+    )
+    artifacts = FlakyMemory()
+
+    with pytest.raises(storage.Unavailable):
+        await ops.prepare(index_db, artifacts, Settings(), request)
+    prepared = await ops.prepare(index_db, artifacts, Settings(), request)
+
+    assert prepared.decision == "build"
+    assert prepared.build is not None and prepared.build.target_generation == 2
+
+
+async def test_startup_reconciliation_clears_compute_when_db_has_no_active_version(
+    index_db: SavepointDb,
+) -> None:
+    remote = _Activation()
+    remote.serving = "orphaned"
+
+    status = await ops.reconcile(index_db, Memory(), remote)
+
+    assert status is not None
+    assert status.serving_version is None
 
 
 async def test_activation_commit_is_atomic_and_releases_the_claim(

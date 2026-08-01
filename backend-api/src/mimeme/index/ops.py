@@ -22,7 +22,6 @@ from mimeme.index.model import (
     Trigger,
 )
 from mimeme.index.store import Store
-from mimeme.job import rule as job_rule
 from mimeme.job.model import ClaimOwnership, StateMissing
 from mimeme.job.store import Store as JobStore
 from mimeme.shared.config import Settings
@@ -41,6 +40,7 @@ async def prepare(
         jobs = JobStore(session)
         view = await jobs.lock_freshness()
         claim = view.active_claim
+        owns_claim = claim is not None and claim.job_id == input.job_id
         if claim is not None:
             owner = await session.get(Job, claim.job_id)
             expired = claim.claimed_at + timedelta(
@@ -54,7 +54,8 @@ async def prepare(
                     )
                 await jobs.release(job_id=claim.job_id)
                 view = await jobs.lock_freshness()
-        if view.active_claim is not None:
+                owns_claim = False
+        if view.active_claim is not None and not owns_claim:
             return Prepared(decision="busy", job_id=input.job_id)
         if not view.is_stale and not input.force:
             if input.trigger is Trigger.MANUAL and input.job_id is not None:
@@ -73,15 +74,19 @@ async def prepare(
             return Prepared(decision="clean", job_id=input.job_id)
         job_id = input.job_id
         if input.trigger is Trigger.SCHEDULED:
-            job_id, _ = job_rule.mint_rebuild()
-            await jobs.add_job(
-                job_id=job_id,
-                job_type=JobType.REBUILD_INDEX,
-                workflow_id=input.workflow_id,
-            )
+            assert job_id is not None
+            if await session.get(Job, job_id) is None:
+                await jobs.add_job(
+                    job_id=job_id,
+                    job_type=JobType.REBUILD_INDEX,
+                    workflow_id=input.workflow_id,
+                )
         assert job_id is not None
-        claim_result = await jobs.claim(job_id=job_id, force=input.force, now=datetime.now(UTC))
-        target_generation = claim_result.view.rebuild_target_generation
+        if owns_claim:
+            target_generation = view.rebuild_target_generation
+        else:
+            claim_result = await jobs.claim(job_id=job_id, force=input.force, now=datetime.now(UTC))
+            target_generation = claim_result.view.rebuild_target_generation
         assert target_generation is not None
         await jobs.mark_running(job_id)
         snapshot = await Store(session).snapshot(
@@ -161,7 +166,14 @@ async def reconcile(
     async with db.read_session() as session:
         version = await Store(session).active_version()
     if version is None:
-        return None
+        status = await remote.status()
+        if (
+            status.serving_version is None
+            and status.candidate_version is None
+            and status.retained_version is None
+        ):
+            return status
+        return await remote.clear()
     raw = await artifacts.read_bytes(
         storage.Object(f"indexes/{version}/complete.json"), max_bytes=_MANIFEST_MAX
     )

@@ -61,6 +61,9 @@ class Remote:
             json=Rollback(failed_version=failed_version).model_dump(),
         )
 
+    async def clear(self) -> Status:
+        return await self._request("POST", "/v1/search/clear", Status)
+
     async def close(self) -> None:
         # The environment owns the shared HTTP client.
         return None

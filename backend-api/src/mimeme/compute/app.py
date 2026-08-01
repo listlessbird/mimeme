@@ -147,6 +147,14 @@ def create_app(settings: Settings) -> FastAPI:
         except search.Error as exc:
             raise _search_http(exc) from exc
 
+    @app.post("/v1/search/clear", response_model=search.Status)
+    async def search_clear() -> search.Status:
+        gateway: SearchGateway = app.state.search
+        try:
+            return await gateway.clear()
+        except search.Error as exc:
+            raise _search_http(exc) from exc
+
     @app.post("/v1/image/inspect", response_model=ImageInfo)
     async def image_inspect(request: InspectRequest) -> ImageInfo:
         supervisor: Supervisor = app.state.supervisor

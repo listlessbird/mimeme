@@ -4,6 +4,7 @@ import asyncio
 from typing import Protocol
 
 from temporalio import activity
+from temporalio.exceptions import ApplicationError
 
 from mimeme import search, storage
 from mimeme.db import Db
@@ -29,13 +30,24 @@ class Activities:
 
     @activity.defn(name=rule.PREPARE_ACTIVITY)
     async def prepare(self, input: PrepareInput) -> Prepared:
-        activity.logger.info("index prepare started", extra={"job_id": input.job_id})
-        result = await index.prepare(self._env.db, self._env.artifacts, self._env.settings, input)
-        activity.logger.info(
-            "index prepare finished",
-            extra={"job_id": result.job_id, "decision": result.decision},
-        )
-        return result
+        try:
+            activity.logger.info("index prepare started", extra={"job_id": input.job_id})
+            result = await index.prepare(
+                self._env.db, self._env.artifacts, self._env.settings, input
+            )
+            activity.logger.info(
+                "index prepare finished",
+                extra={"job_id": result.job_id, "decision": result.decision},
+            )
+            return result
+        except BaseException as failure:
+            terminal = _terminal(failure)
+            if input.job_id is not None and (
+                terminal or activity.info().attempt >= rule.PREPARE_MAX_ATTEMPTS
+            ):
+                await _bookkeep_failure(self._env, input.job_id, failure, version=None)
+            _raise_terminal(failure, terminal)
+            raise
 
     @activity.defn(name=rule.BUILD_ACTIVITY)
     async def build(self, request: Build) -> Result:
@@ -69,26 +81,19 @@ class Activities:
                 "index build failed",
                 extra={"job_id": request.job_id, "error": str(failure)},
             )
-            try:
-                final_attempt = activity.info().attempt >= rule.BUILD_MAX_ATTEMPTS
-                if isinstance(failure, asyncio.CancelledError) or final_attempt:
-                    await index.fail(
-                        self._env.db,
-                        job_id=request.job_id,
-                        error=str(failure),
-                        cancelled=isinstance(failure, asyncio.CancelledError),
-                    )
-                    await index.cleanup_incomplete(
-                        self._env.artifacts,
-                        version=request.version,
-                        protect=set(),
-                    )
-            except Exception:
-                pass
+            terminal = _terminal(failure)
+            if (
+                isinstance(failure, asyncio.CancelledError)
+                or terminal
+                or activity.info().attempt >= rule.BUILD_MAX_ATTEMPTS
+            ):
+                await _bookkeep_failure(self._env, request.job_id, failure, version=request.version)
+            _raise_terminal(failure, terminal)
             raise
 
     @activity.defn(name=rule.ACTIVATE_ACTIVITY)
     async def activate(self, input: ActivateInput) -> Activated:
+        heartbeat = asyncio.create_task(_activation_heartbeats(input.job_id))
         try:
             activity.logger.info("index activation started", extra={"job_id": input.job_id})
             result = await index.activate(
@@ -108,25 +113,83 @@ class Activities:
                 "index activation failed",
                 extra={"job_id": input.job_id, "error": str(failure)},
             )
-            try:
-                final_attempt = activity.info().attempt >= rule.ACTIVATE_MAX_ATTEMPTS
-                if isinstance(failure, asyncio.CancelledError) or final_attempt:
-                    await index.fail(
-                        self._env.db,
-                        job_id=input.job_id,
-                        error=str(failure),
-                        cancelled=isinstance(failure, asyncio.CancelledError),
-                    )
-                    version = (
-                        input.result.manifest.version
-                        if input.result is not None and input.result.manifest is not None
-                        else None
-                    )
-                    await index.cleanup_incomplete(
-                        self._env.artifacts,
-                        version=version,
-                        protect=set(),
-                    )
-            except Exception:
-                pass
+            terminal = _terminal(failure)
+            if (
+                isinstance(failure, asyncio.CancelledError)
+                or terminal
+                or activity.info().attempt >= rule.ACTIVATE_MAX_ATTEMPTS
+            ):
+                version = (
+                    input.result.manifest.version
+                    if input.result is not None and input.result.manifest is not None
+                    else None
+                )
+                await _bookkeep_failure(self._env, input.job_id, failure, version=version)
+            _raise_terminal(failure, terminal)
             raise
+        finally:
+            heartbeat.cancel()
+            try:
+                await heartbeat
+            except asyncio.CancelledError:
+                pass
+
+
+def _terminal(failure: BaseException) -> bool:
+    return isinstance(
+        failure,
+        (
+            ValueError,
+            storage.Invalid,
+            storage.Integrity,
+            storage.Missing,
+            storage.Denied,
+            search.Invalid,
+            search.Incompatible,
+        ),
+    )
+
+
+def _raise_terminal(failure: BaseException, terminal: bool) -> None:
+    if terminal:
+        raise ApplicationError(
+            str(failure), type=type(failure).__name__, non_retryable=True
+        ) from failure
+
+
+async def _bookkeep_failure(
+    env: Deps, job_id: str, failure: BaseException, *, version: str | None
+) -> None:
+    async def apply() -> None:
+        failure_error: Exception | None = None
+        try:
+            await index.fail(
+                env.db,
+                job_id=job_id,
+                error=str(failure),
+                cancelled=isinstance(failure, asyncio.CancelledError),
+            )
+        except Exception as exc:
+            failure_error = exc
+        try:
+            await index.cleanup_incomplete(env.artifacts, version=version, protect=set())
+        except Exception as exc:
+            failure_error = failure_error or exc
+        if failure_error is not None:
+            raise failure_error
+
+    try:
+        await asyncio.shield(apply())
+    except Exception as bookkeeping:
+        raise ApplicationError(
+            f"bookkeeping failed after {type(failure).__name__}: {bookkeeping}",
+            type="IndexFailureBookkeeping",
+        ) from failure
+
+
+async def _activation_heartbeats(job_id: str) -> None:
+    while True:
+        activity.heartbeat({"phase": "activate", "job_id": job_id})
+        if activity.is_cancelled():
+            raise asyncio.CancelledError
+        await asyncio.sleep(rule.POLL_INTERVAL_S)

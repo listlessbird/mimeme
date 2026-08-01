@@ -82,8 +82,11 @@ async def test_workflow_runs_three_coarse_retry_units_in_order() -> None:
 
 
 async def test_scheduled_busy_claim_exits_without_history_growth() -> None:
+    seen: list[index.PrepareInput] = []
+
     @activity.defn(name=rule.PREPARE_ACTIVITY)
-    async def prepare(_: index.PrepareInput) -> index.Prepared:
+    async def prepare(input: index.PrepareInput) -> index.Prepared:
+        seen.append(input)
         return index.Prepared(decision="busy")
 
     async with await WorkflowEnvironment.start_time_skipping(
@@ -107,3 +110,5 @@ async def test_scheduled_busy_claim_exits_without_history_growth() -> None:
                 task_queue=rule.TASK_QUEUE,
             )
     assert result == index.WorkflowResult(job_id=None, outcome="busy")
+    assert seen[0].job_id is not None
+    assert seen[0].job_id.startswith("rebuild-")

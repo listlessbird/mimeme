@@ -19,7 +19,7 @@ with workflow.unsafe.imports_passed_through():
     )
 
 _DB_RETRY = RetryPolicy(
-    maximum_attempts=5,
+    maximum_attempts=rule.PREPARE_MAX_ATTEMPTS,
     initial_interval=timedelta(seconds=1),
     maximum_interval=timedelta(seconds=10),
 )
@@ -37,10 +37,13 @@ _ACTIVATE_RETRY = RetryPolicy(
 class RebuildWorkflow:
     @workflow.run
     async def run(self, input: WorkflowInput) -> WorkflowResult:
+        job_id = input.job_id
+        if input.trigger is Trigger.SCHEDULED and job_id is None:
+            job_id = f"rebuild-{workflow.info().run_id.replace('-', '')[:12]}"
         prepared: Prepared = await workflow.execute_activity(
             rule.PREPARE_ACTIVITY,
             PrepareInput(
-                job_id=input.job_id,
+                job_id=job_id,
                 workflow_id=workflow.info().workflow_id,
                 force=input.force,
                 trigger=input.trigger,
@@ -80,6 +83,7 @@ class RebuildWorkflow:
             ),
             result_type=Activated,
             start_to_close_timeout=timedelta(minutes=10),
+            heartbeat_timeout=timedelta(seconds=rule.HEARTBEAT_TIMEOUT_S),
             retry_policy=_ACTIVATE_RETRY,
         )
         return WorkflowResult(

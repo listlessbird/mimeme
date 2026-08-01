@@ -162,7 +162,7 @@ class IndexConfig(BaseSettings):
 
     rebuild_claim_timeout_minutes: int = 180
     rebuild_schedule_enabled: bool = True
-    rebuild_schedule_cron: str = "* * * * *"
+    rebuild_schedule_cron: str | None = "* * * * *"
     rebuild_schedule_timezone: str = "UTC"
     retain_versions: int = 5
     build_threads: int = 2
@@ -171,6 +171,11 @@ class IndexConfig(BaseSettings):
     @classmethod
     def parse_path(cls, v: str | Path) -> Path:
         return Path(v)
+
+    @field_validator("rebuild_schedule_cron", mode="before")
+    @classmethod
+    def parse_optional_cron(cls, value: object) -> object:
+        return None if value == "" else value
 
 
 class LogConfig(BaseSettings):

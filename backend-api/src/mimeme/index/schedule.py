@@ -23,6 +23,7 @@ from mimeme.index.workflow import RebuildWorkflow
 
 
 class Desired(StrEnum):
+    ABSENT = "absent"
     ACTIVE = "active"
     PAUSED = "paused"
 
@@ -31,18 +32,20 @@ class Spec(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
     schedule_id: str = rule.SCHEDULE_ID
     enabled: bool
-    cron: str
+    cron: str | None
     timezone: str
 
     @field_validator("cron", "timezone")
     @classmethod
-    def _not_blank(cls, value: str) -> str:
-        if not value.strip():
+    def _not_blank(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
             raise ValueError("schedule cron and timezone must not be blank")
         return value
 
     @property
     def desired(self) -> Desired:
+        if self.cron is None:
+            return Desired.ABSENT
         return Desired.ACTIVE if self.enabled else Desired.PAUSED
 
 
@@ -55,6 +58,8 @@ class Existing(BaseModel):
 
 
 def changed(spec: Spec, existing: Existing) -> bool:
+    if spec.desired is Desired.ABSENT:
+        return existing.exists
     return not existing.exists or (
         existing.cron != spec.cron
         or existing.timezone != spec.timezone
@@ -86,6 +91,9 @@ class Temporal:
             existing = Existing(exists=False)
         if not changed(spec, existing):
             return False
+        if spec.desired is Desired.ABSENT:
+            await handle.delete()
+            return True
         schedule = self._schedule(spec, model=model, index_type=index_type)
         if not existing.exists:
             await self._client.create_schedule(spec.schedule_id, schedule)
@@ -98,6 +106,8 @@ class Temporal:
         return True
 
     def _schedule(self, spec: Spec, *, model: str, index_type: Literal["flat", "hnsw"]) -> Schedule:
+        if spec.cron is None:
+            raise ValueError("an absent schedule cannot be materialized")
         return Schedule(
             action=ScheduleActionStartWorkflow(
                 RebuildWorkflow.run,

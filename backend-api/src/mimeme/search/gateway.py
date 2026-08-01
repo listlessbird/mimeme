@@ -109,6 +109,16 @@ class Gateway:
         self._remember_status(status)
         return status
 
+    async def clear(self) -> Status:
+        async with self._recovery_lock:
+            await self._supervisor.restart("search")
+            self._generations.clear()
+            self._serving_version = None
+            self._retained_version = None
+            status = await self._call(StatusCall(), Status, recover=False)
+            self._remember_status(status)
+            return status
+
     async def _download(self, root: Path, artifact: File) -> Path:
         target = root / artifact.name
         digest = hashlib.sha256()
