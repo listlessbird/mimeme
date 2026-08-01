@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from mimeme.db.schema import IndexBuild, Processing, ProcessingStatus
 from mimeme.index.model import Embedding, Manifest, Snapshot
+from mimeme.job.model import ClaimOwnership
 from mimeme.job.store import Store as JobStore
 
 
@@ -106,6 +107,9 @@ class Store:
 
     async def fail(self, *, job_id: str, error: str, cancelled: bool) -> None:
         jobs = JobStore(self._session)
+        claim = (await jobs.freshness()).active_claim
+        if claim is None or claim.job_id != job_id:
+            raise ClaimOwnership(f"Job {job_id} does not own the rebuild claim")
         if cancelled:
             await jobs.set_cancelled(job_id)
         else:

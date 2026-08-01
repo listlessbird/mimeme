@@ -6,8 +6,9 @@ import httpx
 from temporalio.client import Client
 from temporalio.contrib.pydantic import pydantic_data_converter
 
-from mimeme import index, inference, search, storage
+from mimeme import inference, search, storage
 from mimeme.db import Db
+from mimeme.index import ops as index
 from mimeme.index.client import Client as IndexClient
 from mimeme.index.local import Local as IndexLocal
 from mimeme.inference import Client as InferenceClient

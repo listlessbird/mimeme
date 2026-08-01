@@ -23,7 +23,14 @@ _DB_RETRY = RetryPolicy(
     initial_interval=timedelta(seconds=1),
     maximum_interval=timedelta(seconds=10),
 )
-_BUILD_RETRY = RetryPolicy(maximum_attempts=3, maximum_interval=timedelta(minutes=1))
+_BUILD_RETRY = RetryPolicy(
+    maximum_attempts=rule.BUILD_MAX_ATTEMPTS,
+    maximum_interval=timedelta(minutes=1),
+)
+_ACTIVATE_RETRY = RetryPolicy(
+    maximum_attempts=rule.ACTIVATE_MAX_ATTEMPTS,
+    maximum_interval=timedelta(seconds=10),
+)
 
 
 @workflow.defn(name=rule.WORKFLOW)
@@ -73,7 +80,7 @@ class RebuildWorkflow:
             ),
             result_type=Activated,
             start_to_close_timeout=timedelta(minutes=10),
-            retry_policy=_DB_RETRY,
+            retry_policy=_ACTIVATE_RETRY,
         )
         return WorkflowResult(
             job_id=prepared.job_id,

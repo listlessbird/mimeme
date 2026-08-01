@@ -66,7 +66,10 @@ class Jobs:
     def submit(self, job_id: str, spec: JobSpec) -> JobState:
         existing = self._jobs.get(job_id)
         if existing is not None:
-            return existing.state.model_copy(deep=True)
+            if existing.spec != spec:
+                raise ComputeError(f"job {job_id} already exists with a different request")
+            if existing.state.status != "failed":
+                return existing.state.model_copy(deep=True)
         job = _Job(JobState(job_id=job_id, status="queued"), spec)
         self._jobs[job_id] = job
         job.task = asyncio.create_task(self._run(job))

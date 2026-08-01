@@ -107,7 +107,7 @@ class Temporal:
                     index_type=index_type,
                     trigger=Trigger.SCHEDULED,
                 ),
-                id=rule.SCHEDULE_ID,
+                id=rule.workflow_id("scheduled"),
                 task_queue=self._queue,
             ),
             spec=TemporalSpec(

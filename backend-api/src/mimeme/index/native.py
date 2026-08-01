@@ -14,6 +14,7 @@ from mimeme.index.model import Built, BuiltFile, PreparedBuild
 
 
 def build(request: PreparedBuild) -> Built:
+    faiss.omp_set_num_threads(request.native_threads)
     root = Path(request.output_dir)
     root.mkdir(parents=True, exist_ok=True)
     image_vectors, image_ids = _load(request, text=False)

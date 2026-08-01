@@ -72,6 +72,7 @@ class Gateway:
                         model=request.model,
                         index_type=request.index_type,
                         dimension=request.dimension,
+                        native_threads=request.native_threads,
                         encoder=request.encoder,
                         output_dir=str(output),
                         embeddings=local,

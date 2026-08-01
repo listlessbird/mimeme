@@ -83,6 +83,7 @@ async def prepare(
         claim_result = await jobs.claim(job_id=job_id, force=input.force, now=datetime.now(UTC))
         target_generation = claim_result.view.rebuild_target_generation
         assert target_generation is not None
+        await jobs.mark_running(job_id)
         snapshot = await Store(session).snapshot(
             model=input.model,
             target_generation=target_generation,
@@ -99,10 +100,12 @@ async def prepare(
             model=input.model,
             index_type=input.index_type,
             dimension=snapshot.dimension,
+            native_threads=settings.index.build_threads,
             encoder=Encoder(
                 repo=settings.search.encoder_repo,
                 revision=settings.search.encoder_revision,
                 variant=settings.search.encoder_variant,
+                threads=settings.search.encoder_threads,
             ),
             embeddings=embeddings,
         ),
@@ -140,7 +143,11 @@ async def activate(
         async with db.write_session() as session:
             await Store(session).activate(job_id=input.job_id, manifest=manifest)
 
-    status = await search.activate(load, activation=remote, commit=commit)
+    if await _activation_matches(db, manifest):
+        await search.reconcile(load, activation=remote)
+    else:
+        await search.activate(load, activation=remote, commit=commit)
+    status = await _confirm_activation(db, remote, manifest)
     protect = {version for version in (status.serving_version, status.retained_version) if version}
     removed = await collect(db, artifacts, protect=protect, retain=retain)
     return Activated(version=manifest.version, removed_versions=removed)
@@ -205,6 +212,18 @@ async def cleanup_incomplete(
         await _delete_prefix(artifacts, f"indexes/{version}/")
 
 
+async def fail(db: Db, *, job_id: str, error: str, cancelled: bool) -> None:
+    await _record_failure(
+        db,
+        ActivateInput(
+            job_id=job_id,
+            target_generation=0,
+            error=None if cancelled else error,
+            cancelled=cancelled,
+        ),
+    )
+
+
 async def _record_failure(db: Db, input: ActivateInput) -> None:
     async with db.write_session() as session:
         try:
@@ -249,6 +268,31 @@ def _load(manifest: Manifest) -> search.Load:
             repo=manifest.encoder.repo,
             revision=manifest.encoder.revision,
             variant=manifest.encoder.variant,
-            threads=1,
+            threads=manifest.encoder.threads,
         ),
     )
+
+
+async def _activation_matches(db: Db, manifest: Manifest) -> bool:
+    async with db.read_session() as session:
+        indexes = Store(session)
+        jobs = JobStore(session)
+        return (
+            await indexes.active_version() == manifest.version
+            and (await jobs.freshness()).active_generation == manifest.target_generation
+        )
+
+
+async def _confirm_activation(
+    db: Db,
+    remote: search.Activation,
+    manifest: Manifest,
+) -> search.Status:
+    if not await _activation_matches(db, manifest):
+        raise RuntimeError("database active generation does not match the activated manifest")
+    status = await remote.status()
+    if status.serving_version != manifest.version:
+        raise RuntimeError(
+            f"search serves {status.serving_version!r}, expected {manifest.version!r}"
+        )
+    return status

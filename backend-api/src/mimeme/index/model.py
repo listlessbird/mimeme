@@ -40,6 +40,7 @@ class Encoder(_Frozen):
     repo: str = Field(min_length=1)
     revision: str = Field(min_length=1)
     variant: str = Field(min_length=1)
+    threads: int = Field(default=1, ge=1)
 
 
 class Build(_Frozen):
@@ -49,6 +50,7 @@ class Build(_Frozen):
     model: str = Field(min_length=1)
     index_type: Literal["flat", "hnsw"]
     dimension: int = Field(ge=0)
+    native_threads: int = Field(default=1, ge=1)
     encoder: Encoder
     embeddings: list[Embedding]
 
@@ -197,6 +199,7 @@ class PreparedBuild(_Frozen):
     model: str
     index_type: Literal["flat", "hnsw"]
     dimension: int = Field(ge=0)
+    native_threads: int = Field(default=1, ge=1)
     encoder: Encoder
     output_dir: str
     embeddings: list[LocalEmbedding]

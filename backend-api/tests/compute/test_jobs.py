@@ -3,8 +3,10 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
+import pytest
+
 from mimeme import storage
-from mimeme.compute.jobs import Jobs
+from mimeme.compute.jobs import ComputeError, Jobs
 from mimeme.compute.model import (
     AnnotateReply,
     AnnotateSpec,
@@ -191,6 +193,35 @@ async def test_idempotent_resubmit(tmp_path: Path) -> None:
     assert len(jobs._jobs) == 1  # noqa: SLF001
     supervisor.block.set()
     await _wait(jobs, "dup")
+
+
+async def test_failed_stable_job_can_retry_the_same_request(tmp_path: Path) -> None:
+    supervisor = FakeSupervisor()
+    supervisor.dead = True
+    jobs, media, _ = _make_jobs(tmp_path, supervisor)
+    media.objects["images/a.jpg"] = b"bytes"
+    spec = AnnotateSpec(media_key="images/a.jpg")
+    jobs.submit("retry", spec)
+    await _wait(jobs, "retry")
+    assert jobs.get("retry").status == "failed"  # type: ignore[union-attr]
+
+    supervisor.dead = False
+    jobs.submit("retry", spec)
+    await _wait(jobs, "retry")
+    assert jobs.get("retry").status == "succeeded"  # type: ignore[union-attr]
+
+
+async def test_stable_job_id_rejects_a_different_request(tmp_path: Path) -> None:
+    supervisor = FakeSupervisor()
+    supervisor.block.clear()
+    jobs, media, _ = _make_jobs(tmp_path, supervisor)
+    media.objects["images/a.jpg"] = b"bytes"
+    jobs.submit("same", AnnotateSpec(media_key="images/a.jpg", length="short"))
+
+    with pytest.raises(ComputeError, match="different request"):
+        jobs.submit("same", AnnotateSpec(media_key="images/a.jpg", length="normal"))
+    supervisor.block.set()
+    await _wait(jobs, "same")
 
 
 async def test_cancel_marks_cancelled_and_restarts_child(tmp_path: Path) -> None:
