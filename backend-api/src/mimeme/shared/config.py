@@ -138,11 +138,17 @@ class InferenceConfig(BaseSettings):
     embed_model: str = "google/siglip2-base-patch16-naflex"
     embed_device: str = "cuda"
 
-    onnx_text_encoder_repo: str = "listlessbird/siglip2-base-patch16-naflex-text-onnx"
-    onnx_text_encoder_revision: str = "092dc08370b1a01d69c78067051b124881a95407"
-    onnx_text_encoder_variant: str = "text_model_int8.onnx"
-    onnx_text_encoder_threads: int = 4
-    preload_text_encoder_on_startup: bool = True
+
+class SearchConfig(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="SEARCH_", env_file=_ENV_FILE, env_file_encoding="utf-8", extra="ignore"
+    )
+
+    encoder_repo: str = "listlessbird/siglip2-base-patch16-naflex-text-onnx"
+    encoder_revision: str = "092dc08370b1a01d69c78067051b124881a95407"
+    encoder_variant: str = "text_model_int8.onnx"
+    encoder_threads: int = 4
+    hnsw_ef_search: int = 128
 
 
 class IndexConfig(BaseSettings):
@@ -188,5 +194,6 @@ class Settings(BaseSettings):
     http: HttpConfig = Field(default_factory=HttpConfig)
     compute: ComputeConfig = Field(default_factory=ComputeConfig)
     inference: InferenceConfig = Field(default_factory=InferenceConfig)
+    search: SearchConfig = Field(default_factory=SearchConfig)
     index: IndexConfig = Field(default_factory=IndexConfig)
     logging: LogConfig = Field(default_factory=LogConfig)

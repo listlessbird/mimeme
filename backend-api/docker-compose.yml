@@ -197,6 +197,8 @@ services:
       - ARTIFACT_S3_ACCESS_KEY_ID=minioadmin
       - ARTIFACT_S3_SECRET_ACCESS_KEY=minioadmin
       - INFERENCE_EMBED_DEVICE=cpu
+      - OMP_NUM_THREADS=4
+      - OPENBLAS_NUM_THREADS=1
     volumes:
       - huggingface_cache:/app/.cache/huggingface
     depends_on:

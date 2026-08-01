@@ -6,8 +6,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 Role = Literal["image", "inference", "search", "index"]
 
-ENABLED_ROLES: tuple[Role, ...] = ("image", "inference")
-RESERVED_ROLES: tuple[Role, ...] = ("search", "index")
+ENABLED_ROLES: tuple[Role, ...] = ("image", "inference", "search")
+RESERVED_ROLES: tuple[Role, ...] = ("index",)
 
 StorageRole = Literal["media", "artifacts"]
 
@@ -80,6 +80,7 @@ class ChildOk(_Frozen):
 class ChildErr(_Frozen):
     ok: Literal[False] = False
     error: str
+    code: str | None = None
 
 
 ChildResponse = Annotated[ChildOk | ChildErr, Field(discriminator="ok")]
@@ -148,6 +149,8 @@ class RoleStatus(_Frozen):
     role: Role
     state: Literal["ready", "failed", "disabled", "starting"]
     detail: str | None = None
+    loaded_version: str | None = None
+    model_identity: str | None = None
 
 
 class Readiness(_Frozen):

@@ -1,15 +1,12 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 from fastapi import Depends, Request
 from temporalio.client import Client
 
-from mimeme import storage
+from mimeme import search, storage
 from mimeme.db import Db
-
-if TYPE_CHECKING:
-    from mimeme.activities.indexing import FaissIndexManager
 from mimeme.env import Env
 from mimeme.shared.config import Settings
 from mimeme.shared.services.media_url import MediaUrlResolver
@@ -50,18 +47,18 @@ def get_artifact_storage(request: Request) -> storage.Store:
 ArtifactStorageDep = Annotated[storage.Store, Depends(get_artifact_storage)]
 
 
+def get_search(request: Request) -> search.Client:
+    return request.app.state.env.search
+
+
+SearchDep = Annotated[search.Client, Depends(get_search)]
+
+
 def get_media_url_resolver(request: Request) -> MediaUrlResolver:
     return request.app.state.env.media_urls
 
 
 MediaUrlResolverDep = Annotated[MediaUrlResolver, Depends(get_media_url_resolver)]
-
-
-def get_index_manager(request: Request) -> FaissIndexManager:
-    return request.app.state.env.index_manager
-
-
-IndexManagerDep = Annotated["FaissIndexManager", Depends(get_index_manager)]
 
 
 async def get_temporal_client(request: Request) -> Client:

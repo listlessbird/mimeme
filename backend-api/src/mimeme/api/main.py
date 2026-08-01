@@ -13,7 +13,8 @@ from starlette.types import ExceptionHandler
 from mimeme.api.lifespan import lifespan
 from mimeme.api.middleware import register_middleware
 from mimeme.api.rate_limit import limiter, rate_limit_exceeded_handler
-from mimeme.api.routers import health, images, ingestion, jobs, search, sources
+from mimeme.api.routers import health, images, ingestion, jobs, sources
+from mimeme.search import router as search
 from mimeme.shared.config import Settings
 
 

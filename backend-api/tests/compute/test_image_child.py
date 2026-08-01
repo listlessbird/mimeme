@@ -9,6 +9,7 @@ from PIL import Image
 from mimeme.compute.image import inspect
 from mimeme.compute.model import ChildOk, ImageInfo, InspectCall
 from mimeme.compute.supervisor import ChildDead, Supervisor
+from mimeme.search import Status
 
 
 def _png(path: Path, size: tuple[int, int] = (32, 24)) -> Path:
@@ -35,8 +36,14 @@ async def test_spawned_image_child_roundtrip(tmp_path: Path) -> None:
         readiness = supervisor.readiness()
         states = {r.role: r.state for r in readiness.roles}
         assert states["image"] == "ready"
-        assert states["search"] == "disabled"
+        assert states["search"] == "ready"
         assert states["index"] == "disabled"
+
+        search_raw = await supervisor.call("search", b'{"op":"search.status"}')
+        search_response = ChildOk.model_validate_json(search_raw)
+        search_status = Status.model_validate(search_response.result)
+        assert search_status.ready is False
+        assert search_status.serving_version is None
 
         path = _png(tmp_path / "img.png")
         call = InspectCall(path=str(path))

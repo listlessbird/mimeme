@@ -7,7 +7,6 @@ from mimeme.api.models.images import (
     ImageStatus,
 )
 from mimeme.api.models.jobs import JobListResponse, JobResponse, RebuildIndexRequest
-from mimeme.api.models.search import SearchRequest, SearchResponse, SearchResult
 
 __all__ = [
     "ImageIngestRequest",
@@ -21,7 +20,4 @@ __all__ = [
     "JobListResponse",
     "JobResponse",
     "RebuildIndexRequest",
-    "SearchRequest",
-    "SearchResponse",
-    "SearchResult",
 ]

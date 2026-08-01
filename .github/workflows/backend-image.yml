@@ -31,6 +31,8 @@ jobs:
             image: mimeme-api
           - target: worker
             image: mimeme-worker
+          - target: compute
+            image: mimeme-compute
     steps:
       - uses: actions/checkout@v7
 

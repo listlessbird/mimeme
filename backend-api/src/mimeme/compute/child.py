@@ -53,7 +53,10 @@ def _serve_once(conn: socket.socket, handler) -> None:  # noqa: ANN001
         result = handler(raw)
         response = ChildOk(result=result)
     except Exception as exc:
-        response = ChildErr(error=f"{type(exc).__name__}: {exc}")
+        response = ChildErr(
+            error=f"{type(exc).__name__}: {exc}",
+            code=getattr(exc, "code", None),
+        )
     send_frame(conn, response.model_dump_json().encode("utf-8"))
 
 
@@ -81,5 +84,15 @@ def _build_handler(role: Role):  # noqa: ANN202
             raise ValueError("unknown inference call")
 
         return handle_inference
+
+    if role == "search":
+        from mimeme.compute.search import Resident, dispatch
+
+        resident = Resident()
+
+        def handle_search(raw: bytes) -> dict:
+            return dispatch(resident, raw)
+
+        return handle_search
 
     raise ValueError(f"role {role} is not enabled")

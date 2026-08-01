@@ -24,10 +24,17 @@ class _Child:
 
 
 class Supervisor:
-    def __init__(self, socket_dir: Path, *, start_timeout_s: float = 30.0) -> None:
+    def __init__(
+        self,
+        socket_dir: Path,
+        *,
+        start_timeout_s: float = 30.0,
+        call_timeout_s: float = 60.0,
+    ) -> None:
         self._dir = socket_dir
         self._ctx = mp.get_context("spawn")
         self._start_timeout = start_timeout_s
+        self._call_timeout = call_timeout_s
         self._children: dict[Role, _Child] = {
             role: _Child(role, socket_dir / f"{role}.sock") for role in ENABLED_ROLES
         }
@@ -72,27 +79,31 @@ class Supervisor:
             if child.process is None or not child.process.is_alive():
                 raise ChildDead(f"{role} child is not running")
             try:
-                reader, writer = await asyncio.open_unix_connection(str(child.socket_path))
+                async with asyncio.timeout(self._call_timeout):
+                    reader, writer = await asyncio.open_unix_connection(str(child.socket_path))
+                    try:
+                        await write_frame(writer, request)
+                        return await read_frame(reader)
+                    finally:
+                        writer.close()
+                        try:
+                            await writer.wait_closed()
+                        except (OSError, ConnectionError):
+                            pass
+            except TimeoutError as exc:
+                raise ChildDead(f"{role} call timed out after {self._call_timeout}s") from exc
             except (OSError, ConnectionError) as exc:
                 raise ChildDead(f"{role} connect failed: {exc}") from exc
-            try:
-                await write_frame(writer, request)
-                return await read_frame(reader)
-            except (asyncio.IncompleteReadError, ConnectionError, OSError) as exc:
+            except asyncio.IncompleteReadError as exc:
                 raise ChildDead(f"{role} call failed: {exc}") from exc
-            finally:
-                writer.close()
-                try:
-                    await writer.wait_closed()
-                except (OSError, ConnectionError):
-                    pass
 
     async def restart(self, role: Role) -> None:
         child = self._children.get(role)
         if child is None:
             return
-        await self._terminate(child)
-        await self._spawn(role)
+        async with child.lock:
+            await self._terminate(child)
+            await self._spawn(role)
 
     async def _terminate(self, child: _Child, *, grace_s: float = 5.0) -> None:
         process = child.process
