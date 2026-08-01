@@ -1,0 +1,254 @@
+from __future__ import annotations
+
+import asyncio
+import hashlib
+from datetime import UTC, datetime, timedelta
+
+from pydantic import ValidationError
+
+from mimeme import search, storage
+from mimeme.db import Db
+from mimeme.db.schema import Job, JobStatus, JobType
+from mimeme.index.client import Client
+from mimeme.index.model import (
+    Activated,
+    ActivateInput,
+    Build,
+    Encoder,
+    Manifest,
+    Prepared,
+    PrepareInput,
+    Result,
+    Trigger,
+)
+from mimeme.index.store import Store
+from mimeme.job import rule as job_rule
+from mimeme.job.model import ClaimOwnership, StateMissing
+from mimeme.job.store import Store as JobStore
+from mimeme.shared.config import Settings
+
+_MANIFEST_MAX = 1024 * 1024
+_TERMINAL = (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED)
+
+
+async def prepare(
+    db: Db,
+    artifacts: storage.Store,
+    settings: Settings,
+    input: PrepareInput,
+) -> Prepared:
+    async with db.write_session() as session:
+        jobs = JobStore(session)
+        view = await jobs.lock_freshness()
+        claim = view.active_claim
+        if claim is not None:
+            owner = await session.get(Job, claim.job_id)
+            expired = claim.claimed_at + timedelta(
+                minutes=settings.index.rebuild_claim_timeout_minutes
+            ) <= datetime.now(UTC)
+            if owner is None or owner.status in _TERMINAL or expired:
+                if owner is not None and owner.status not in _TERMINAL:
+                    await jobs.fail_rebuild(
+                        claim.job_id,
+                        f"Rebuild claim expired; reclaimed by {input.trigger.value}",
+                    )
+                await jobs.release(job_id=claim.job_id)
+                view = await jobs.lock_freshness()
+        if view.active_claim is not None:
+            return Prepared(decision="busy", job_id=input.job_id)
+        if not view.is_stale and not input.force:
+            if input.trigger is Trigger.MANUAL and input.job_id is not None:
+                active = await jobs.active_build_stats()
+                await jobs.complete_rebuild(
+                    job_id=input.job_id,
+                    version=active.version if active else "",
+                    num_vectors=active.num_vectors if active else 0,
+                    dimension=active.dimension if active else 0,
+                    removed_versions=[],
+                    text_num_vectors=None,
+                    skipped=True,
+                    skip_reason="already_current",
+                    message="Index already current",
+                )
+            return Prepared(decision="clean", job_id=input.job_id)
+        job_id = input.job_id
+        if input.trigger is Trigger.SCHEDULED:
+            job_id, _ = job_rule.mint_rebuild()
+            await jobs.add_job(
+                job_id=job_id,
+                job_type=JobType.REBUILD_INDEX,
+                workflow_id=input.workflow_id,
+            )
+        assert job_id is not None
+        claim_result = await jobs.claim(job_id=job_id, force=input.force, now=datetime.now(UTC))
+        target_generation = claim_result.view.rebuild_target_generation
+        assert target_generation is not None
+        snapshot = await Store(session).snapshot(
+            model=input.model,
+            target_generation=target_generation,
+        )
+    embeddings = await _with_text_refs(artifacts, snapshot.embeddings)
+    version = _version(job_id, target_generation)
+    return Prepared(
+        decision="build",
+        job_id=job_id,
+        build=Build(
+            job_id=job_id,
+            version=version,
+            target_generation=target_generation,
+            model=input.model,
+            index_type=input.index_type,
+            dimension=snapshot.dimension,
+            encoder=Encoder(
+                repo=settings.search.encoder_repo,
+                revision=settings.search.encoder_revision,
+                variant=settings.search.encoder_variant,
+            ),
+            embeddings=embeddings,
+        ),
+    )
+
+
+async def build(client: Client, request: Build, *, progress=None) -> Result:  # noqa: ANN001
+    return await client.build(request, progress=progress)
+
+
+async def activate(
+    db: Db,
+    artifacts: storage.Store,
+    remote: search.Activation,
+    input: ActivateInput,
+    *,
+    retain: int = 5,
+) -> Activated:
+    if input.cancelled or input.error is not None:
+        await _record_failure(db, input)
+        await cleanup_incomplete(artifacts, version=None, protect=set())
+        return Activated(version="")
+    assert input.result is not None
+    if input.result.outcome == "empty":
+        async with db.write_session() as session:
+            await Store(session).reconcile_empty(
+                job_id=input.job_id, target_generation=input.target_generation
+            )
+        return Activated(version="")
+    assert input.result.manifest is not None
+    manifest = await validate(artifacts, input.result.manifest)
+    load = _load(manifest)
+
+    async def commit(_loaded: search.Loaded) -> None:
+        async with db.write_session() as session:
+            await Store(session).activate(job_id=input.job_id, manifest=manifest)
+
+    status = await search.activate(load, activation=remote, commit=commit)
+    protect = {version for version in (status.serving_version, status.retained_version) if version}
+    removed = await collect(db, artifacts, protect=protect, retain=retain)
+    return Activated(version=manifest.version, removed_versions=removed)
+
+
+async def reconcile(
+    db: Db,
+    artifacts: storage.Store,
+    remote: search.Activation,
+) -> search.Status | None:
+    async with db.read_session() as session:
+        version = await Store(session).active_version()
+    if version is None:
+        return None
+    raw = await artifacts.read_bytes(
+        storage.Object(f"indexes/{version}/complete.json"), max_bytes=_MANIFEST_MAX
+    )
+    manifest = await validate(artifacts, Manifest.model_validate_json(raw))
+    return await search.reconcile(_load(manifest), activation=remote)
+
+
+async def validate(artifacts: storage.Store, expected: Manifest) -> Manifest:
+    raw = await artifacts.read_bytes(storage.Object(expected.complete_key), max_bytes=_MANIFEST_MAX)
+    try:
+        actual = Manifest.model_validate_json(raw)
+    except ValidationError as exc:
+        raise ValueError(f"invalid completeness manifest: {exc}") from exc
+    if actual != expected:
+        raise ValueError("published completeness manifest does not match build result")
+    for file in actual.files:
+        info = await artifacts.stat(storage.Object(file.key))
+        if info is None or info.length != file.length:
+            raise ValueError(f"artifact is missing or has wrong length: {file.key}")
+        if info.checksum is not None and info.checksum.value != file.sha256:
+            raise ValueError(f"artifact checksum mismatch: {file.key}")
+    return actual
+
+
+async def collect(
+    db: Db,
+    artifacts: storage.Store,
+    *,
+    protect: set[str],
+    retain: int,
+) -> list[str]:
+    async with db.read_session() as session:
+        versions = await Store(session).removable(protect=protect, retain=retain)
+    for version in versions:
+        await _delete_prefix(artifacts, f"indexes/{version}/")
+    async with db.write_session() as session:
+        await Store(session).forget(versions)
+    return versions
+
+
+async def cleanup_incomplete(
+    artifacts: storage.Store, *, version: str | None, protect: set[str]
+) -> None:
+    if version is None or version in protect:
+        return
+    complete = await artifacts.stat(storage.Object(f"indexes/{version}/complete.json"))
+    if complete is None:
+        await _delete_prefix(artifacts, f"indexes/{version}/")
+
+
+async def _record_failure(db: Db, input: ActivateInput) -> None:
+    async with db.write_session() as session:
+        try:
+            await Store(session).fail(
+                job_id=input.job_id,
+                error=input.error or "cancelled",
+                cancelled=input.cancelled,
+            )
+        except (ClaimOwnership, StateMissing):
+            pass
+
+
+async def _with_text_refs(artifacts: storage.Store, embeddings):  # noqa: ANN001, ANN202
+    semaphore = asyncio.Semaphore(16)
+
+    async def one(item):  # noqa: ANN001, ANN202
+        text_key = item.image_key.removesuffix(".npy") + "_text.npy"
+        async with semaphore:
+            exists = await artifacts.stat(storage.Object(text_key))
+        return item.model_copy(update={"text_key": text_key if exists is not None else None})
+
+    return list(await asyncio.gather(*(one(item) for item in embeddings)))
+
+
+async def _delete_prefix(artifacts: storage.Store, prefix: str) -> None:
+    objects = [info.object async for info in artifacts.list(prefix=prefix)]
+    await asyncio.gather(*(artifacts.delete(obj) for obj in objects))
+
+
+def _version(job_id: str, generation: int) -> str:
+    digest = hashlib.sha256(job_id.encode()).hexdigest()[:12]
+    return f"v2-g{generation}-{digest}"
+
+
+def _load(manifest: Manifest) -> search.Load:
+    return search.Load(
+        version=manifest.version,
+        files=[
+            search.File(name=file.name, key=file.key, sha256=file.sha256) for file in manifest.files
+        ],
+        encoder=search.Encoder(
+            repo=manifest.encoder.repo,
+            revision=manifest.encoder.revision,
+            variant=manifest.encoder.variant,
+            threads=1,
+        ),
+    )

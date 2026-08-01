@@ -164,6 +164,7 @@ class IndexConfig(BaseSettings):
     rebuild_schedule_enabled: bool = True
     rebuild_schedule_cron: str = "* * * * *"
     rebuild_schedule_timezone: str = "UTC"
+    retain_versions: int = 5
 
     @field_validator("cache_dir", mode="before")
     @classmethod

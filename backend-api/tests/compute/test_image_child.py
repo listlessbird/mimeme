@@ -37,7 +37,7 @@ async def test_spawned_image_child_roundtrip(tmp_path: Path) -> None:
         states = {r.role: r.state for r in readiness.roles}
         assert states["image"] == "ready"
         assert states["search"] == "ready"
-        assert states["index"] == "disabled"
+        assert states["index"] == "ready"
 
         search_raw = await supervisor.call("search", b'{"op":"search.status"}')
         search_response = ChildOk.model_validate_json(search_raw)

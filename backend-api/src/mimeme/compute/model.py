@@ -4,10 +4,12 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from mimeme.index.model import BuildSpec
+
 Role = Literal["image", "inference", "search", "index"]
 
-ENABLED_ROLES: tuple[Role, ...] = ("image", "inference", "search")
-RESERVED_ROLES: tuple[Role, ...] = ("index",)
+ENABLED_ROLES: tuple[Role, ...] = ("image", "inference", "search", "index")
+RESERVED_ROLES: tuple[Role, ...] = ()
 
 StorageRole = Literal["media", "artifacts"]
 
@@ -107,7 +109,7 @@ class EmbedSpec(_Frozen):
     items: list[EmbedSpecItem]
 
 
-JobSpec = Annotated[AnnotateSpec | EmbedSpec, Field(discriminator="op")]
+JobSpec = Annotated[AnnotateSpec | EmbedSpec | BuildSpec, Field(discriminator="op")]
 
 
 class AnnotateResult(_Frozen):

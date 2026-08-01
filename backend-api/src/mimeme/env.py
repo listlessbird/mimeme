@@ -1,13 +1,15 @@
 from __future__ import annotations
 
-from typing import Self
+from typing import Self, cast
 
 import httpx
 from temporalio.client import Client
 from temporalio.contrib.pydantic import pydantic_data_converter
 
-from mimeme import inference, search, storage
+from mimeme import index, inference, search, storage
 from mimeme.db import Db
+from mimeme.index.client import Client as IndexClient
+from mimeme.index.local import Local as IndexLocal
 from mimeme.inference import Client as InferenceClient
 from mimeme.ingest.facts import ComputeImages, Images
 from mimeme.shared.config import ArtifactConfig, MediaConfig, Settings
@@ -38,6 +40,7 @@ class Env:
         media_urls: MediaUrlResolver,
         http: httpx.AsyncClient,
         inference: InferenceClient,
+        index_client: IndexClient,
         search_client: search.Client,
         image_facts: Images,
         source_http: SourceHttp,
@@ -50,6 +53,7 @@ class Env:
         self.media_urls = media_urls
         self.http = http
         self.inference = inference
+        self.index = index_client
         self.search = search_client
         self.image_facts = image_facts
         self.source_http = source_http
@@ -66,7 +70,17 @@ class Env:
         media_urls = MediaUrlResolver(settings.media.public_base_url)
         http = httpx.AsyncClient(timeout=settings.compute.request_timeout_s)
         inference_client = inference.create(settings, http)
+        index_client = IndexLocal(
+            http,
+            base_url=settings.compute.gateway_url,
+            poll_interval_s=settings.compute.poll_interval_s,
+        )
         search_client = search.create(settings, http)
+        await index.reconcile(
+            db,
+            artifacts,
+            cast(search.Activation, search_client),
+        )
         image_facts = ComputeImages(http, base_url=settings.compute.gateway_url)
         return cls(
             settings=settings,
@@ -77,12 +91,14 @@ class Env:
             media_urls=media_urls,
             http=http,
             inference=inference_client,
+            index_client=index_client,
             search_client=search_client,
             image_facts=image_facts,
             source_http=SourceHttp(http),
         )
 
     async def aclose(self) -> None:
+        await self.index.close()
         await self.search.close()
         await self.inference.close()
         await self.http.aclose()

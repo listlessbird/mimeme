@@ -17,6 +17,7 @@ from mimeme.compute.model import (
     Role,
 )
 from mimeme.compute.protocol import recv_frame, send_frame
+from mimeme.index.model import BuildCall
 
 _INFERENCE_CALL = TypeAdapter(InferenceCall)
 
@@ -94,5 +95,14 @@ def _build_handler(role: Role):  # noqa: ANN202
             return dispatch(resident, raw)
 
         return handle_search
+
+    if role == "index":
+        from mimeme.index.native import build
+
+        def handle_index(raw: bytes) -> dict:
+            call = BuildCall.model_validate_json(raw)
+            return build(call.build).model_dump()
+
+        return handle_index
 
     raise ValueError(f"role {role} is not enabled")

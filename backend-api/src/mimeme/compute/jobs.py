@@ -21,6 +21,8 @@ from mimeme.compute.model import (
 )
 from mimeme.compute.supervisor import ChildDead, Supervisor
 from mimeme.compute.workspace import Workspace
+from mimeme.index.gateway import Gateway as IndexGateway
+from mimeme.index.model import BuildSpec
 
 _MAX_IMAGE_BYTES = 64 * 1024 * 1024
 
@@ -51,6 +53,11 @@ class Jobs:
         self._artifacts = artifacts
         self._workspace_dir = workspace_dir
         self._jobs: dict[str, _Job] = {}
+        self._index = IndexGateway(
+            supervisor,
+            artifacts=artifacts,
+            workspace_dir=workspace_dir,
+        )
 
     def get(self, job_id: str) -> JobState | None:
         job = self._jobs.get(job_id)
@@ -77,7 +84,9 @@ class Jobs:
         if job.task is not None:
             job.task.cancel()
         if was_running:
-            await self._supervisor.restart("inference")
+            await self._supervisor.restart(
+                "index" if isinstance(job.spec, BuildSpec) else "inference"
+            )
         return job.state.model_copy(deep=True)
 
     async def _run(self, job: _Job) -> None:
@@ -88,8 +97,10 @@ class Jobs:
             spec = job.spec
             if isinstance(spec, AnnotateSpec):
                 result = await self._run_annotate(job, spec, workspace)
-            else:
+            elif isinstance(spec, EmbedSpec):
                 result = await self._run_embed(job, spec, workspace)
+            else:
+                result = await self._run_index(job, spec)
             if job.state.status == "cancelled":
                 return
             job.state.status = "succeeded"
@@ -183,6 +194,14 @@ class Jobs:
                 )
             )
         return EmbedResult(items=results).model_dump()
+
+    async def _run_index(self, job: _Job, spec: BuildSpec) -> dict:
+        async def progress(phase: str, value: float) -> None:
+            job.state.phase = phase
+            job.state.progress = value
+
+        result = await self._index.build(spec.build, progress=progress)
+        return result.model_dump()
 
     async def _call_inference(self, request: bytes) -> ChildOk:
         raw = await self._supervisor.call("inference", request)
