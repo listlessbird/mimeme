@@ -149,8 +149,6 @@ async def trigger_source_run(
     except SourceNotFound:
         raise HTTPException(status_code=404, detail="Source not found")
 
-    # A fresh id per manual trigger so it never collides with the scheduled
-    # Source's deterministic schedule workflow id (issue 04).
     workflow_id = rule.manual_workflow_id(source_id, uuid.uuid4().hex[:12])
     await temporal.start_workflow(
         SourceSyncWorkflow.run,
