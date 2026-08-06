@@ -17,21 +17,6 @@ services:
       retries: 5
     restart: unless-stopped
 
-  redis:
-    image: redis:7-alpine
-    container_name: mimeme-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
   minio:
     image: minio/minio:latest
     container_name: mimeme-minio
@@ -123,8 +108,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
       temporal:
         condition: service_started
       minio:
@@ -137,6 +120,7 @@ services:
       timeout: 10s
       retries: 3
     restart: unless-stopped
+    stop_grace_period: 30s
 
   worker:
     build:
@@ -144,7 +128,7 @@ services:
       dockerfile: Dockerfile
       target: worker
     container_name: mimeme-worker
-    command: python -m mimeme.workers.worker
+    command: python -m mimeme.worker
     environment:
       - APP_ENV=development
       - LOG_LEVEL=INFO
@@ -176,6 +160,7 @@ services:
       compute:
         condition: service_started
     restart: unless-stopped
+    stop_grace_period: 30s
 
   compute:
     build:
@@ -212,10 +197,10 @@ services:
       timeout: 10s
       retries: 3
     restart: unless-stopped
+    stop_grace_period: 30s
 
 volumes:
   postgres_data:
-  redis_data:
   minio_data:
   huggingface_cache:
 

@@ -30,6 +30,7 @@ services:
         limits:
           memory: 768M
     restart: unless-stopped
+    stop_grace_period: 30s
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/ready" ]
       interval: 30s
@@ -69,6 +70,7 @@ services:
         limits:
           memory: 1024M
     restart: unless-stopped
+    stop_grace_period: 30s
 
   compute:
     image: ghcr.io/listlessbird/mimeme-compute:${IMAGE_TAG:-latest}
@@ -87,6 +89,7 @@ services:
         limits:
           memory: 2048M
     restart: unless-stopped
+    stop_grace_period: 30s
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8010/ready" ]
       interval: 30s

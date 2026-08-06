@@ -4,7 +4,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from mimeme.db.schema import Base
-from mimeme.shared.config import Settings
+from mimeme.config import Settings
 
 settings = Settings()
 

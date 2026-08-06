@@ -1,12 +1,16 @@
+ARG RELEASE_ID=dev
+
 FROM python:3.13-slim AS base
+
+ARG RELEASE_ID
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONFAULTHANDLER=1
+    PYTHONFAULTHANDLER=1 \
+    MIMEME_RELEASE_ID=${RELEASE_ID}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 FROM base AS builder
@@ -19,8 +23,6 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /app
 
-
-COPY vendored ./vendored
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
@@ -61,12 +63,12 @@ CMD ["sh", "-c", "alembic upgrade head && uvicorn mimeme.api.main:app --host 0.0
 FROM builder AS compute-builder
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-editable --extra local-gpu
+    uv sync --frozen --no-editable --extra compute --extra local-gpu
 
 FROM base AS compute
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgl1 libglib2.0-0 libvips42 \
+    libgl1 libglib2.0-0 libgomp1 libvips42 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN useradd --create-home --shell /bin/bash appuser
@@ -111,4 +113,4 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 USER appuser
 
-CMD ["python", "-m", "mimeme.workers.worker"]
+CMD ["python", "-m", "mimeme.worker"]
