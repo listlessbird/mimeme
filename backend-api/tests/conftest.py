@@ -9,40 +9,35 @@ import pytest
 from sqlalchemy import Connection, Engine, create_engine, event, text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.orm import Session
-from sqlalchemy.pool import StaticPool
 
 from mimeme.db.schema import Base
 
 T = TypeVar("T")
 
 
-def _build_test_engine() -> Engine:
-    pg_url = os.environ.get("TEST_DB_URL")
-    if pg_url:
-        return create_engine(pg_url, echo=False, future=True, pool_pre_ping=True)
+DEFAULT_TEST_DB_URL = "postgresql+psycopg://postgres:postgres@localhost:5432/mimeme_test"
 
-    default_pg = "postgresql://postgres:postgres@localhost:5432/mimeme_test"
-    try:
-        engine = create_engine(default_pg, echo=False, future=True, pool_pre_ping=True)
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        return engine
-    except Exception:
-        return create_engine(
-            "sqlite://",
-            echo=False,
-            future=True,
-            connect_args={"check_same_thread": False},
-            poolclass=StaticPool,
-        )
+
+def _sync_test_url() -> str:
+    url = os.environ.get("TEST_DB_URL", DEFAULT_TEST_DB_URL)
+    for prefix in ("postgresql+asyncpg://", "postgresql://", "postgres://"):
+        if url.startswith(prefix):
+            return "postgresql+psycopg://" + url[len(prefix) :]
+    return url
+
+
+def _build_test_engine() -> Engine:
+    engine = create_engine(_sync_test_url(), echo=False, future=True, pool_pre_ping=True)
+    with engine.connect() as conn:
+        conn.execute(text("SELECT 1"))
+    return engine
 
 
 def _async_test_url(engine: Engine) -> str:
     sync_url = engine.url.render_as_string(hide_password=False)
-    if sync_url.startswith("postgresql://"):
-        return "postgresql+asyncpg://" + sync_url[len("postgresql://") :]
-    if sync_url.startswith("postgres://"):
-        return "postgresql+asyncpg://" + sync_url[len("postgres://") :]
+    for prefix in ("postgresql+psycopg://", "postgresql://", "postgres://"):
+        if sync_url.startswith(prefix):
+            return "postgresql+asyncpg://" + sync_url[len(prefix) :]
     return sync_url
 
 
@@ -60,16 +55,14 @@ def db_session(db_engine: Engine) -> Iterator[Session]:
     connection = db_engine.connect()
     transaction = connection.begin()
     session = Session(bind=connection, expire_on_commit=False)
+    nested = connection.begin_nested()
 
-    if db_engine.dialect.name != "sqlite":
-        nested = connection.begin_nested()
-
-        @event.listens_for(session, "after_transaction_end")
-        def _restart_savepoint(sess: Session, txn: object) -> None:
-            nonlocal nested
-            if not connection.closed and not connection.invalidated:
-                if not connection.in_nested_transaction():
-                    nested = connection.begin_nested()
+    @event.listens_for(session, "after_transaction_end")
+    def _restart_savepoint(sess: Session, txn: object) -> None:
+        nonlocal nested
+        if not connection.closed and not connection.invalidated:
+            if not connection.in_nested_transaction():
+                nested = connection.begin_nested()
 
     yield session
     session.close()
@@ -79,8 +72,6 @@ def db_session(db_engine: Engine) -> Iterator[Session]:
 
 @pytest.fixture()
 async def async_db_engine(db_engine: Engine) -> AsyncIterator[AsyncEngine]:
-    if db_engine.dialect.name != "postgresql":
-        pytest.skip("async DB fixtures require PostgreSQL")
     engine = create_async_engine(_async_test_url(db_engine), echo=False, future=True)
     yield engine
     await engine.dispose()

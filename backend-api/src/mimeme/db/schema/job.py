@@ -35,9 +35,7 @@ class Job(Base):
     status: Mapped[JobStatus] = mapped_column(
         SAEnum(JobStatus), default=JobStatus.PENDING, nullable=False
     )
-    progress: Mapped[float] = mapped_column(
-        Float, default=0.0, server_default="0", nullable=False
-    )
+    progress: Mapped[float] = mapped_column(Float, default=0.0, server_default="0", nullable=False)
     message: Mapped[str | None] = mapped_column(Text, nullable=True)
     result: Mapped[str | None] = mapped_column(Text, nullable=True)
     workflow_id: Mapped[str | None] = mapped_column(String(256), nullable=True)
