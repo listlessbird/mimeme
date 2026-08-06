@@ -26,34 +26,40 @@ fi
 
 export DATABASE_URL
 SEED_COUNT="$SEED_COUNT" uv run python - <<'PY'
+import asyncio
 import os
 
-from sqlalchemy import create_engine, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
 
-from mimeme.shared.config import settings
+from mimeme.config import Settings
+from mimeme.db import Db
 from mimeme.db.schema import Base, Image
 
-seed_count = int(os.environ["SEED_COUNT"])
-engine = create_engine(settings.database.url_str)
-Base.metadata.create_all(engine)
-with Session(engine) as session:
-    existing = session.scalar(select(func.count()).select_from(Image)) or 0
-    for i in range(existing, seed_count):
-        session.add(
-            Image(
-                sha256=f"loadprobe-{i:056d}",
-                dataset="loadprobe",
-                s3_key=f"images/loadprobe/{i}.jpg",
-                width=640,
-                height=480,
-                format="jpeg",
-                file_size=12345,
-            )
-        )
-    session.commit()
-    total = session.scalar(select(func.count()).select_from(Image)) or 0
-print(f"images in db: {total}")
+async def main() -> None:
+    seed_count = int(os.environ["SEED_COUNT"])
+    db = Db(Settings().database)
+    try:
+        async with db.write_session() as session:
+            existing = await session.scalar(select(func.count()).select_from(Image)) or 0
+            for i in range(existing, seed_count):
+                session.add(
+                    Image(
+                        sha256=f"loadprobe-{i:056d}",
+                        dataset="loadprobe",
+                        s3_key=f"images/loadprobe/{i}.jpg",
+                        width=640,
+                        height=480,
+                        format="jpeg",
+                        file_size=12345,
+                    )
+                )
+        async with db.read_session() as session:
+            total = await session.scalar(select(func.count()).select_from(Image)) or 0
+        print(f"images in db: {total}")
+    finally:
+        await db.close()
+
+asyncio.run(main())
 PY
 
 APP_ENV=development DEBUG=false LOG_LEVEL=INFO \
@@ -61,7 +67,7 @@ HTTP_RATE_LIMIT_ENABLED=false INFERENCE_PRELOAD_TEXT_ENCODER_ON_STARTUP=false CO
 LOG_AXIOM_API_TOKEN= LOG_AXIOM_DATASET= \
 MEDIA_S3_ENDPOINT_URL=http://127.0.0.1:9 \
 ARTIFACT_S3_ENDPOINT_URL=http://127.0.0.1:9 \
-uv run uvicorn api.main:app --host 127.0.0.1 --port "$API_PORT" --log-level warning \
+uv run uvicorn mimeme.api.main:app --host 127.0.0.1 --port "$API_PORT" --log-level warning \
   >"$API_LOG" 2>&1 &
 API_PID=$!
 trap 'kill "$API_PID" 2>/dev/null || true; docker update --cpus 0 "$PG_CONTAINER" >/dev/null 2>&1 || true' EXIT

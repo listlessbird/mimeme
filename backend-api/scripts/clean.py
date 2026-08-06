@@ -1,93 +1,62 @@
 #!/usr/bin/env python
-"""Wipe all R2/S3 objects and database rows for a fresh start."""
+"""Wipe configured object stores and database rows after an explicit prompt."""
+
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-# allow `python scripts/clean.py` from the backend-api directory
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+import asyncio
 
 from sqlalchemy import text
 
+from mimeme import storage
+from mimeme.config import ArtifactConfig, MediaConfig, Settings
+from mimeme.db import Db
 from mimeme.db.schema import Base
-from mimeme.shared.db import get_engine
-from mimeme.shared.services.storage import StorageService, get_s3_config
 
 
-def purge_bucket(storage: StorageService) -> int:
-    """Delete every object in the configured S3 bucket. Returns count deleted."""
-    deleted = 0
-    client = storage.client
-    bucket = storage.bucket
-    paginator = client.get_paginator("list_objects_v2")
-
-    for page in paginator.paginate(Bucket=bucket):
-        objects = [{"Key": obj["Key"]} for obj in page.get("Contents", [])]
-        if not objects:
-            continue
-        # S3 delete_objects accepts up to 1000 keys per call
-        for i in range(0, len(objects), 1000):
-            batch = objects[i : i + 1000]
-            client.delete_objects(Bucket=bucket, Delete={"Objects": batch})
-            deleted += len(batch)
-            print(f"  deleted {deleted} objects …")
-
-    return deleted
+def _config(value: MediaConfig | ArtifactConfig) -> storage.Config:
+    return storage.Config(
+        endpoint_url=value.s3_endpoint_url,
+        region=value.s3_region,
+        access_key=value.s3_access_key_id,
+        secret_key=value.s3_secret_access_key,
+        bucket=value.s3_bucket,
+        force_path_style=value.s3_force_path_style,
+    )
 
 
-def truncate_tables(engine) -> list[str]:
-    """TRUNCATE all application tables (CASCADE). Returns table names cleared."""
-    table_names = [t.name for t in reversed(Base.metadata.sorted_tables)]
-    if not table_names:
-        return []
-
-    stmt = "TRUNCATE {} CASCADE".format(", ".join(table_names))
-    with engine.begin() as conn:
-        conn.execute(text(stmt))
-
-    return table_names
+async def _purge(store: storage.Store) -> int:
+    objects = [item.object async for item in store.list()]
+    for item in objects:
+        await store.delete(item)
+    return len(objects)
 
 
-def main() -> None:
-    config = get_s3_config()
-    print(f"Bucket  : {config.bucket}")
-    print(f"Endpoint: {config.endpoint_url}")
-
-    engine = get_engine()
-    db_url = str(engine.url)
-    # mask password
-    masked = db_url
-    if "@" in db_url:
-        pre, post = db_url.split("@", 1)
-        if ":" in pre:
-            scheme_user = pre.rsplit(":", 1)[0]
-            masked = f"{scheme_user}:***@{post}"
-    print(f"Database: {masked}")
-    print()
-
-    answer = input("⚠ This will DELETE all data. Continue? [y/N] ")
+async def main() -> None:
+    settings = Settings()
+    print(f"Media bucket: {settings.media.s3_bucket}")
+    print(f"Artifact bucket: {settings.artifacts.s3_bucket}")
+    print(f"Database: {settings.database.url_str.split('@')[-1]}")
+    answer = input("This will DELETE all configured data. Continue? [y/N] ")
     if answer.strip().lower() != "y":
         print("Aborted.")
-        sys.exit(0)
+        return
 
-    print()
-
-    # --- R2 / S3 ---
-    print("Purging bucket …")
-    storage = StorageService()
-    n = purge_bucket(storage)
-    print(f"  ✓ {n} objects deleted\n")
-
-    # --- Database ---
-    print("Truncating tables …")
-    tables = truncate_tables(engine)
-    for t in tables:
-        print(f"  ✓ {t}")
-    print(f"\n  {len(tables)} tables truncated")
-
-    print("\nDone.")
+    db = Db(settings.database)
+    media = await storage.S3.open(_config(settings.media))
+    artifacts = await storage.S3.open(_config(settings.artifacts))
+    try:
+        print(f"Deleted {await _purge(media)} media objects")
+        print(f"Deleted {await _purge(artifacts)} artifact objects")
+        tables = [table.name for table in reversed(Base.metadata.sorted_tables)]
+        if tables:
+            async with db.engine.begin() as connection:
+                await connection.execute(text(f"TRUNCATE {', '.join(tables)} CASCADE"))
+        print(f"Truncated {len(tables)} tables")
+    finally:
+        await artifacts.close()
+        await media.close()
+        await db.close()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

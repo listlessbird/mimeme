@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
-import os
 import random
 from pathlib import Path
+from typing import Any
 
-import psycopg2
+from sqlalchemy import text
+
+from mimeme.config import Settings
+from mimeme.db import Db
 
 SAMPLE_SQL = """
 SELECT i.id, i.width, i.height, a.ocr_text, a.caption_text, a.tags
@@ -14,7 +18,7 @@ FROM images i
 JOIN annotations a ON a.image_id = i.id
 JOIN processing p ON p.image_id = i.id
 WHERE p.embed_status = 'DONE'
-  AND i.dataset = %s
+  AND i.dataset = :dataset
   AND (a.ocr_text IS NOT NULL OR a.caption_text IS NOT NULL OR a.tags IS NOT NULL)
 """
 
@@ -39,7 +43,7 @@ def semantic_tags(raw: str | None) -> list[str]:
         return []
 
 
-def main() -> None:
+async def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--n", type=int, default=150)
     parser.add_argument("--seed", type=int, default=42)
@@ -47,20 +51,21 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=Path("evals/eval_queries_input.jsonl"))
     args = parser.parse_args()
 
-    conn = psycopg2.connect(os.environ["DATABASE_URL"])
-    cur = conn.cursor()
-    cur.execute(SAMPLE_SQL, (args.dataset,))
-    rows = cur.fetchall()
-    conn.close()
+    db = Db(Settings().database)
+    try:
+        async with db.read_session() as session:
+            rows = (await session.execute(text(SAMPLE_SQL), {"dataset": args.dataset})).all()
+    finally:
+        await db.close()
 
     rng = random.Random(args.seed)
-    buckets: dict[str, list[tuple]] = {}
+    buckets: dict[str, list[tuple[Any, ...]]] = {}
     for row in rows:
         buckets.setdefault(aspect_bucket(row[1], row[2]), []).append(row)
     for bucket_rows in buckets.values():
         rng.shuffle(bucket_rows)
 
-    picked: list[tuple] = []
+    picked: list[tuple[Any, ...]] = []
     order = sorted(buckets, key=lambda b: len(buckets[b]))
     while len(picked) < args.n and any(buckets.values()):
         for bucket in order:
@@ -87,4 +92,4 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
