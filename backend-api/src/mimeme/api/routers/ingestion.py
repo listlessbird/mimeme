@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Query
 from sqlalchemy import select
 
 from mimeme.api.auth import AdminRequired
-from mimeme.api.deps import DbDep, MediaUrlResolverDep
+from mimeme.api.deps import DbDep, HttpDep, SettingsDep, UrlsDep
 from mimeme.api.models.errors import error_responses
 from mimeme.api.models.ingestion import (
     IngestionDetailResponse,
@@ -18,12 +18,7 @@ from mimeme.api.models.ingestion import (
 )
 from mimeme.api.services.ingestion_logs import AxiomLogReader
 from mimeme.db.schema import IngestStage, IngestURL, SourceRunTrigger
-from mimeme.domain.ingestion_browse import (
-    AttemptNotFoundError,
-    IngestionBrowser,
-    IngestionView,
-    IngestOutcome,
-)
+from mimeme.ingest.browse import Browse, NotFound, Outcome, View
 
 router = APIRouter(
     prefix="/ingestion", tags=["Ingestion"], responses=error_responses(403, 429, 500)
@@ -34,19 +29,19 @@ router = APIRouter(
 async def list_ingestion(
     _auth: AdminRequired,
     db: DbDep,
-    media_urls: MediaUrlResolverDep,
-    view: Annotated[IngestionView, Query()] = IngestionView.LIVE,
+    media_urls: UrlsDep,
+    view: Annotated[View, Query()] = View.LIVE,
     stage: Annotated[IngestStage | None, Query()] = None,
     trigger: Annotated[SourceRunTrigger | None, Query()] = None,
     source_id: Annotated[int | None, Query(ge=1)] = None,
     dataset: Annotated[str | None, Query(max_length=255)] = None,
-    outcome: Annotated[IngestOutcome | None, Query()] = None,
+    outcome: Annotated[Outcome | None, Query()] = None,
     created_from: Annotated[datetime | None, Query()] = None,
     created_to: Annotated[datetime | None, Query()] = None,
     limit: Annotated[int, Query(ge=1, le=100)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> IngestionListResponse:
-    page = await IngestionBrowser(db, media_urls).list_attempts(
+    page = await Browse(db, media_urls).list_attempts(
         limit=limit,
         offset=offset,
         view=view,
@@ -76,11 +71,11 @@ async def get_ingestion_attempt(
     _auth: AdminRequired,
     db: DbDep,
     ingest_url_id: int,
-    media_urls: MediaUrlResolverDep,
+    media_urls: UrlsDep,
 ) -> IngestionDetailResponse:
     try:
-        detail = await IngestionBrowser(db, media_urls).get_attempt(ingest_url_id)
-    except AttemptNotFoundError:
+        detail = await Browse(db, media_urls).get_attempt(ingest_url_id)
+    except NotFound:
         raise HTTPException(status_code=404, detail="Ingest attempt not found")
 
     return IngestionDetailResponse.model_validate(detail.model_dump())
@@ -94,6 +89,8 @@ async def get_ingestion_attempt(
 async def get_ingestion_logs(
     _auth: AdminRequired,
     db: DbDep,
+    settings: SettingsDep,
+    http: HttpDep,
     ingest_url_id: int,
     limit: Annotated[int, Query(ge=1, le=500)] = 200,
 ) -> IngestionLogsResponse:
@@ -107,7 +104,7 @@ async def get_ingestion_logs(
         raise HTTPException(status_code=404, detail="Ingest attempt not found")
 
     job_id, created_at = row
-    reader = AxiomLogReader()
+    reader = AxiomLogReader(settings, http)
     entries = await reader.fetch_attempt_logs(
         ingest_url_id=ingest_url_id,
         job_id=job_id,

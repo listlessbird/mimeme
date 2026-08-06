@@ -9,9 +9,9 @@ import structlog
 from fastapi import FastAPI
 
 from mimeme import search
+from mimeme.config import Settings
 from mimeme.env import Env
-from mimeme.shared.config import Settings
-from mimeme.shared.logging import setup_logging
+from mimeme.logging import setup_logging
 
 
 def _startup_env_snapshot(settings: Settings) -> dict[str, object]:
@@ -48,7 +48,7 @@ async def loop_lag_probe(threshold_ms: float = 50.0, interval_s: float = 0.1) ->
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     settings: Settings = app.state.settings
-    setup_logging("api")
+    setup_logging(settings, "api")
     log = structlog.get_logger()
     log.info("starting_app", env=settings.app_env)
     log.info("startup_env", **_startup_env_snapshot(settings))
@@ -75,6 +75,11 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         )
     except search.Error as exc:
         log.warning("search_compute_unavailable", error=str(exc))
+
+    if await env.inference.ready():
+        log.info("inference_compute_ready")
+    else:
+        log.warning("inference_compute_unavailable")
 
     lag_probe = asyncio.create_task(loop_lag_probe(settings.http.loop_lag_threshold_ms))
     try:

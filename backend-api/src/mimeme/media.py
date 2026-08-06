@@ -3,7 +3,7 @@ from __future__ import annotations
 from urllib.parse import quote
 
 
-class MediaUrlResolver:
+class Urls:
     def __init__(self, base_url: str) -> None:
         self._base_url = base_url.rstrip("/")
 

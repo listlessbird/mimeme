@@ -8,12 +8,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mimeme.db.schema import Annotation, Processing, ProcessingStatus
-from mimeme.db.schema import ORMImage as Image
-from mimeme.domain.index_freshness import IndexFreshness
+from mimeme import storage
 from mimeme.db import Db
-from mimeme.shared.services.api_storage import ApiStorage
-from mimeme.shared.services.media_url import MediaUrlResolver
+from mimeme.db.schema import Annotation, Processing, ProcessingStatus
+from mimeme.db.schema import ORMImage as ImageRow
+from mimeme.job.store import Store as JobStore
+from mimeme.media import Urls
 
 ImageCatalogStatus = Literal[
     "pending",
@@ -27,11 +27,11 @@ ImageCatalogStatus = Literal[
 log = structlog.get_logger()
 
 
-class ImageCatalogNotFoundError(Exception):
+class NotFound(Exception):
     """Raised when an image catalog operation targets a missing image."""
 
 
-class ImageCatalogImage(BaseModel, frozen=True):
+class Image(BaseModel, frozen=True):
     id: int
     sha256: str
     status: ImageCatalogStatus
@@ -57,8 +57,8 @@ class ImageCatalogImage(BaseModel, frozen=True):
     created_at: datetime | None = None
 
 
-class ImageCatalogPage(BaseModel, frozen=True):
-    images: list[ImageCatalogImage]
+class Page(BaseModel, frozen=True):
+    images: list[Image]
     total: int
     limit: int
     offset: int
@@ -90,13 +90,13 @@ def project_image_status(proc: Processing | None) -> ImageCatalogStatus:
     return "pending"
 
 
-class ImageCatalog:
+class Catalog:
     def __init__(
         self,
         db: Db,
-        media_storage: ApiStorage,
-        artifact_storage: ApiStorage,
-        media_urls: MediaUrlResolver,
+        media_storage: storage.Store,
+        artifact_storage: storage.Store,
+        media_urls: Urls,
     ) -> None:
         self._db = db
         self._media_storage = media_storage
@@ -111,31 +111,24 @@ class ImageCatalog:
         status: str | None = None,
         dataset: str | None = None,
         sort: Literal["newest", "oldest"] = "newest",
-    ) -> ImageCatalogPage:
+    ) -> Page:
 
         async with self._db.read_session() as session:
-            id_query = select(Image.id)
+            id_query = select(ImageRow.id)
 
             if dataset:
-                id_query = id_query.where(Image.dataset == dataset)
+                id_query = id_query.where(ImageRow.dataset == dataset)
 
             if status:
-                id_query = id_query.outerjoin(Processing, Image.id == Processing.image_id).where(
+                id_query = id_query.outerjoin(Processing, ImageRow.id == Processing.image_id).where(
                     self._status_filter(status)
                 )
-
-            # total = (
-            #     await session.execute(
-            #         select(func.count()).select_from(id_query.subquery())
-            #     ).scalar()
-            #     or 0
-            # )
 
             row = await session.execute(select(func.count()).select_from(id_query.subquery()))
 
             total = row.scalar() or 0
 
-            order_by = Image.id.desc() if sort == "newest" else Image.id.asc()
+            order_by = ImageRow.id.desc() if sort == "newest" else ImageRow.id.asc()
 
             image_id_rows = await session.execute(
                 id_query.order_by(order_by).limit(limit).offset(offset)
@@ -144,7 +137,7 @@ class ImageCatalog:
             image_ids = image_id_rows.scalars().all()
 
             images = await self._load_images(session, list(image_ids))
-            return ImageCatalogPage(
+            return Page(
                 images=images,
                 total=total,
                 limit=limit,
@@ -152,84 +145,76 @@ class ImageCatalog:
                 has_more=(offset + len(images)) < total,
             )
 
-    async def get_image(self, image_id: int) -> ImageCatalogImage:
+    async def get_image(self, image_id: int) -> Image:
         async with self._db.read_session() as session:
             rows = await self._load_images(session, [image_id])
 
         if not rows:
-            raise ImageCatalogNotFoundError(f"Image {image_id} not found")
+            raise NotFound(f"Image {image_id} not found")
         return rows[0]
 
     async def delete_image(self, image_id: int) -> None:
 
-        async with self._db.write_session() as session:
+        async with self._db.read_session() as session:
             row = (
                 await session.execute(
-                    select(Image, Processing)
-                    .outerjoin(Processing, Processing.image_id == Image.id)
-                    .where(Image.id == image_id)
+                    select(ImageRow, Processing)
+                    .outerjoin(Processing, Processing.image_id == ImageRow.id)
+                    .where(ImageRow.id == image_id)
                 )
             ).one_or_none()
 
             if row is None:
-                raise ImageCatalogNotFoundError()
+                raise NotFound()
 
             image, processing = row
-
+            media_key = image.s3_key
+            embedding_key = processing.embed_s3_key if processing else None
             was_searchable = (
                 processing is not None
                 and processing.embed_status == ProcessingStatus.DONE
                 and processing.embed_s3_key is not None
             )
 
-            if image.s3_key:
-                try:
-                    await self._media_storage.delete(image.s3_key)
-                except Exception:
-                    log.warning(
-                        "image_catalog_storage_delete_failed",
-                        storage_role="media",
-                        key=image.s3_key,
-                        exc_info=True,
-                    )
+        if media_key:
+            await self._delete(self._media_storage, media_key, role="media")
+        if embedding_key:
+            await self._delete(self._artifact_storage, embedding_key, role="artifact")
+            await self._delete(
+                self._artifact_storage,
+                embedding_key.replace(".npy", "_text.npy"),
+                role="artifact",
+            )
 
-            if processing and processing.embed_s3_key:
-                for key in (
-                    processing.embed_s3_key,
-                    processing.embed_s3_key.replace(".npy", "_text.npy"),
-                ):
-                    try:
-                        await self._artifact_storage.delete(key)
-                    except Exception:
-                        log.warning(
-                            "image_catalog_storage_delete_failed",
-                            storage_role="artifact",
-                            key=key,
-                            exc_info=True,
-                        )
-
+        async with self._db.write_session() as session:
+            image = await session.get(ImageRow, image_id)
+            if image is None:
+                raise NotFound()
             await session.delete(image)
-            await session.flush()
-
             if was_searchable:
-                await session.run_sync(
-                    lambda sync_session: IndexFreshness(sync_session).mark_dirty(
-                        reason="image_deleted"
-                    )
-                )
+                await JobStore(session).mark_dirty(reason="image_deleted")
 
-    async def _load_images(
-        self, session: AsyncSession, image_ids: list[int]
-    ) -> list[ImageCatalogImage]:
+    async def _delete(self, store: storage.Store, key: str, *, role: str) -> None:
+        try:
+            await store.delete(storage.Object(key))
+        except storage.Error:
+            log.warning(
+                "image_catalog_storage_delete_failed",
+                storage_role=role,
+                key=key,
+                exc_info=True,
+            )
+
+    async def _load_images(self, session: AsyncSession, image_ids: list[int]) -> list[Image]:
         if not image_ids:
             return []
 
         rows = (
             await session.execute(
-                select(Image, Processing, Annotation)
-                .outerjoin(Processing, Processing.image_id == Image.id)
-                .outerjoin(Annotation, Annotation.image_id == Image.id)
-                .where(Image.id.in_(image_ids))
+                select(ImageRow, Processing, Annotation)
+                .outerjoin(Processing, Processing.image_id == ImageRow.id)
+                .outerjoin(Annotation, Annotation.image_id == ImageRow.id)
+                .where(ImageRow.id.in_(image_ids))
             )
         ).all()
 
@@ -244,15 +229,15 @@ class ImageCatalog:
 
     def _project_image(
         self,
-        image: Image,
+        image: ImageRow,
         proc: Processing | None,
         ann: Annotation | None,
-    ) -> ImageCatalogImage:
+    ) -> Image:
         url = None
         if image.s3_key:
             url = self._media_urls.resolve(image.s3_key)
 
-        return ImageCatalogImage(
+        return Image(
             id=image.id,
             sha256=image.sha256,
             url=url,

@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 from pydantic import ValidationError
 
 from mimeme import search, storage
+from mimeme.config import Settings
 from mimeme.db import Db
 from mimeme.db.schema import Job, JobStatus, JobType
 from mimeme.index.client import Client
@@ -24,7 +25,6 @@ from mimeme.index.model import (
 from mimeme.index.store import Store
 from mimeme.job.model import ClaimOwnership, StateMissing
 from mimeme.job.store import Store as JobStore
-from mimeme.shared.config import Settings
 
 _MANIFEST_MAX = 1024 * 1024
 _TERMINAL = (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED)

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import numpy as np
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,14 +41,15 @@ def _phash_to_uint64(hex_str: str | None) -> int | None:
         return None
 
 
-def _nearest(new_phash: int, phashes: np.ndarray, image_ids: np.ndarray) -> int | None:
-    if phashes.size == 0:
-        return None
-    distances = np.bitwise_count(phashes ^ np.uint64(new_phash))
-    idx = int(np.argmin(distances))
-    if int(distances[idx]) <= _PHASH_THRESHOLD:
-        return int(image_ids[idx])
-    return None
+def _nearest(new_phash: int, candidates: list[tuple[int, int]]) -> int | None:
+    nearest_id: int | None = None
+    nearest_distance = _PHASH_THRESHOLD + 1
+    for image_id, stored_phash in candidates:
+        distance = (new_phash ^ stored_phash).bit_count()
+        if distance < nearest_distance:
+            nearest_id = image_id
+            nearest_distance = distance
+    return nearest_id if nearest_distance <= _PHASH_THRESHOLD else None
 
 
 class Store:
@@ -73,15 +73,13 @@ class Store:
         ).all()
         if not rows:
             return None
-        ids: list[int] = []
-        hashes: list[int] = []
+        candidates: list[tuple[int, int]] = []
         for image_id, stored in rows:
             parsed = _phash_to_uint64(stored)
             if parsed is None:
                 continue
-            ids.append(image_id)
-            hashes.append(parsed)
-        return _nearest(value, np.array(hashes, dtype=np.uint64), np.array(ids, dtype=np.int64))
+            candidates.append((image_id, parsed))
+        return _nearest(value, candidates)
 
     async def insert_canonical(
         self,

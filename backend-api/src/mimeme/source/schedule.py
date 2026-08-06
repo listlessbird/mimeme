@@ -187,9 +187,7 @@ class TemporalScheduleStore:
                 cron_expressions=[_cron_required(spec)], time_zone_name=spec.timezone
             )
             schedule.policy = SchedulePolicy(overlap=TemporalScheduleOverlap.SKIP)
-            schedule.state = ScheduleState(
-                paused=spec.desired_state == DesiredScheduleState.PAUSED
-            )
+            schedule.state = ScheduleState(paused=spec.desired_state == DesiredScheduleState.PAUSED)
             return ScheduleUpdate(schedule=schedule)
 
         await handle.update(updater)
@@ -215,5 +213,7 @@ class TemporalScheduleStore:
 
 def _cron_required(spec: ScheduleSpec) -> str:
     if spec.cron is None:
-        raise ValueError(f"Schedule {spec.schedule_id} cannot be created/updated without a cron exp")
+        raise ValueError(
+            f"Schedule {spec.schedule_id} cannot be created/updated without a cron exp"
+        )
     return spec.cron

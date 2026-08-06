@@ -107,7 +107,9 @@ class RunAccounting(_Frozen):
     failed: int
 
 
-def derive_run_accounting(*, discovered_items: int, url_outcomes: list[UrlOutcome]) -> RunAccounting:
+def derive_run_accounting(
+    *, discovered_items: int, url_outcomes: list[UrlOutcome]
+) -> RunAccounting:
     queued = len(url_outcomes)
     duplicate = sum(1 for outcome in url_outcomes if outcome.duplicate_reason is not None)
     failed = sum(1 for outcome in url_outcomes if outcome.status == ProcessingStatus.FAILED)

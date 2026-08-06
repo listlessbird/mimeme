@@ -21,8 +21,8 @@ from mimeme.compute.model import (
 )
 from mimeme.compute.supervisor import ChildDead, Supervisor
 from mimeme.compute.workspace import Workspace
+from mimeme.config import ArtifactConfig, MediaConfig, Settings
 from mimeme.search.gateway import Gateway as SearchGateway
-from mimeme.shared.config import ArtifactConfig, MediaConfig, Settings
 
 _MAX_IMAGE_BYTES = 64 * 1024 * 1024
 

@@ -88,7 +88,7 @@ class TemporalConfig(BaseSettings):
 
     host: str = "localhost:7233"
     namespace: str = "default"
-    task_queue: str = "findmeme-tasks"
+    task_queue: str = "mimeme-v2"
 
 
 class HttpConfig(BaseSettings):
@@ -156,7 +156,7 @@ class IndexConfig(BaseSettings):
         env_prefix="INDEX_", env_file=_ENV_FILE, env_file_encoding="utf-8", extra="ignore"
     )
 
-    type: str = "flat"
+    type: Literal["flat", "hnsw"] = "flat"
     faiss_hnsw_ef_search: int = 128
     cache_dir: Path = Path("data/cache/indexes")
 

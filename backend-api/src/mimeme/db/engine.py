@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import ConnectionPoolEntry
 
-from mimeme.shared.config import DatabaseConfig
+from mimeme.config import DatabaseConfig
 
 
 @dataclass
@@ -69,9 +69,7 @@ async def _acquire_connection(session: AsyncSession) -> None:
 
 class Db:
     def __init__(self, config: DatabaseConfig) -> None:
-        connect_args: dict[str, object] = {
-            "statement_cache_size": config.statement_cache_size
-        }
+        connect_args: dict[str, object] = {"statement_cache_size": config.statement_cache_size}
         if config.ssl_required:
             connect_args["ssl"] = True
 

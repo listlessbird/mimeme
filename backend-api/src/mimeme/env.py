@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextlib import AsyncExitStack
 from typing import Self, cast
 
 import httpx
@@ -7,14 +8,14 @@ from temporalio.client import Client
 from temporalio.contrib.pydantic import pydantic_data_converter
 
 from mimeme import inference, search, storage
+from mimeme.config import ArtifactConfig, MediaConfig, Settings
 from mimeme.db import Db
 from mimeme.index import ops as index
 from mimeme.index.client import Client as IndexClient
 from mimeme.index.local import Local as IndexLocal
 from mimeme.inference import Client as InferenceClient
 from mimeme.ingest.facts import ComputeImages, Images
-from mimeme.shared.config import ArtifactConfig, MediaConfig, Settings
-from mimeme.shared.services.media_url import MediaUrlResolver
+from mimeme.media import Urls
 from mimeme.source.http import Http as SourceHttp
 
 
@@ -38,13 +39,14 @@ class Env:
         temporal: Client,
         media: storage.Store,
         artifacts: storage.Store,
-        media_urls: MediaUrlResolver,
+        media_urls: Urls,
         http: httpx.AsyncClient,
         inference: InferenceClient,
         index_client: IndexClient,
         search_client: search.Client,
         image_facts: Images,
         source_http: SourceHttp,
+        stack: AsyncExitStack,
     ) -> None:
         self.settings = settings
         self.db = db
@@ -58,51 +60,60 @@ class Env:
         self.search = search_client
         self.image_facts = image_facts
         self.source_http = source_http
+        self._stack = stack
 
     @classmethod
     async def create(cls, settings: Settings) -> Self:
-        db = Db(settings.database)
-        temporal = await Client.connect(
-            settings.temporal.host,
-            data_converter=pydantic_data_converter,
-        )
-        media = await storage.S3.open(_storage_config(settings.media))
-        artifacts = await storage.S3.open(_storage_config(settings.artifacts))
-        media_urls = MediaUrlResolver(settings.media.public_base_url)
-        http = httpx.AsyncClient(timeout=settings.compute.request_timeout_s)
-        inference_client = inference.create(settings, http)
-        index_client = IndexLocal(
-            http,
-            base_url=settings.compute.gateway_url,
-            poll_interval_s=settings.compute.poll_interval_s,
-        )
-        search_client = search.create(settings, http)
-        await index.reconcile(
-            db,
-            artifacts,
-            cast(search.Activation, search_client),
-        )
-        image_facts = ComputeImages(http, base_url=settings.compute.gateway_url)
-        return cls(
-            settings=settings,
-            db=db,
-            temporal=temporal,
-            media=media,
-            artifacts=artifacts,
-            media_urls=media_urls,
-            http=http,
-            inference=inference_client,
-            index_client=index_client,
-            search_client=search_client,
-            image_facts=image_facts,
-            source_http=SourceHttp(http),
-        )
+        stack = AsyncExitStack()
+        try:
+            db = Db(settings.database)
+            stack.push_async_callback(db.close)
+            temporal = await Client.connect(
+                settings.temporal.host,
+                namespace=settings.temporal.namespace,
+                data_converter=pydantic_data_converter,
+            )
+            media = await storage.S3.open(_storage_config(settings.media))
+            stack.push_async_callback(media.close)
+            artifacts = await storage.S3.open(_storage_config(settings.artifacts))
+            stack.push_async_callback(artifacts.close)
+            media_urls = Urls(settings.media.public_base_url)
+            http = httpx.AsyncClient(timeout=settings.compute.request_timeout_s)
+            stack.push_async_callback(http.aclose)
+            inference_client = inference.create(settings, http)
+            stack.push_async_callback(inference_client.close)
+            index_client = IndexLocal(
+                http,
+                base_url=settings.compute.gateway_url,
+                poll_interval_s=settings.compute.poll_interval_s,
+            )
+            stack.push_async_callback(index_client.close)
+            search_client = search.create(settings, http)
+            stack.push_async_callback(search_client.close)
+            await index.reconcile(
+                db,
+                artifacts,
+                cast(search.Activation, search_client),
+            )
+            image_facts = ComputeImages(http, base_url=settings.compute.gateway_url)
+            return cls(
+                settings=settings,
+                db=db,
+                temporal=temporal,
+                media=media,
+                artifacts=artifacts,
+                media_urls=media_urls,
+                http=http,
+                inference=inference_client,
+                index_client=index_client,
+                search_client=search_client,
+                image_facts=image_facts,
+                source_http=SourceHttp(http),
+                stack=stack,
+            )
+        except BaseException:
+            await stack.aclose()
+            raise
 
     async def aclose(self) -> None:
-        await self.index.close()
-        await self.search.close()
-        await self.inference.close()
-        await self.http.aclose()
-        await self.artifacts.close()
-        await self.media.close()
-        await self.db.close()
+        await self._stack.aclose()

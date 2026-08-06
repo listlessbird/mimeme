@@ -23,7 +23,7 @@ from mimeme.inference.model import (
 if TYPE_CHECKING:
     import httpx
 
-    from mimeme.shared.config import Settings
+    from mimeme.config import Settings
 
 
 def create(settings: Settings, http: httpx.AsyncClient) -> Client:

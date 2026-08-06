@@ -10,7 +10,9 @@ from mimeme.source.model import NothingToRetry, RetryPlan
 from mimeme.source.store import Store
 
 
-async def retry_run(db: Db, source_id: int, run_id: int, *, request_id: str | None = None) -> RetryPlan:
+async def retry_run(
+    db: Db, source_id: int, run_id: int, *, request_id: str | None = None
+) -> RetryPlan:
     async with db.write_session() as session:
         store = Store(session)
         source = await store.live_source_or_raise(source_id)

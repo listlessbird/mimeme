@@ -72,7 +72,7 @@ def _build_handler(role: Role):  # noqa: ANN202
 
     if role == "inference":
         from mimeme.compute.inference import Models
-        from mimeme.shared.config import Settings
+        from mimeme.config import Settings
 
         models = Models(Settings().inference)
 
@@ -97,7 +97,7 @@ def _build_handler(role: Role):  # noqa: ANN202
         return handle_search
 
     if role == "index":
-        from mimeme.index.native import build
+        from mimeme.compute.index import build
 
         def handle_index(raw: bytes) -> dict:
             call = BuildCall.model_validate_json(raw)

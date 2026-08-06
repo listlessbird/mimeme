@@ -22,7 +22,7 @@ from mimeme.db.schema import (
 )
 from mimeme.ingest.model import ItemRef, RemoteUrl, restore
 from mimeme.job import rule as job_rule
-from mimeme.shared.services.media_url import MediaUrlResolver
+from mimeme.media import Urls
 from mimeme.source.model import (
     DiscoveredItem,
     DuplicateSourceName,
@@ -338,7 +338,9 @@ class Store:
             .all()
         )
 
-    async def failed_urls_for_item(self, source_id: int, source_item_id: int) -> Sequence[IngestURL]:
+    async def failed_urls_for_item(
+        self, source_id: int, source_item_id: int
+    ) -> Sequence[IngestURL]:
         item = (
             await self._session.execute(
                 select(SourceItem.id).where(
@@ -396,7 +398,7 @@ class Store:
     async def list_items(
         self,
         source_id: int,
-        media_urls: MediaUrlResolver,
+        media_urls: Urls,
         *,
         limit: int,
         offset: int,
@@ -468,7 +470,7 @@ class Store:
         )
 
     async def list_run_items(
-        self, source_id: int, run_id: int, media_urls: MediaUrlResolver, *, limit: int, offset: int
+        self, source_id: int, run_id: int, media_urls: Urls, *, limit: int, offset: int
     ) -> RunItemsPage:
         await self.live_source_or_raise(source_id)
         run = (
@@ -605,13 +607,15 @@ class Store:
                 .group_by(SourceItem.last_source_run_id)
             )
         ).all()
-        discovered_by_run = {run_id: count for run_id, count in discovered_rows if run_id is not None}
+        discovered_by_run = {
+            run_id: count for run_id, count in discovered_rows if run_id is not None
+        }
 
         outcome_rows = (
             await self._session.execute(
-                select(
-                    IngestURL.source_run_id, IngestURL.status, IngestURL.duplicate_reason
-                ).where(IngestURL.source_run_id.in_(run_ids))
+                select(IngestURL.source_run_id, IngestURL.status, IngestURL.duplicate_reason).where(
+                    IngestURL.source_run_id.in_(run_ids)
+                )
             )
         ).all()
         outcomes_by_run: dict[int, list[UrlOutcome]] = {run_id: [] for run_id in run_ids}
@@ -708,7 +712,7 @@ def _preview_from_metadata(raw_metadata: dict[str, Any] | None) -> str | None:
 
 
 def _thumbnail(
-    *, image_s3_key: str | None, raw_metadata: dict[str, Any] | None, media_urls: MediaUrlResolver
+    *, image_s3_key: str | None, raw_metadata: dict[str, Any] | None, media_urls: Urls
 ) -> str | None:
     if image_s3_key:
         return media_urls.resolve(image_s3_key)
@@ -858,7 +862,7 @@ async def list_schedule_specs(db: Db) -> list[ScheduleSpec]:
 async def list_items(
     db: Db,
     source_id: int,
-    media_urls: MediaUrlResolver,
+    media_urls: Urls,
     *,
     limit: int,
     offset: int,
@@ -871,7 +875,7 @@ async def list_items(
 
 
 async def list_run_items(
-    db: Db, source_id: int, run_id: int, media_urls: MediaUrlResolver, *, limit: int, offset: int
+    db: Db, source_id: int, run_id: int, media_urls: Urls, *, limit: int, offset: int
 ) -> RunItemsPage:
     async with db.read_session() as session:
         return await Store(session).list_run_items(

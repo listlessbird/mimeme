@@ -1,40 +1,18 @@
 from __future__ import annotations
 
-import atexit
 import logging
 import time
-from typing import cast
 
 import structlog
-from axiom_py import Client
-from axiom_py.structlog import AxiomProcessor
 from temporalio import activity
 
-from mimeme.shared.runtime import settings
-
-_axiom_client: Client | None = None
+from mimeme.config import Settings
 
 
-def _get_axiom_processor() -> AxiomProcessor | None:
-    if (
-        not settings.logging.axiom_api_token.get_secret_value()
-        or not settings.logging.axiom_dataset
-    ):
-        return None
-
-    global _axiom_client
-
-    _axiom_client = Client(token=settings.logging.axiom_api_token.get_secret_value())
-    atexit.register(_axiom_client.shutdown_hook)
-    return AxiomProcessor(_axiom_client, settings.logging.axiom_dataset)
-
-
-def setup_logging(service: str = "api") -> None:
+def setup_logging(settings: Settings, service: str = "api") -> None:
     # Keep SQL statement logs off by default; they are too noisy for worker tracing.
     logging.getLogger("sqlalchemy.engine").setLevel(logging.WARNING)
     logging.getLogger("sqlalchemy.pool").setLevel(logging.WARNING)
-
-    axiom_proc = _get_axiom_processor()
 
     processors: list[structlog.types.Processor] = [
         structlog.contextvars.merge_contextvars,
@@ -44,9 +22,6 @@ def setup_logging(service: str = "api") -> None:
         structlog.processors.TimeStamper(fmt="iso", key="_time"),
     ]
 
-    if axiom_proc:
-        processors.append(cast(structlog.types.Processor, axiom_proc))
-
     processors.append(
         structlog.dev.ConsoleRenderer() if settings.debug else structlog.processors.JSONRenderer()
     )
@@ -54,7 +29,7 @@ def setup_logging(service: str = "api") -> None:
     structlog.configure(
         processors=processors,
         wrapper_class=structlog.make_filtering_bound_logger(
-            logging.getLevelName(settings.logging.level)
+            logging.getLevelNamesMapping().get(settings.logging.level.upper(), logging.INFO)
         ),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(),

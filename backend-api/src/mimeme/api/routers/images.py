@@ -6,10 +6,9 @@ from mimeme.api.auth import AdminRequired
 from mimeme.api.deps import (
     ArtifactStorageDep,
     DbDep,
+    EnvDep,
     MediaStorageDep,
-    MediaUrlResolverDep,
-    SettingsDep,
-    TemporalClientDep,
+    UrlsDep,
 )
 from mimeme.api.models.errors import error_responses
 from mimeme.api.models.images import (
@@ -20,44 +19,31 @@ from mimeme.api.models.images import (
     ImageStatus,
 )
 from mimeme.api.rate_limit import ADMIN_LIMIT, limiter
-from mimeme.domain.image_catalog import ImageCatalog, ImageCatalogNotFoundError
-from mimeme.domain.image_ingest_input import ImageIngestInput, RemoteImageUrlInput
-from mimeme.domain.image_upload import ImageUploadStager
-from mimeme.domain.job_store import ApiJobStore
-from mimeme.db import Db
-from mimeme.shared.config import Settings
-from mimeme.workflows import IngestWorkflow, IngestWorkflowInput
+from mimeme.env import Env
+from mimeme.ingest import RemoteUrl, Source, Submission
+from mimeme.ingest.catalog import Catalog, NotFound
+from mimeme.ingest.submit import stage_upload, submit
 
 router = APIRouter(prefix="/images", tags=["Images"], responses=error_responses(403, 429, 500))
 
 
 async def _launch_ingest(
-    db: Db,
-    settings: Settings,
-    temporal: TemporalClientDep,
+    env: Env,
     *,
-    inputs: list[ImageIngestInput],
+    inputs: list[Source],
     dataset: str | None,
     tags: list[str],
     callback_url: str | None,
 ) -> ImageIngestResponse:
-    store = ApiJobStore(db)
-    job = await store.create_ingest_job(
-        inputs=inputs, dataset=dataset, tags=tags, callback_url=callback_url
-    )
-
-    await temporal.start_workflow(
-        IngestWorkflow.run,
-        IngestWorkflowInput(
-            job_id=job.job_id,
-            dataset=job.dataset,
-            tags=job.tags,
-            callback_url=job.callback_url,
+    job = await submit(
+        env,
+        Submission(
+            urls=inputs,
+            dataset=dataset,
+            tags=tags,
+            callback_url=callback_url,
         ),
-        id=job.workflow_id,
-        task_queue=settings.temporal.task_queue,
     )
-    await store.record_workflow_id(job.job_id, job.workflow_id)
 
     return ImageIngestResponse(
         job_id=job.job_id,
@@ -72,16 +58,12 @@ async def _launch_ingest(
 async def ingest_images(
     request: Request,
     _auth: AdminRequired,
-    db: DbDep,
-    settings: SettingsDep,
+    env: EnvDep,
     ingest_request: ImageIngestRequest,
-    temporal: TemporalClientDep,
 ) -> ImageIngestResponse:
     return await _launch_ingest(
-        db,
-        settings,
-        temporal,
-        inputs=[RemoteImageUrlInput(url=str(url)) for url in ingest_request.urls],
+        env,
+        inputs=[RemoteUrl(url=str(url)) for url in ingest_request.urls],
         dataset=ingest_request.dataset,
         tags=ingest_request.tags,
         callback_url=str(ingest_request.callback_url) if ingest_request.callback_url else None,
@@ -93,10 +75,7 @@ async def ingest_images(
 async def upload_image(
     request: Request,
     _auth: AdminRequired,
-    db: DbDep,
-    settings: SettingsDep,
-    artifact_storage: ArtifactStorageDep,
-    temporal: TemporalClientDep,
+    env: EnvDep,
     file: Annotated[UploadFile, File()],
     dataset: Annotated[str | None, Form()] = None,
     tags: Annotated[list[str] | None, Form()] = None,
@@ -105,14 +84,12 @@ async def upload_image(
     if not content:
         raise HTTPException(status_code=400, detail="Uploaded file is empty")
 
-    staged = await ImageUploadStager(artifact_storage).stage(
-        content=content, filename=file.filename, content_type=file.content_type
+    staged = await stage_upload(
+        env, content=content, filename=file.filename, content_type=file.content_type
     )
 
     return await _launch_ingest(
-        db,
-        settings,
-        temporal,
+        env,
         inputs=[staged],
         dataset=dataset,
         tags=tags or [],
@@ -128,14 +105,14 @@ async def list_images(
     db: DbDep,
     media_storage: MediaStorageDep,
     artifact_storage: ArtifactStorageDep,
-    media_urls: MediaUrlResolverDep,
+    media_urls: UrlsDep,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
     status: Annotated[ImageStatus | None, Query()] = None,
     dataset: Annotated[str | None, Query()] = None,
     sort: Annotated[Literal["newest", "oldest"], Query()] = "newest",
 ) -> ImageListResponse:
-    page = await ImageCatalog(db, media_storage, artifact_storage, media_urls).list_images(
+    page = await Catalog(db, media_storage, artifact_storage, media_urls).list_images(
         limit=limit,
         offset=offset,
         status=status.value if status else None,
@@ -165,13 +142,11 @@ async def get_image(
     image_id: int,
     media_storage: MediaStorageDep,
     artifact_storage: ArtifactStorageDep,
-    media_urls: MediaUrlResolverDep,
+    media_urls: UrlsDep,
 ) -> ImageResponse:
     try:
-        image = await ImageCatalog(db, media_storage, artifact_storage, media_urls).get_image(
-            image_id
-        )
-    except ImageCatalogNotFoundError:
+        image = await Catalog(db, media_storage, artifact_storage, media_urls).get_image(image_id)
+    except NotFound:
         raise HTTPException(status_code=404, detail="Image not found")
     payload = image.model_dump()
     payload["status"] = ImageStatus(payload["status"])
@@ -185,9 +160,9 @@ async def delete_image(
     image_id: int,
     media_storage: MediaStorageDep,
     artifact_storage: ArtifactStorageDep,
-    media_urls: MediaUrlResolverDep,
+    media_urls: UrlsDep,
 ) -> None:
     try:
-        await ImageCatalog(db, media_storage, artifact_storage, media_urls).delete_image(image_id)
-    except ImageCatalogNotFoundError:
+        await Catalog(db, media_storage, artifact_storage, media_urls).delete_image(image_id)
+    except NotFound:
         raise HTTPException(status_code=404, detail="Image not found")

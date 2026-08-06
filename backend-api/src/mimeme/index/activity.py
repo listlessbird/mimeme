@@ -7,13 +7,13 @@ from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
 from mimeme import search, storage
+from mimeme.config import Settings
 from mimeme.db import Db
 from mimeme.index import ops as index
 from mimeme.index import rule
 from mimeme.index.client import Client
 from mimeme.index.model import Activated, ActivateInput, Build, Prepared, PrepareInput, Result
 from mimeme.job import ops as job_ops
-from mimeme.shared.config import Settings
 
 
 class Deps(Protocol):

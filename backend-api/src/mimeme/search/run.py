@@ -26,7 +26,7 @@ class Rows(Protocol):
     async def fetch(self, image_ids: list[int]) -> dict[int, Projection]: ...
 
 
-class MediaUrls(Protocol):
+class Urls(Protocol):
     def resolve(self, key: str) -> str: ...
 
 
@@ -35,7 +35,7 @@ async def run(
     *,
     client: Client,
     rows: Rows,
-    media_urls: MediaUrls,
+    media_urls: Urls,
 ) -> Page:
     started = time.perf_counter()
     required = query.offset + query.limit

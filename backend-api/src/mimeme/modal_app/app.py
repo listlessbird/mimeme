@@ -5,7 +5,7 @@ from typing import Any, Literal, cast
 
 import modal
 
-from mimeme.shared.config import ArtifactConfig, MediaConfig, Settings
+from mimeme.config import ArtifactConfig, MediaConfig, Settings
 
 settings = Settings()
 app = modal.App(settings.compute.modal_app_name)

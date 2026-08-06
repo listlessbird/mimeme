@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import asyncio
 import datetime
 from typing import Any
 
+import httpx
 import structlog
-from axiom_py import Client
-from axiom_py.client import AplOptions
 
-from mimeme.shared.runtime import settings
+from mimeme.config import Settings
 
 log = structlog.get_logger()
 
@@ -65,21 +63,14 @@ def _str(value: Any) -> str | None:
 
 
 class AxiomLogReader:
-    def __init__(self, token: str | None = None, dataset: str | None = None) -> None:
-        self._token = (
-            token if token is not None else settings.logging.axiom_api_token.get_secret_value()
-        )
-        self._dataset = dataset if dataset is not None else settings.logging.axiom_dataset
-        self._client: Client | None = None
+    def __init__(self, settings: Settings, http: httpx.AsyncClient) -> None:
+        self._token = settings.logging.axiom_api_token.get_secret_value()
+        self._dataset = settings.logging.axiom_dataset
+        self._http = http
 
     @property
     def available(self) -> bool:
         return bool(self._token and self._dataset)
-
-    def _get_client(self) -> Client:
-        if self._client is None:
-            self._client = Client(token=self._token)
-        return self._client
 
     async def fetch_attempt_logs(
         self,
@@ -100,23 +91,34 @@ class AxiomLogReader:
             f"| limit {int(limit)}"
         )
 
-        opts: AplOptions | None = None
+        payload: dict[str, object] = {"apl": apl}
         if created_at is not None:
-            opts = AplOptions(
-                start_time=created_at - datetime.timedelta(hours=1),
-                end_time=datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1),
-                limit=limit,
-            )
+            payload["startTime"] = (created_at - datetime.timedelta(hours=1)).isoformat()
+            payload["endTime"] = (
+                datetime.datetime.now(datetime.UTC) + datetime.timedelta(hours=1)
+            ).isoformat()
 
         try:
-            result = await asyncio.to_thread(lambda: self._get_client().query(apl, opts))
+            response = await self._http.post(
+                "https://api.axiom.co/v1/datasets/_apl",
+                params={"format": "legacy"},
+                headers={"Authorization": f"Bearer {self._token}"},
+                json=payload,
+            )
+            response.raise_for_status()
+            result = response.json()
         except Exception as exc:
             log.warning("ingestion_logs_query_failed", ingest_url_id=ingest_url_id, error=str(exc))
             return []
 
         entries: list[IngestionLogEntry] = []
-        for match in result.matches or []:
-            entries.append(IngestionLogEntry(time=match._time, data=dict(match.data)))
+        for match in result.get("matches", []):
+            if not isinstance(match, dict):
+                continue
+            data = match.get("data")
+            timestamp = match.get("_time")
+            if isinstance(data, dict) and isinstance(timestamp, str):
+                entries.append(IngestionLogEntry(time=timestamp, data=data))
         return entries
 
 

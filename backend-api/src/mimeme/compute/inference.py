@@ -15,7 +15,7 @@ from mimeme.compute.model import (
     EmbedReply,
     EmbedReplyItem,
 )
-from mimeme.shared.config import InferenceConfig
+from mimeme.config import InferenceConfig
 
 
 def _to_numpy(output: object, *, kind: Literal["image", "text"]) -> np.ndarray:

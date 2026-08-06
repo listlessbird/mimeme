@@ -93,7 +93,7 @@ class RebuildCreation(BaseModel, frozen=True, extra="forbid"):
     workflow_id: str
     force: bool
     model_name: str
-    index_type: str
+    index_type: Literal["flat", "hnsw"]
 
 
 class Cancellation(BaseModel, frozen=True, extra="forbid"):

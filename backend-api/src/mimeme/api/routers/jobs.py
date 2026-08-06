@@ -4,7 +4,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query
 
-from mimeme import job
+from mimeme import index, job
 from mimeme.api.auth import AdminRequired
 from mimeme.api.deps import DbDep, SettingsDep, TemporalClientDep
 from mimeme.api.models.errors import error_responses
@@ -15,12 +15,10 @@ from mimeme.api.models.jobs import (
     JobResponse,
     RebuildIndexRequest,
 )
-from mimeme.db.schema import JobStatus, JobType, RebuildTrigger
-from mimeme.workflows.models import RebuildIndexWorkflowInput
+from mimeme.db.schema import JobStatus, JobType
+from mimeme.index.workflow import RebuildWorkflow
 
 router = APIRouter(prefix="/jobs", tags=["Jobs"], responses=error_responses(403, 429, 500))
-
-_REBUILD_WORKFLOW = "RebuildIndexWorkflow"
 
 
 @router.get("/{job_id}", response_model=JobResponse, responses=error_responses(404))
@@ -49,13 +47,13 @@ async def trigger_rebuild_index(
     )
 
     await temporal.start_workflow(
-        _REBUILD_WORKFLOW,
-        RebuildIndexWorkflowInput(
+        RebuildWorkflow.run,
+        index.WorkflowInput(
             job_id=rebuild.job.id,
             force=rebuild.force,
-            model_name=rebuild.model_name,
+            model=rebuild.model_name,
             index_type=rebuild.index_type,
-            trigger=RebuildTrigger.MANUAL,
+            trigger=index.Trigger.MANUAL,
         ),
         id=rebuild.workflow_id,
         task_queue=settings.temporal.task_queue,

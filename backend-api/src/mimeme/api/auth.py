@@ -8,7 +8,7 @@ import structlog
 from fastapi import Depends, HTTPException, Request, Security, status
 from fastapi.security import APIKeyHeader
 
-from mimeme.shared.config import Settings
+from mimeme.config import Settings
 
 log = structlog.getLogger()
 

@@ -6,8 +6,8 @@ from typing import Annotated, NotRequired, TypedDict
 from pydantic import BaseModel, Field
 
 from mimeme.db.schema import DuplicateReason, ProcessingStatus, SourceRunStatus, SourceRunTrigger
-from mimeme.domain.image_ingest_input import ImageIngestInput
-from mimeme.domain.source_item_browse import SourceItemIngestState
+from mimeme.ingest import Source
+from mimeme.source import SourceItemIngestState
 
 
 class MemeApiAdapterConfig(TypedDict):
@@ -135,7 +135,7 @@ class SourceItemListResponse(BaseModel):
 
 class RunItemResponse(BaseModel):
     id: int
-    input: ImageIngestInput
+    input: Source
     source_item_id: int | None
     external_item_id: str | None
     title: str | None

@@ -2,14 +2,15 @@ from __future__ import annotations
 
 from typing import Annotated
 
+import httpx
 from fastapi import Depends, Request
 from temporalio.client import Client
 
-from mimeme import search, storage
+from mimeme import inference, search, storage
+from mimeme.config import Settings
 from mimeme.db import Db
 from mimeme.env import Env
-from mimeme.shared.config import Settings
-from mimeme.shared.services.media_url import MediaUrlResolver
+from mimeme.media import Urls
 
 
 def get_env(request: Request) -> Env:
@@ -54,11 +55,25 @@ def get_search(request: Request) -> search.Client:
 SearchDep = Annotated[search.Client, Depends(get_search)]
 
 
-def get_media_url_resolver(request: Request) -> MediaUrlResolver:
+def get_inference(request: Request) -> inference.Client:
+    return request.app.state.env.inference
+
+
+InferenceDep = Annotated[inference.Client, Depends(get_inference)]
+
+
+def get_http(request: Request) -> httpx.AsyncClient:
+    return request.app.state.env.http
+
+
+HttpDep = Annotated[httpx.AsyncClient, Depends(get_http)]
+
+
+def get_media_url_resolver(request: Request) -> Urls:
     return request.app.state.env.media_urls
 
 
-MediaUrlResolverDep = Annotated[MediaUrlResolver, Depends(get_media_url_resolver)]
+UrlsDep = Annotated[Urls, Depends(get_media_url_resolver)]
 
 
 async def get_temporal_client(request: Request) -> Client:

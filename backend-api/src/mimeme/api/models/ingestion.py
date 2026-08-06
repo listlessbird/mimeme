@@ -5,13 +5,13 @@ from datetime import datetime
 from pydantic import BaseModel
 
 from mimeme.db.schema import DuplicateReason, IngestStage, ProcessingStatus, SourceRunTrigger
-from mimeme.domain.image_ingest_input import ImageIngestInput
-from mimeme.domain.ingestion_browse import IngestOutcome
+from mimeme.ingest import Source
+from mimeme.ingest.browse import Outcome
 
 
 class IngestionRowResponse(BaseModel):
     ingest_url_id: int
-    input: ImageIngestInput
+    input: Source
     job_id: str
     source_run_id: int | None
     source_id: int | None
@@ -19,7 +19,7 @@ class IngestionRowResponse(BaseModel):
     trigger: SourceRunTrigger
     stage: IngestStage
     status: ProcessingStatus
-    outcome: IngestOutcome
+    outcome: Outcome
     duplicate_reason: DuplicateReason | None
     duplicate_of_image_id: int | None
     resolved_image_id: int | None

@@ -9,8 +9,8 @@ from mimeme import search
 from mimeme.api.auth import ReadonlyRequired
 from mimeme.api.models.errors import error_responses
 from mimeme.api.rate_limit import SEARCH_LIMIT, limiter
+from mimeme.media import Urls
 from mimeme.search.rows import SqlRows
-from mimeme.shared.services.media_url import MediaUrlResolver
 
 router = APIRouter(prefix="/search", tags=["Search"], responses=error_responses(403, 429, 500))
 
@@ -23,13 +23,13 @@ def get_rows(request: Request) -> search.Rows:
     return SqlRows(request.app.state.env.db)
 
 
-def get_media_urls(request: Request) -> MediaUrlResolver:
+def get_media_urls(request: Request) -> Urls:
     return request.app.state.env.media_urls
 
 
 ClientDep = Annotated[search.Client, Depends(get_client)]
 RowsDep = Annotated[search.Rows, Depends(get_rows)]
-MediaUrlsDep = Annotated[MediaUrlResolver, Depends(get_media_urls)]
+UrlsDep = Annotated[Urls, Depends(get_media_urls)]
 
 
 @router.get("", response_model=search.Page, responses=error_responses(400, 503))
@@ -39,7 +39,7 @@ async def search_text(
     _auth: ReadonlyRequired,
     client: ClientDep,
     rows: RowsDep,
-    media_urls: MediaUrlsDep,
+    media_urls: UrlsDep,
     q: Annotated[str, HttpQuery(min_length=1, max_length=200, description="Search query")],
     limit: Annotated[int, HttpQuery(ge=1, le=100)] = 20,
     offset: Annotated[int, HttpQuery(ge=0)] = 0,
@@ -64,7 +64,7 @@ async def search_similar(
     _auth: ReadonlyRequired,
     client: ClientDep,
     rows: RowsDep,
-    media_urls: MediaUrlsDep,
+    media_urls: UrlsDep,
     image_id: int,
     limit: Annotated[int, HttpQuery(ge=1, le=100)] = 20,
 ) -> search.Page:

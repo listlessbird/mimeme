@@ -34,7 +34,7 @@ from mimeme.search.run import Rows, run
 if TYPE_CHECKING:
     import httpx
 
-    from mimeme.shared.config import Settings
+    from mimeme.config import Settings
 
 
 def create(settings: Settings, http: httpx.AsyncClient) -> Client:

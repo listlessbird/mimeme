@@ -1,4 +1,4 @@
-"""Blocking NumPy and FAISS index construction owned by the index child."""
+"""Blocking NumPy and FAISS construction owned by the index compute child."""
 
 from __future__ import annotations
 

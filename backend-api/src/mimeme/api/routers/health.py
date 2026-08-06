@@ -7,10 +7,11 @@ from fastapi import APIRouter, Response, status
 from sqlalchemy import text
 from temporalio.client import Client
 
-from mimeme import search, storage
+from mimeme import inference, search, storage
 from mimeme.api.deps import (
     ArtifactStorageDep,
     DbDep,
+    InferenceDep,
     MediaStorageDep,
     SearchDep,
     TemporalClientDep,
@@ -59,6 +60,14 @@ async def _check_search(client: search.Client) -> bool:
         return False
 
 
+async def _check_inference(client: inference.Client) -> bool:
+    try:
+        return await client.ready()
+    except Exception as e:
+        log.warning("healthcheck_inference_failed", error=str(e))
+        return False
+
+
 @router.get(
     "/ready",
     response_model=HealthResponse,
@@ -71,16 +80,18 @@ async def check_readiness(
     media: MediaStorageDep,
     artifacts: ArtifactStorageDep,
     search_client: SearchDep,
+    inference_client: InferenceDep,
 ) -> HealthResponse:
-    pg_ok, media_ok, artifact_ok, temporal_ok, search_ok = await asyncio.gather(
+    pg_ok, media_ok, artifact_ok, temporal_ok, search_ok, inference_ok = await asyncio.gather(
         _check_postgres(db),
         _check_storage("media", media),
         _check_storage("artifact", artifacts),
         _check_temporal(temporal),
         _check_search(search_client),
+        _check_inference(inference_client),
     )
 
-    healthy = pg_ok and media_ok and artifact_ok and temporal_ok and search_ok
+    healthy = pg_ok and media_ok and artifact_ok and temporal_ok and search_ok and inference_ok
 
     if not healthy:
         log.warning(
@@ -90,6 +101,7 @@ async def check_readiness(
             artifact_storage=artifact_ok,
             temporal=temporal_ok,
             search=search_ok,
+            inference=inference_ok,
         )
 
     response.status_code = status.HTTP_200_OK if healthy else status.HTTP_503_SERVICE_UNAVAILABLE

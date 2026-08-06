@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from typing import Literal
 
 from mimeme.db import Db
 from mimeme.db.schema import Job, JobStatus, JobType, RebuildTrigger
@@ -89,7 +90,7 @@ async def create_source_ingest(
 
 
 async def create_rebuild(
-    db: Db, *, force: bool, model_name: str, index_type: str
+    db: Db, *, force: bool, model_name: str, index_type: Literal["flat", "hnsw"]
 ) -> RebuildCreation:
     job_id, workflow_id = rule.mint_rebuild()
     async with db.write_session() as session:
