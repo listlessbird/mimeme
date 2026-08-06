@@ -22,9 +22,11 @@ class TestDiscoverActivity:
         self, db: SavepointDb, run_sync_seed
     ) -> None:
         source_id = await run_sync_seed(
-            lambda s: create_ingestion_source(
-                session=s, adapter_config={"subreddits": ["memes"]}, max_items_per_run=50
-            ).id
+            lambda s: (
+                create_ingestion_source(
+                    session=s, adapter_config={"subreddits": ["memes"]}, max_items_per_run=50
+                ).id
+            )
         )
         http = FakeHttp()
         http.set(MEME_URL, meme_response("aaa"))

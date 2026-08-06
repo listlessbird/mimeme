@@ -1,4 +1,4 @@
-"""Schema spec for the Source registry tables (issue 02).
+"""Schema contract for Source registry tables.
 
 Pins the ORM mapping for `ingestion_sources`, `source_runs`, `source_items`,
 and the new `ingest_urls` provenance FKs. These run against the schema
@@ -14,14 +14,6 @@ import datetime
 import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
-
-from mimeme.db.schema import (
-    IngestionSource,
-    SourceItem,
-    SourceRunStatus,
-    SourceRunTrigger,
-    SourceType,
-)
 from tests.factories import (
     create_image,
     create_ingest_url,
@@ -29,6 +21,14 @@ from tests.factories import (
     create_job,
     create_source_item,
     create_source_run,
+)
+
+from mimeme.db.schema import (
+    IngestionSource,
+    SourceItem,
+    SourceRunStatus,
+    SourceRunTrigger,
+    SourceType,
 )
 
 

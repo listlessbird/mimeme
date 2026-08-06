@@ -1,4 +1,4 @@
-"""Schema spec for the pHash dedup provenance on ingest URLs (issue 01).
+"""Schema contract for pHash dedup provenance on ingest URLs.
 
 Two structural changes are pinned here:
 
@@ -18,9 +18,9 @@ itself — the migration is verified by running it.
 from __future__ import annotations
 
 from sqlalchemy.orm import Session
+from tests.factories import create_image, create_ingest_url, create_job
 
 from mimeme.db.schema import DuplicateReason
-from tests.factories import create_image, create_ingest_url, create_job
 
 
 def test_many_ingest_urls_can_point_at_one_canonical_image(db_session: Session) -> None:

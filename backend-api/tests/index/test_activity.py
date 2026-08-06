@@ -9,9 +9,9 @@ from temporalio.testing import ActivityEnvironment
 from tests.support.storage import Memory
 
 from mimeme import index
+from mimeme.config import Settings
 from mimeme.index import activity as index_activity
 from mimeme.index.activity import Activities
-from mimeme.shared.config import Settings
 
 
 def _build() -> index.Build:

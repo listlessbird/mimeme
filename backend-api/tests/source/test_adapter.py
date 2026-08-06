@@ -33,9 +33,7 @@ class TestBuildRequests:
         assert total == 60
 
     def test_one_request_per_subreddit_uncapped(self) -> None:
-        requests = MemeApiAdapter().build_requests(
-            {"subreddits": ["a", "b"]}, rng=Random(0)
-        )
+        requests = MemeApiAdapter().build_requests({"subreddits": ["a", "b"]}, rng=Random(0))
         assert len(requests) == 2
         assert all(r.url.endswith("/50") for r in requests)
 

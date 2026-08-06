@@ -36,19 +36,19 @@ def _env(db: SavepointDb, http: FakeHttp | None = None) -> FakeEnv:
 
 async def _source(db: SavepointDb, run_sync_seed, **kwargs) -> int:
     return await run_sync_seed(
-        lambda s: create_ingestion_source(
-            session=s,
-            adapter_config={"subreddits": ["memes"]},
-            max_items_per_run=50,
-            **kwargs,
-        ).id
+        lambda s: (
+            create_ingestion_source(
+                session=s,
+                adapter_config={"subreddits": ["memes"]},
+                max_items_per_run=50,
+                **kwargs,
+            ).id
+        )
     )
 
 
 class TestDiscover:
-    async def test_new_items_create_run_job_and_refs(
-        self, db: SavepointDb, run_sync_seed
-    ) -> None:
+    async def test_new_items_create_run_job_and_refs(self, db: SavepointDb, run_sync_seed) -> None:
         source_id = await _source(db, run_sync_seed, dataset="d")
         http = FakeHttp()
         http.set(MEME_URL, meme_response("aaa", "bbb"))
@@ -76,9 +76,7 @@ class TestDiscover:
             ).all()
             assert len(urls) == 2
 
-    async def test_already_seen_items_produce_no_job(
-        self, db: SavepointDb, run_sync_seed
-    ) -> None:
+    async def test_already_seen_items_produce_no_job(self, db: SavepointDb, run_sync_seed) -> None:
         def seed(s: Session) -> int:
             source = create_ingestion_source(
                 session=s, adapter_config={"subreddits": ["memes"]}, max_items_per_run=50
@@ -125,9 +123,7 @@ class TestDiscover:
             runs = await session.scalar(select(func.count(SourceRun.id)))
             assert runs == 0
 
-    async def test_heartbeat_and_cancellation_hooks(
-        self, db: SavepointDb, run_sync_seed
-    ) -> None:
+    async def test_heartbeat_and_cancellation_hooks(self, db: SavepointDb, run_sync_seed) -> None:
         source_id = await _source(db, run_sync_seed)
         http = FakeHttp()
         http.set(MEME_URL, meme_response("aaa"))
@@ -151,9 +147,7 @@ class TestDiscover:
         env = _env(db, http)
 
         with pytest.raises(asyncio.CancelledError):
-            await sync.discover(
-                env, DiscoverInput(source_id=source_id), cancelled=lambda: True
-            )
+            await sync.discover(env, DiscoverInput(source_id=source_id), cancelled=lambda: True)
 
 
 class TestFinish:
@@ -191,9 +185,7 @@ class TestFinish:
         result = await sync.finish(_env(db), FinishInput(source_run_id=run_id))
         assert result.status == SourceRunStatus.PARTIAL and result.failed == 1
 
-    async def test_error_preserves_original_failure(
-        self, db: SavepointDb, run_sync_seed
-    ) -> None:
+    async def test_error_preserves_original_failure(self, db: SavepointDb, run_sync_seed) -> None:
         def seed(s: Session) -> int:
             source = create_ingestion_source(session=s)
             run = create_source_run(session=s, source=source, status=SourceRunStatus.RUNNING)

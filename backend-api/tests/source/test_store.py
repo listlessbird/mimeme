@@ -115,14 +115,14 @@ class TestCrud:
             schedule_timezone="UTC",
             max_items_per_run=None,
         )
-        patched = await source_store.patch(db, view.id, {"enabled": False, "schedule_cron": "*/5 * * * *"})
+        patched = await source_store.patch(
+            db, view.id, {"enabled": False, "schedule_cron": "*/5 * * * *"}
+        )
         assert patched.enabled is False and patched.schedule_cron == "*/5 * * * *"
 
 
 class TestDiscoveryPersistence:
-    async def test_insert_items_and_ingest_job_atomic(
-        self, db: SavepointDb, run_sync_seed
-    ) -> None:
+    async def test_insert_items_and_ingest_job_atomic(self, db: SavepointDb, run_sync_seed) -> None:
         source_id = await run_sync_seed(lambda s: create_ingestion_source(session=s).id)
         async with db.write_session() as session:
             store = Store(session)
@@ -194,9 +194,7 @@ class TestAccountingQueries:
 
 
 class TestRetryReset:
-    async def test_reset_moves_failed_urls_to_new_job(
-        self, db: SavepointDb, run_sync_seed
-    ) -> None:
+    async def test_reset_moves_failed_urls_to_new_job(self, db: SavepointDb, run_sync_seed) -> None:
         def seed(s: Session) -> tuple[int, int]:
             source = create_ingestion_source(session=s)
             run = create_source_run(session=s, source=source, status=SourceRunStatus.FAILED)

@@ -6,9 +6,9 @@ import numpy as np
 from tests.support.storage import Memory
 
 from mimeme import index, storage
+from mimeme.compute.index import build
 from mimeme.compute.model import ChildOk
 from mimeme.index.gateway import Gateway
-from mimeme.index.native import build
 
 
 class _Calls:

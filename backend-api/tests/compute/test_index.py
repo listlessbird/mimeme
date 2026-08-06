@@ -6,7 +6,7 @@ import faiss  # type: ignore[import-untyped]
 import numpy as np
 
 from mimeme import index
-from mimeme.index.native import build
+from mimeme.compute.index import build
 
 
 def test_native_builder_writes_retrievable_normalized_generation(tmp_path) -> None:

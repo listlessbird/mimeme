@@ -6,7 +6,7 @@ from typing import cast
 from fastapi import Request
 
 from mimeme.api.deps import get_artifact_storage, get_media_storage, get_media_url_resolver
-from mimeme.shared.services.media_url import MediaUrlResolver
+from mimeme.media import Urls
 from tests.support.storage import Memory
 
 
@@ -20,7 +20,7 @@ def test_storage_dependencies_are_role_specific() -> None:
     env = SimpleNamespace(
         media=media,
         artifacts=artifacts,
-        media_urls=MediaUrlResolver("https://assets.mimeme.dev"),
+        media_urls=Urls("https://assets.mimeme.dev"),
     )
     request = _request_with_env(env)
 
@@ -30,7 +30,7 @@ def test_storage_dependencies_are_role_specific() -> None:
 
 
 def test_media_url_dependency_is_permanent_and_unsigned() -> None:
-    env = SimpleNamespace(media_urls=MediaUrlResolver("https://assets.mimeme.dev"))
+    env = SimpleNamespace(media_urls=Urls("https://assets.mimeme.dev"))
     request = _request_with_env(env)
 
     url = get_media_url_resolver(request).resolve("images/source/my meme.jpg")

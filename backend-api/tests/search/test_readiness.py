@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from mimeme import search
-from mimeme.api.routers.health import _check_search
+from mimeme.api.routers.health import _check_inference, _check_search
 
 
 class _Client:
@@ -22,3 +22,12 @@ async def test_api_readiness_requires_a_serving_search_generation() -> None:
 
 async def test_api_readiness_is_degraded_when_compute_is_unavailable() -> None:
     assert await _check_search(_Client(search.Unavailable("down"))) is False
+
+
+class _Inference:
+    async def ready(self) -> bool:
+        return False
+
+
+async def test_api_readiness_requires_inference_compute() -> None:
+    assert await _check_inference(_Inference()) is False

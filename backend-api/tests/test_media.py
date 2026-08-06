@@ -1,8 +1,10 @@
+"""Public media URL behavior."""
+
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
-from mimeme.shared.services.media_url import MediaUrlResolver
+from mimeme.media import Urls
 
 
 @pytest.mark.parametrize(
@@ -17,7 +19,7 @@ from mimeme.shared.services.media_url import MediaUrlResolver
 def test_media_url_resolver_builds_permanent_encoded_urls(
     base_url: str, key: str, expected_path: str
 ) -> None:
-    url = MediaUrlResolver(base_url).resolve(key)
+    url = Urls(base_url).resolve(key)
     parsed = urlsplit(url)
 
     assert parsed.scheme == "https"
@@ -29,4 +31,4 @@ def test_media_url_resolver_builds_permanent_encoded_urls(
 
 def test_media_url_resolver_rejects_an_empty_key() -> None:
     with pytest.raises(ValueError, match="media key"):
-        MediaUrlResolver("https://assets.mimeme.dev").resolve("")
+        Urls("https://assets.mimeme.dev").resolve("")

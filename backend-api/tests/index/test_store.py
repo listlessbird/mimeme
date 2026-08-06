@@ -14,11 +14,11 @@ from tests.job.conftest import SavepointDb
 from tests.support.storage import Memory
 
 from mimeme import index, search, storage
+from mimeme.config import Settings
 from mimeme.db.schema import JobStatus, JobType, ProcessingStatus
 from mimeme.index import ops, rule
 from mimeme.index.store import Store
 from mimeme.job import ops as job_ops
-from mimeme.shared.config import Settings
 
 
 class _Activation:

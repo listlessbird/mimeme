@@ -1,3 +1,5 @@
+"""Schema contract for persisted search-index state."""
+
 from __future__ import annotations
 
 import datetime
@@ -5,9 +7,9 @@ import datetime
 import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
+from tests.factories import create_job, create_search_index_state
 
 from mimeme.db.schema import Job, JobType, SearchIndexState
-from tests.factories import create_job, create_search_index_state
 
 
 def _now() -> datetime.datetime:

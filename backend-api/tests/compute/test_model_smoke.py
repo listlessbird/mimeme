@@ -30,7 +30,7 @@ def _png(path: Path) -> Path:
 def test_inference_child_embed_smoke(_guard: None, tmp_path: Path) -> None:
     from mimeme.compute.inference import Models
     from mimeme.compute.model import EmbedCall, EmbedCallItem
-    from mimeme.shared.config import InferenceConfig
+    from mimeme.config import InferenceConfig
 
     models = Models(InferenceConfig(embed_device="cpu"))
     path = _png(tmp_path / "img.png")

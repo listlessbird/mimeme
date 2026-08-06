@@ -38,7 +38,11 @@ class TestDeriveSpec:
 
     def test_paused_when_disabled(self) -> None:
         spec = derive_schedule_spec(
-            source_id=1, schedule_cron="0 * * * *", schedule_timezone="UTC", enabled=False, deleted=False
+            source_id=1,
+            schedule_cron="0 * * * *",
+            schedule_timezone="UTC",
+            enabled=False,
+            deleted=False,
         )
         assert spec.desired_state == DesiredScheduleState.PAUSED
 

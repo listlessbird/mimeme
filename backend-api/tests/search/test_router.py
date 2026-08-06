@@ -6,10 +6,10 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from mimeme import search
+from mimeme.config import Settings
+from mimeme.media import Urls
 from mimeme.search import router
 from mimeme.search.run import Projection
-from mimeme.shared.config import Settings
-from mimeme.shared.services.media_url import MediaUrlResolver
 
 
 class _Client:
@@ -58,7 +58,7 @@ def _app(client: _Client) -> FastAPI:
     app.include_router(router.router)
     app.dependency_overrides[router.get_client] = lambda: client
     app.dependency_overrides[router.get_rows] = _Rows
-    app.dependency_overrides[router.get_media_urls] = lambda: MediaUrlResolver("https://media.test")
+    app.dependency_overrides[router.get_media_urls] = lambda: Urls("https://media.test")
     return app
 
 
