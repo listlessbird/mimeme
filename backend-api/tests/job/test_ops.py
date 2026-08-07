@@ -13,6 +13,7 @@ from mimeme.db.schema import (
     Job,
     JobStatus,
     JobType,
+    Processing,
     ProcessingStatus,
     RebuildTrigger,
     SearchIndexState,
@@ -365,15 +366,85 @@ class TestInference:
 
         image_id = await run_sync_seed(seed)
         first = await ops.save_embedding(
-            job_db, image_id=image_id, model="m", dimension=768, image_embedding_key="k"
+            job_db,
+            image_id=image_id,
+            model="m",
+            dimension=768,
+            image_embedding_key="k",
+            text_embedding_key="k_text",
         )
         assert first.index_changed and first.desired_generation == 2
         # identical retry does not re-increment
         second = await ops.save_embedding(
-            job_db, image_id=image_id, model="m", dimension=768, image_embedding_key="k"
+            job_db,
+            image_id=image_id,
+            model="m",
+            dimension=768,
+            image_embedding_key="k",
+            text_embedding_key="k_text",
         )
         assert not second.index_changed
         assert (await ops.index_status(job_db)).view.desired_generation == 2
+
+    async def test_re_embedding_drops_the_recorded_shard_position(
+        self, job_db: SavepointDb, run_sync_seed
+    ) -> None:
+        def seed(session: Session) -> int:
+            create_search_index_state(session=session, desired_generation=1, active_generation=1)
+            image = create_image(session=session)
+            processing = create_processing(session=session, image=image)
+            processing.embed_model = "m"
+            processing.embed_s3_key = "k"
+            processing.embed_shard = 4
+            processing.embed_row = 7
+            session.flush()
+            return image.id
+
+        image_id = await run_sync_seed(seed)
+        await ops.save_embedding(
+            job_db,
+            image_id=image_id,
+            model="m",
+            dimension=768,
+            image_embedding_key="k2",
+            text_embedding_key=None,
+        )
+
+        async with job_db.read_session() as session:
+            row = (
+                await session.scalars(select(Processing).where(Processing.image_id == image_id))
+            ).one()
+        assert (row.embed_shard, row.embed_row) == (None, None)
+
+    async def test_an_unchanged_embedding_keeps_its_shard_position(
+        self, job_db: SavepointDb, run_sync_seed
+    ) -> None:
+        def seed(session: Session) -> int:
+            create_search_index_state(session=session, desired_generation=1, active_generation=1)
+            image = create_image(session=session)
+            processing = create_processing(session=session, image=image)
+            processing.embed_model = "m"
+            processing.embed_s3_key = "k"
+            processing.embed_shard = 4
+            processing.embed_row = 7
+            session.flush()
+            return image.id
+
+        image_id = await run_sync_seed(seed)
+        await ops.save_embedding(
+            job_db,
+            image_id=image_id,
+            model="m",
+            dimension=768,
+            image_embedding_key="k",
+            text_embedding_key=None,
+        )
+
+        async with job_db.read_session() as session:
+            row = (
+                await session.scalars(select(Processing).where(Processing.image_id == image_id))
+            ).one()
+        assert (row.embed_shard, row.embed_row) == (4, 7)
 
     async def test_save_embedding_missing_processing_does_not_increment(
         self, job_db: SavepointDb, run_sync_seed
@@ -385,7 +456,12 @@ class TestInference:
 
         image_id = await run_sync_seed(seed)
         saved = await ops.save_embedding(
-            job_db, image_id=image_id, model="m", dimension=768, image_embedding_key="k"
+            job_db,
+            image_id=image_id,
+            model="m",
+            dimension=768,
+            image_embedding_key="k",
+            text_embedding_key="k_text",
         )
         assert not saved.found
         assert (await ops.index_status(job_db)).view.desired_generation == 3

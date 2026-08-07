@@ -29,6 +29,7 @@ def _build() -> index.Build:
 def test_exact_temporal_contract_names_and_poll_bounds() -> None:
     assert RebuildWorkflow.__temporal_workflow_definition.name == "mimeme.index.rebuild.v2"
     assert Activities.prepare.__temporal_activity_definition.name == "mimeme.index.prepare.v2"
+    assert Activities.seal.__temporal_activity_definition.name == "mimeme.index.seal.v2"
     assert Activities.build.__temporal_activity_definition.name == "mimeme.index.build.v2"
     assert Activities.activate.__temporal_activity_definition.name == "mimeme.index.activate.v2"
     assert rule.workflow_id("abc") == "rebuild-index-v2-abc"
@@ -45,6 +46,11 @@ async def test_workflow_runs_three_coarse_retry_units_in_order() -> None:
     async def prepare(_: index.PrepareInput) -> index.Prepared:
         calls.append("prepare")
         return index.Prepared(decision="build", job_id=build.job_id, build=build)
+
+    @activity.defn(name=rule.SEAL_ACTIVITY)
+    async def seal(_: index.SealInput) -> index.Sealed:
+        calls.append("seal")
+        return index.Sealed(model=build.model, shards=0, rows=0)
 
     @activity.defn(name=rule.BUILD_ACTIVITY)
     async def run_build(_: index.Build) -> index.Result:
@@ -63,7 +69,7 @@ async def test_workflow_runs_three_coarse_retry_units_in_order() -> None:
             env.client,
             task_queue=rule.TASK_QUEUE,
             workflows=[RebuildWorkflow],
-            activities=[prepare, run_build, activate],
+            activities=[prepare, seal, run_build, activate],
         ):
             result = await env.client.execute_workflow(
                 RebuildWorkflow.run,
@@ -78,7 +84,7 @@ async def test_workflow_runs_three_coarse_retry_units_in_order() -> None:
             )
 
     assert result.outcome == "empty"
-    assert calls == ["prepare", "build", "activate"]
+    assert calls == ["prepare", "seal", "prepare", "build", "activate"]
 
 
 async def test_scheduled_busy_claim_exits_without_history_growth() -> None:

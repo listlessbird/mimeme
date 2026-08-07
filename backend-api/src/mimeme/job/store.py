@@ -327,19 +327,42 @@ class Store:
         return proc is not None
 
     async def save_embedding(
-        self, *, image_id: int, model: str, dimension: int, image_embedding_key: str
+        self,
+        *,
+        image_id: int,
+        model: str,
+        dimension: int,
+        image_embedding_key: str,
+        text_embedding_key: str | None,
     ) -> EmbeddingSaved:
         proc = (
             await self._session.scalars(select(Processing).where(Processing.image_id == image_id))
         ).first()
         if proc is None:
             return EmbeddingSaved(found=False, index_changed=False, desired_generation=None)
-        before = (proc.embed_status, proc.embed_model, proc.embed_dim, proc.embed_s3_key)
+        before = (
+            proc.embed_status,
+            proc.embed_model,
+            proc.embed_dim,
+            proc.embed_s3_key,
+            proc.embed_text_present,
+        )
+        superseded = proc.embed_model != model or proc.embed_s3_key != image_embedding_key
         proc.embed_status = ProcessingStatus.DONE
         proc.embed_model = model
         proc.embed_dim = dimension
         proc.embed_s3_key = image_embedding_key
-        after = (proc.embed_status, proc.embed_model, proc.embed_dim, proc.embed_s3_key)
+        proc.embed_text_present = bool(text_embedding_key)
+        if superseded:
+            proc.embed_shard = None
+            proc.embed_row = None
+        after = (
+            proc.embed_status,
+            proc.embed_model,
+            proc.embed_dim,
+            proc.embed_s3_key,
+            proc.embed_text_present,
+        )
         if after == before:
             await self._session.flush()
             return EmbeddingSaved(found=True, index_changed=False, desired_generation=None)

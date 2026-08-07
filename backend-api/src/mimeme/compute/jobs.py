@@ -21,8 +21,9 @@ from mimeme.compute.model import (
 )
 from mimeme.compute.supervisor import ChildDead, Supervisor
 from mimeme.compute.workspace import Workspace
+from mimeme.index import pack
 from mimeme.index.gateway import Gateway as IndexGateway
-from mimeme.index.model import BuildSpec
+from mimeme.index.model import BuildSpec, SealSpec
 
 _MAX_IMAGE_BYTES = 64 * 1024 * 1024
 
@@ -88,7 +89,7 @@ class Jobs:
             job.task.cancel()
         if was_running:
             await self._supervisor.restart(
-                "index" if isinstance(job.spec, BuildSpec) else "inference"
+                "index" if isinstance(job.spec, (BuildSpec, SealSpec)) else "inference"
             )
         return job.state.model_copy(deep=True)
 
@@ -102,6 +103,8 @@ class Jobs:
                 result = await self._run_annotate(job, spec, workspace)
             elif isinstance(spec, EmbedSpec):
                 result = await self._run_embed(job, spec, workspace)
+            elif isinstance(spec, SealSpec):
+                result = await self._run_seal(job, spec, workspace)
             else:
                 result = await self._run_index(job, spec)
             if job.state.status == "cancelled":
@@ -204,6 +207,16 @@ class Jobs:
             job.state.progress = value
 
         result = await self._index.build(spec.build, progress=progress)
+        return result.model_dump()
+
+    async def _run_seal(self, job: _Job, spec: SealSpec, workspace: Workspace) -> dict:
+        job.state.phase = "seal"
+        result = await pack.perform(
+            self._artifacts,
+            self._supervisor,
+            workspace_dir=workspace.root,
+            target=spec.seal,
+        )
         return result.model_dump()
 
     async def _call_inference(self, request: bytes) -> ChildOk:

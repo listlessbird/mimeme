@@ -10,9 +10,18 @@ from mimeme import search, storage
 from mimeme.config import Settings
 from mimeme.db import Db
 from mimeme.index import ops as index
-from mimeme.index import rule
+from mimeme.index import pack, rule
 from mimeme.index.client import Client
-from mimeme.index.model import Activated, ActivateInput, Build, Prepared, PrepareInput, Result
+from mimeme.index.model import (
+    Activated,
+    ActivateInput,
+    Build,
+    Prepared,
+    PrepareInput,
+    Result,
+    Sealed,
+    SealInput,
+)
 from mimeme.job import ops as job_ops
 
 
@@ -32,9 +41,7 @@ class Activities:
     async def prepare(self, input: PrepareInput) -> Prepared:
         try:
             activity.logger.info("index prepare started", extra={"job_id": input.job_id})
-            result = await index.prepare(
-                self._env.db, self._env.artifacts, self._env.settings, input
-            )
+            result = await index.prepare(self._env.db, self._env.settings, input)
             activity.logger.info(
                 "index prepare finished",
                 extra={"job_id": result.job_id, "decision": result.decision},
@@ -48,6 +55,34 @@ class Activities:
                 await _bookkeep_failure(self._env, input.job_id, failure, version=None)
             _raise_terminal(failure, terminal)
             raise
+
+    @activity.defn(name=rule.SEAL_ACTIVITY)
+    async def seal(self, input: SealInput) -> Sealed:
+        heartbeat = asyncio.create_task(_seal_heartbeats(input.job_id))
+        try:
+            activity.logger.info("index seal started", extra={"job_id": input.job_id})
+            result = await index.seal(self._env.db, self._env.index, self._env.settings, input)
+            activity.logger.info(
+                "index.seal.done",
+                extra={
+                    "job_id": input.job_id,
+                    "model": result.model,
+                    "shards": result.shards,
+                    "rows": result.rows,
+                },
+            )
+            return result
+        except pack.Busy as busy:
+            activity.logger.info(
+                "index seal skipped", extra={"job_id": input.job_id, "reason": str(busy)}
+            )
+            return Sealed(model=input.model, shards=0, rows=0)
+        finally:
+            heartbeat.cancel()
+            try:
+                await heartbeat
+            except asyncio.CancelledError:
+                pass
 
     @activity.defn(name=rule.BUILD_ACTIVITY)
     async def build(self, request: Build) -> Result:
@@ -185,6 +220,14 @@ async def _bookkeep_failure(
             f"bookkeeping failed after {type(failure).__name__}: {bookkeeping}",
             type="IndexFailureBookkeeping",
         ) from failure
+
+
+async def _seal_heartbeats(job_id: str) -> None:
+    while True:
+        activity.heartbeat({"phase": "seal", "job_id": job_id})
+        if activity.is_cancelled():
+            raise asyncio.CancelledError
+        await asyncio.sleep(rule.POLL_INTERVAL_S)
 
 
 async def _activation_heartbeats(job_id: str) -> None:

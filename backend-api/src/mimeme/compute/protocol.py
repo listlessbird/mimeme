@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import socket
 import struct
+
+from pydantic import ValidationError
+
+from mimeme.compute.model import ChildErr, ChildOk
 
 _HEADER = struct.Struct(">I")
 _MAX_FRAME = 64 * 1024 * 1024
@@ -10,6 +15,18 @@ _MAX_FRAME = 64 * 1024 * 1024
 
 class ProtocolError(Exception):
     pass
+
+
+def parse_reply(raw: bytes) -> ChildOk | ChildErr:
+    try:
+        payload = json.loads(raw)
+        return (
+            ChildOk.model_validate(payload)
+            if payload.get("ok")
+            else ChildErr.model_validate(payload)
+        )
+    except (ValueError, ValidationError) as exc:
+        raise ProtocolError(f"invalid compute child response: {exc}") from exc
 
 
 def encode(payload: bytes) -> bytes:

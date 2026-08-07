@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-import pytest
 from sqlalchemy.orm import Session
 from tests.factories import (
     create_image,
@@ -69,6 +68,7 @@ async def test_prepare_claims_and_freezes_object_reference_snapshot_atomically(
         processing.embed_model = "test/embed"
         processing.embed_dim = 2
         processing.embed_s3_key = "embeddings/one.npy"
+        processing.embed_text_present = True
         session.flush()
         create_search_index_state(session=session, desired_generation=4, active_generation=1)
         return job.id
@@ -76,7 +76,6 @@ async def test_prepare_claims_and_freezes_object_reference_snapshot_atomically(
     job_id = await run_sync_seed(seed)
     prepared = await ops.prepare(
         index_db,
-        Memory(),
         Settings(),
         index.PrepareInput(
             job_id=job_id,
@@ -92,22 +91,15 @@ async def test_prepare_claims_and_freezes_object_reference_snapshot_atomically(
     assert prepared.build.target_generation == 4
     assert prepared.build.embeddings == [
         index.Embedding(
-            image_id=prepared.build.embeddings[0].image_id, image_key="embeddings/one.npy"
+            image_id=prepared.build.embeddings[0].image_id,
+            image_key="embeddings/one.npy",
+            text_key="embeddings/one_text.npy",
         )
     ]
     assert (await job_ops.find_exn(index_db, job_id)).status is JobStatus.RUNNING
 
 
 async def test_prepare_retry_resumes_its_own_claim(index_db: SavepointDb, run_sync_seed) -> None:
-    class FlakyMemory(Memory):
-        failed = False
-
-        async def stat(self, obj: storage.Object) -> storage.Info | None:
-            if not self.failed:
-                self.failed = True
-                raise storage.Unavailable("temporary outage")
-            return await super().stat(obj)
-
     def seed(session: Session) -> str:
         job = create_job(session=session, type=JobType.REBUILD_INDEX)
         image = create_image(session=session)
@@ -128,14 +120,12 @@ async def test_prepare_retry_resumes_its_own_claim(index_db: SavepointDb, run_sy
         model="test/embed",
         index_type="flat",
     )
-    artifacts = FlakyMemory()
 
-    with pytest.raises(storage.Unavailable):
-        await ops.prepare(index_db, artifacts, Settings(), request)
-    prepared = await ops.prepare(index_db, artifacts, Settings(), request)
+    first = await ops.prepare(index_db, Settings(), request)
+    second = await ops.prepare(index_db, Settings(), request)
 
-    assert prepared.decision == "build"
-    assert prepared.build is not None and prepared.build.target_generation == 2
+    assert first.decision == second.decision == "build"
+    assert second.build is not None and second.build.target_generation == 2
 
 
 async def test_startup_reconciliation_clears_compute_when_db_has_no_active_version(

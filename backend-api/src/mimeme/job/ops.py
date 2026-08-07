@@ -221,7 +221,13 @@ async def save_annotations(
 
 
 async def save_embedding(
-    db: Db, *, image_id: int, model: str, dimension: int, image_embedding_key: str
+    db: Db,
+    *,
+    image_id: int,
+    model: str,
+    dimension: int,
+    image_embedding_key: str,
+    text_embedding_key: str | None,
 ) -> EmbeddingSaved:
     async with db.write_session() as session:
         return await Store(session).save_embedding(
@@ -229,6 +235,7 @@ async def save_embedding(
             model=model,
             dimension=dimension,
             image_embedding_key=image_embedding_key,
+            text_embedding_key=text_embedding_key,
         )
 
 

@@ -39,9 +39,9 @@ class Supervisor:
             role: _Child(role, socket_dir / f"{role}.sock") for role in ENABLED_ROLES
         }
 
-    async def start(self) -> None:
+    async def start(self, *, roles: tuple[Role, ...] = ENABLED_ROLES) -> None:
         self._dir.mkdir(parents=True, exist_ok=True)
-        for role in ENABLED_ROLES:
+        for role in roles:
             await self._spawn(role)
 
     async def _spawn(self, role: Role) -> None:

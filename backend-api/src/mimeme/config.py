@@ -162,10 +162,14 @@ class IndexConfig(BaseSettings):
 
     rebuild_claim_timeout_minutes: int = 180
     rebuild_schedule_enabled: bool = True
-    rebuild_schedule_cron: str | None = "* * * * *"
+    rebuild_schedule_cron: str | None = "*/5 * * * *"
     rebuild_schedule_timezone: str = "UTC"
+    rebuild_settle_minutes: int = 10
+    rebuild_max_stale_hours: int = 6
     retain_versions: int = 5
     build_threads: int = 2
+    shard_rows: int = 1_500
+    seal_max_shards: int = 50
 
     @field_validator("cache_dir", mode="before")
     @classmethod

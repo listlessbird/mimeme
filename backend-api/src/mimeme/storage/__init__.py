@@ -1,6 +1,8 @@
+from mimeme.storage.meter import Meter
 from mimeme.storage.model import (
     Checksum,
     Config,
+    Counts,
     Denied,
     Error,
     Info,
@@ -17,11 +19,13 @@ from mimeme.storage.store import Store
 __all__ = [
     "Checksum",
     "Config",
+    "Counts",
     "Denied",
     "Error",
     "Info",
     "Integrity",
     "Invalid",
+    "Meter",
     "Missing",
     "Object",
     "S3",

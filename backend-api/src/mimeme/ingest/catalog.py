@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import and_, false, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mimeme import storage
+from mimeme import inference, storage
 from mimeme.db import Db
 from mimeme.db.schema import Annotation, Processing, ProcessingStatus
 from mimeme.db.schema import ORMImage as ImageRow
@@ -182,7 +182,7 @@ class Catalog:
             await self._delete(self._artifact_storage, embedding_key, role="artifact")
             await self._delete(
                 self._artifact_storage,
-                embedding_key.replace(".npy", "_text.npy"),
+                inference.text_embedding_key(embedding_key),
                 role="artifact",
             )
 

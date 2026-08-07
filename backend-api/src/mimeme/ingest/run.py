@@ -238,6 +238,7 @@ async def _annotate_and_embed(
                 model=embedding.model,
                 dimension=embedding.dimension,
                 image_embedding_key=embedding.image_embedding_key,
+                text_embedding_key=embedding.text_embedding_key,
             )
 
 

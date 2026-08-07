@@ -17,9 +17,10 @@ from mimeme.compute.model import (
     Role,
 )
 from mimeme.compute.protocol import recv_frame, send_frame
-from mimeme.index.model import BuildCall
+from mimeme.index.model import BuildCall, IndexCall
 
 _INFERENCE_CALL = TypeAdapter(InferenceCall)
+_INDEX_CALL = TypeAdapter(IndexCall)
 
 
 def run_child(role: Role, socket_path: str) -> None:
@@ -97,11 +98,13 @@ def _build_handler(role: Role):  # noqa: ANN202
         return handle_search
 
     if role == "index":
-        from mimeme.compute.index import build
+        from mimeme.compute.index import build, pack
 
         def handle_index(raw: bytes) -> dict:
-            call = BuildCall.model_validate_json(raw)
-            return build(call.build).model_dump()
+            call = _INDEX_CALL.validate_json(raw)
+            if isinstance(call, BuildCall):
+                return build(call.build).model_dump()
+            return pack(call).model_dump()
 
         return handle_index
 

@@ -36,6 +36,7 @@ def registrations(
             source.discover,
             source.finish,
             index.prepare,
+            index.seal,
             index.build,
             index.activate,
         ],

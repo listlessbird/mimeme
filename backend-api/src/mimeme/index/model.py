@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -32,8 +32,27 @@ class State(_Frozen):
 
 class Embedding(_Frozen):
     image_id: int = Field(gt=0)
-    image_key: str = Field(min_length=1)
+    image_key: str | None = Field(default=None, min_length=1)
     text_key: str | None = Field(default=None, min_length=1)
+    shard: int | None = Field(default=None, ge=0)
+    row: int | None = Field(default=None, ge=0)
+    text_present: bool = False
+
+    @property
+    def sealed(self) -> bool:
+        return self.shard is not None
+
+    @model_validator(mode="after")
+    def _one_layout(self) -> Self:
+        if (self.shard is None) != (self.row is None):
+            raise ValueError("a shard coordinate needs both a shard and a row")
+        if (self.image_key is None) == (self.shard is None):
+            raise ValueError("an embedding is either sealed into a shard or a standalone object")
+        if self.text_key is not None and self.image_key is None:
+            raise ValueError("a sealed embedding carries no standalone text object")
+        if self.text_present and self.shard is None:
+            raise ValueError("text presence on a standalone embedding is its text key")
+        return self
 
 
 class Encoder(_Frozen):
@@ -53,6 +72,7 @@ class Build(_Frozen):
     native_threads: int = Field(default=1, ge=1)
     encoder: Encoder
     embeddings: list[Embedding]
+    planned_reads: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def _unique_images(self) -> Self:
@@ -135,7 +155,7 @@ class PrepareInput(_Frozen):
 
 
 class Prepared(_Frozen):
-    decision: Literal["build", "clean", "busy"]
+    decision: Literal["build", "clean", "busy", "deferred"]
     job_id: str | None = None
     build: Build | None = None
 
@@ -166,6 +186,13 @@ class Activated(_Frozen):
     removed_versions: list[str] = []
 
 
+class Backfilled(_Frozen):
+    model: str
+    text_objects: int = Field(ge=0)
+    marked_present: int = Field(ge=0)
+    marked_absent: int = Field(ge=0)
+
+
 class Snapshot(_Frozen):
     target_generation: int = Field(ge=0)
     dimension: int = Field(ge=0)
@@ -183,14 +210,23 @@ class WorkflowInput(_Frozen):
 
 class WorkflowResult(_Frozen):
     job_id: str | None
-    outcome: Literal["built", "empty", "clean", "busy"]
+    outcome: Literal["built", "empty", "clean", "busy", "deferred"]
     version: str | None = None
+
+
+class LocalShard(_Frozen):
+    number: int = Field(ge=0)
+    image_path: str
+    text_path: str | None = None
 
 
 class LocalEmbedding(_Frozen):
     image_id: int = Field(gt=0)
-    image_path: str
+    image_path: str | None = None
     text_path: str | None = None
+    shard: int | None = Field(default=None, ge=0)
+    row: int | None = Field(default=None, ge=0)
+    text_present: bool = False
 
 
 class PreparedBuild(_Frozen):
@@ -202,12 +238,42 @@ class PreparedBuild(_Frozen):
     native_threads: int = Field(default=1, ge=1)
     encoder: Encoder
     output_dir: str
+    shards: list[LocalShard] = []
     embeddings: list[LocalEmbedding]
 
 
 class BuildCall(_Frozen):
     op: Literal["index.build"] = "index.build"
     build: PreparedBuild
+
+
+class LocalMember(_Frozen):
+    image_id: int = Field(gt=0)
+    image_path: str
+    text_path: str | None = None
+
+
+class PackCall(_Frozen):
+    op: Literal["index.pack"] = "index.pack"
+    members: list[LocalMember]
+    image_out: str
+    text_out: str
+
+
+class PackedFile(_Frozen):
+    path: str
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    length: int = Field(ge=0)
+
+
+class Packed(_Frozen):
+    rows: int = Field(ge=0)
+    dimension: int = Field(gt=0)
+    image: PackedFile
+    text: PackedFile
+
+
+IndexCall = Annotated[BuildCall | PackCall, Field(discriminator="op")]
 
 
 class BuiltFile(_Frozen):
@@ -231,3 +297,54 @@ class Built(_Frozen):
 class BuildSpec(_Frozen):
     op: Literal["index.build"] = "index.build"
     build: Build
+
+
+class SealMember(_Frozen):
+    image_id: int = Field(gt=0)
+    image_key: str = Field(min_length=1)
+    text_key: str | None = Field(default=None, min_length=1)
+
+
+class SealShard(_Frozen):
+    number: int = Field(ge=0)
+    image_key: str = Field(min_length=1)
+    text_key: str = Field(min_length=1)
+    members: list[SealMember]
+
+    @model_validator(mode="after")
+    def _has_members(self) -> Self:
+        if not self.members:
+            raise ValueError("a shard needs at least one member")
+        return self
+
+
+class Seal(_Frozen):
+    job_id: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+    shards: list[SealShard]
+
+
+class SealSpec(_Frozen):
+    op: Literal["index.seal"] = "index.seal"
+    seal: Seal
+
+
+class SealInput(_Frozen):
+    job_id: str = Field(min_length=1)
+    model: str = Field(min_length=1)
+
+
+class Sealed(_Frozen):
+    model: str = Field(min_length=1)
+    shards: int = Field(ge=0)
+    rows: int = Field(ge=0)
+
+
+class SealedShard(_Frozen):
+    number: int = Field(ge=0)
+    rows: int = Field(ge=0)
+
+
+class SealResult(_Frozen):
+    shards: list[SealedShard] = []
+    error: str | None = None

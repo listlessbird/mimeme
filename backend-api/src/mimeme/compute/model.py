@@ -4,7 +4,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from mimeme.index.model import BuildSpec
+from mimeme.index.model import BuildSpec, SealSpec
 
 Role = Literal["image", "inference", "search", "index"]
 
@@ -109,7 +109,7 @@ class EmbedSpec(_Frozen):
     items: list[EmbedSpecItem]
 
 
-JobSpec = Annotated[AnnotateSpec | EmbedSpec | BuildSpec, Field(discriminator="op")]
+JobSpec = Annotated[AnnotateSpec | EmbedSpec | BuildSpec | SealSpec, Field(discriminator="op")]
 
 
 class AnnotateResult(_Frozen):

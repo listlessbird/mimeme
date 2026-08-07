@@ -7,7 +7,7 @@ import httpx
 from mimeme.compute.model import JobState
 from mimeme.index.client import Progress
 from mimeme.index.gateway import Failed
-from mimeme.index.model import Build, BuildSpec, Result
+from mimeme.index.model import Build, BuildSpec, Result, Seal, SealResult, SealSpec
 
 
 class Local:
@@ -18,10 +18,22 @@ class Local:
         self._base = base_url.rstrip("/")
         self._poll = min(max(poll_interval_s, 0.01), 5.0)
 
+    async def seal(self, request: Seal) -> SealResult:
+        state = await self._run(
+            f"seal-{request.job_id}", SealSpec(seal=request).model_dump(), progress=None
+        )
+        return SealResult.model_validate(state.result)
+
     async def build(self, request: Build, *, progress: Progress | None = None) -> Result:
-        url = f"{self._base}/v1/jobs/{request.job_id}"
+        state = await self._run(
+            request.job_id, BuildSpec(build=request).model_dump(), progress=progress
+        )
+        return Result.model_validate(state.result)
+
+    async def _run(self, job_id: str, payload: dict, *, progress: Progress | None) -> JobState:
+        url = f"{self._base}/v1/jobs/{job_id}"
         try:
-            response = await self._http.put(url, json=BuildSpec(build=request).model_dump())
+            response = await self._http.put(url, json=payload)
             response.raise_for_status()
             state = JobState.model_validate(response.json())
             while state.status in ("queued", "running"):
@@ -40,7 +52,7 @@ class Local:
             raise Failed(f"index compute unavailable: {exc}") from exc
         if state.status != "succeeded":
             raise Failed(state.error or f"index compute job ended as {state.status}")
-        return Result.model_validate(state.result)
+        return state
 
     async def close(self) -> None:
         return None

@@ -5,11 +5,13 @@ from pathlib import Path
 from typing import Protocol
 
 import anyio
+import structlog
 from pydantic import ValidationError
 
 from mimeme import storage
 from mimeme.compute.model import ChildErr, ChildOk, Role
 from mimeme.compute.workspace import Workspace
+from mimeme.index import pack
 from mimeme.index.client import Progress
 from mimeme.index.model import (
     Build,
@@ -17,10 +19,13 @@ from mimeme.index.model import (
     Built,
     File,
     LocalEmbedding,
+    LocalShard,
     Manifest,
     PreparedBuild,
     Result,
 )
+
+log = structlog.getLogger()
 
 
 class Failed(Exception):
@@ -40,18 +45,31 @@ class Gateway:
     async def build(self, request: Build, *, progress: Progress | None = None) -> Result:
         if not request.embeddings and request.dimension == 0:
             return Result(outcome="empty")
+        meter = storage.Meter(self._artifacts)
         workspace = Workspace.create(self._workspace_dir, f"index-{request.version}")
         try:
             if progress is not None:
                 await progress("download", 0.1)
+            shards = await _fetch_shards(meter, request, workspace)
             local: list[LocalEmbedding] = []
             for position, item in enumerate(request.embeddings):
+                if item.sealed:
+                    local.append(
+                        LocalEmbedding(
+                            image_id=item.image_id,
+                            shard=item.shard,
+                            row=item.row,
+                            text_present=item.text_present,
+                        )
+                    )
+                    continue
+                assert item.image_key is not None
                 image_path = workspace.path(f"input-{position}.npy")
-                await self._download(item.image_key, image_path)
+                await _download(meter, item.image_key, image_path)
                 text_path: Path | None = None
                 if item.text_key is not None:
                     text_path = workspace.path(f"text-{position}.npy")
-                    await self._download(item.text_key, text_path)
+                    await _download(meter, item.text_key, text_path)
                 local.append(
                     LocalEmbedding(
                         image_id=item.image_id,
@@ -75,6 +93,7 @@ class Gateway:
                         native_threads=request.native_threads,
                         encoder=request.encoder,
                         output_dir=str(output),
+                        shards=shards,
                         embeddings=local,
                     )
                 )
@@ -92,7 +111,7 @@ class Gateway:
             files: list[File] = []
             for artifact in built.files:
                 key = f"indexes/{request.version}/{artifact.name}"
-                await self._upload(artifact.path, key, artifact.length, artifact.sha256)
+                await _upload(meter, artifact.path, key, artifact.length, artifact.sha256)
                 files.append(
                     File(
                         name=artifact.name,
@@ -113,7 +132,7 @@ class Gateway:
                 files=files,
                 complete_key=f"indexes/{built.version}/complete.json",
             )
-            await self._artifacts.put_bytes(
+            await meter.put_bytes(
                 storage.Object(manifest.complete_key),
                 manifest.model_dump_json().encode(),
                 content_type="application/json",
@@ -121,26 +140,66 @@ class Gateway:
             return Result(outcome="built", manifest=manifest)
         finally:
             workspace.close()
+            counts = meter.counts
+            log.info(
+                "index.rebuild.storage",
+                job_id=request.job_id,
+                version=request.version,
+                target_generation=request.target_generation,
+                images=len(request.embeddings),
+                planned_reads=request.planned_reads,
+                class_a=counts.class_a,
+                class_b=counts.class_b,
+                **counts.model_dump(),
+            )
 
-    async def _download(self, key: str, target: Path) -> None:
-        async with self._artifacts.read(storage.Object(key)) as chunks:
-            async with await anyio.open_file(target, "wb") as handle:
-                async for chunk in chunks:
-                    await handle.write(chunk)
 
-    async def _upload(self, path: str, key: str, length: int, sha256: str) -> None:
-        async def chunks():  # noqa: ANN202
-            async with await anyio.open_file(path, "rb") as handle:
-                while chunk := await handle.read(1024 * 1024):
-                    yield chunk
-
-        await self._artifacts.put(
-            storage.Object(key),
-            chunks(),
-            length=length,
-            content_type="application/octet-stream",
-            checksum=storage.Checksum(value=sha256),
+async def _fetch_shards(
+    artifacts: storage.Store, request: Build, workspace: Workspace
+) -> list[LocalShard]:
+    wanted: dict[int, bool] = {}
+    for item in request.embeddings:
+        if item.shard is None:
+            continue
+        wanted[item.shard] = wanted.get(item.shard, False) or item.text_present
+    shards: list[LocalShard] = []
+    for number in sorted(wanted):
+        image_path = workspace.path(f"shard-image-{number:06d}.npy")
+        await _download(artifacts, pack.locate(request.model, number, text=False), image_path)
+        text_path: Path | None = None
+        if wanted[number]:
+            text_path = workspace.path(f"shard-text-{number:06d}.npy")
+            await _download(artifacts, pack.locate(request.model, number, text=True), text_path)
+        shards.append(
+            LocalShard(
+                number=number,
+                image_path=str(image_path),
+                text_path=str(text_path) if text_path else None,
+            )
         )
+    return shards
+
+
+async def _download(artifacts: storage.Store, key: str, target: Path) -> None:
+    async with artifacts.read(storage.Object(key)) as chunks:
+        async with await anyio.open_file(target, "wb") as handle:
+            async for chunk in chunks:
+                await handle.write(chunk)
+
+
+async def _upload(artifacts: storage.Store, path: str, key: str, length: int, sha256: str) -> None:
+    async def chunks():  # noqa: ANN202
+        async with await anyio.open_file(path, "rb") as handle:
+            while chunk := await handle.read(1024 * 1024):
+                yield chunk
+
+    await artifacts.put(
+        storage.Object(key),
+        chunks(),
+        length=length,
+        content_type="application/octet-stream",
+        checksum=storage.Checksum(value=sha256),
+    )
 
 
 def _parse_child(raw: bytes) -> ChildOk | ChildErr:

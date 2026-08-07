@@ -1,14 +1,32 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any, cast
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import CursorResult, Row, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from mimeme import inference
 from mimeme.db.schema import IndexBuild, Processing, ProcessingStatus
 from mimeme.index.model import Embedding, Manifest, Snapshot
 from mimeme.job.model import ClaimOwnership
 from mimeme.job.store import Store as JobStore
+
+
+def _embedding(row: Row) -> Embedding:
+    if row.embed_shard is not None and row.embed_row is not None:
+        return Embedding(
+            image_id=row.image_id,
+            shard=row.embed_shard,
+            row=row.embed_row,
+            text_present=bool(row.embed_text_present),
+        )
+    image_key = str(row.embed_s3_key)
+    return Embedding(
+        image_id=row.image_id,
+        image_key=image_key,
+        text_key=inference.text_embedding_key(image_key) if row.embed_text_present else None,
+    )
 
 
 class Store:
@@ -23,7 +41,14 @@ class Store:
     async def snapshot(self, *, model: str, target_generation: int) -> Snapshot:
         rows = (
             await self._session.execute(
-                select(Processing.image_id, Processing.embed_s3_key, Processing.embed_dim)
+                select(
+                    Processing.image_id,
+                    Processing.embed_s3_key,
+                    Processing.embed_dim,
+                    Processing.embed_text_present,
+                    Processing.embed_shard,
+                    Processing.embed_row,
+                )
                 .where(
                     Processing.embed_status == ProcessingStatus.DONE,
                     Processing.embed_model == model,
@@ -49,10 +74,68 @@ class Store:
         return Snapshot(
             target_generation=target_generation,
             dimension=dimension,
-            embeddings=[
-                Embedding(image_id=row.image_id, image_key=str(row.embed_s3_key)) for row in rows
-            ],
+            embeddings=[_embedding(row) for row in rows],
         )
+
+    async def unsealed(self, *, model: str, limit: int | None = None) -> list[Row]:
+        query = (
+            select(
+                Processing.image_id,
+                Processing.embed_s3_key,
+                Processing.embed_text_present,
+            )
+            .where(
+                Processing.embed_status == ProcessingStatus.DONE,
+                Processing.embed_model == model,
+                Processing.embed_s3_key.is_not(None),
+                Processing.embed_s3_key != "",
+                Processing.embed_shard.is_(None),
+            )
+            .order_by(Processing.image_id)
+        )
+        if limit is not None:
+            query = query.limit(limit)
+        return list((await self._session.execute(query)).all())
+
+    async def next_shard(self, *, model: str) -> int:
+        highest = await self._session.scalar(
+            select(func.max(Processing.embed_shard)).where(Processing.embed_model == model)
+        )
+        return 0 if highest is None else int(highest) + 1
+
+    async def record_shard(self, *, shard: int, image_ids: list[int]) -> None:
+        for row, image_id in enumerate(image_ids):
+            await self._session.execute(
+                update(Processing)
+                .where(Processing.image_id == image_id, Processing.embed_shard.is_(None))
+                .values(embed_shard=shard, embed_row=row)
+            )
+
+    async def mark_text_present(self, *, model: str, image_keys: list[str]) -> int:
+        if not image_keys:
+            return 0
+        result = await self._session.execute(
+            update(Processing)
+            .where(
+                Processing.embed_model == model,
+                Processing.embed_text_present.is_(None),
+                Processing.embed_s3_key.in_(image_keys),
+            )
+            .values(embed_text_present=True)
+        )
+        return cast("CursorResult[Any]", result).rowcount
+
+    async def mark_text_absent(self, *, model: str) -> int:
+        result = await self._session.execute(
+            update(Processing)
+            .where(
+                Processing.embed_status == ProcessingStatus.DONE,
+                Processing.embed_model == model,
+                Processing.embed_text_present.is_(None),
+            )
+            .values(embed_text_present=False)
+        )
+        return cast("CursorResult[Any]", result).rowcount
 
     async def activate(self, *, job_id: str, manifest: Manifest) -> None:
         await self._session.execute(

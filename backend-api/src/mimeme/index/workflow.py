@@ -13,6 +13,8 @@ with workflow.unsafe.imports_passed_through():
         Prepared,
         PrepareInput,
         Result,
+        Sealed,
+        SealInput,
         Trigger,
         WorkflowInput,
         WorkflowResult,
@@ -22,6 +24,10 @@ _DB_RETRY = RetryPolicy(
     maximum_attempts=rule.PREPARE_MAX_ATTEMPTS,
     initial_interval=timedelta(seconds=1),
     maximum_interval=timedelta(seconds=10),
+)
+_SEAL_RETRY = RetryPolicy(
+    maximum_attempts=rule.SEAL_MAX_ATTEMPTS,
+    maximum_interval=timedelta(minutes=1),
 )
 _BUILD_RETRY = RetryPolicy(
     maximum_attempts=rule.BUILD_MAX_ATTEMPTS,
@@ -64,6 +70,34 @@ class RebuildWorkflow:
             return await self.run(input.model_copy(update={"busy_attempt": input.busy_attempt + 1}))
         if prepared.decision == "clean":
             return WorkflowResult(job_id=prepared.job_id, outcome="clean")
+        if prepared.decision == "deferred":
+            return WorkflowResult(job_id=prepared.job_id, outcome="deferred")
+
+        assert prepared.build is not None and prepared.job_id is not None
+        await workflow.execute_activity(
+            rule.SEAL_ACTIVITY,
+            SealInput(job_id=prepared.job_id, model=input.model),
+            result_type=Sealed,
+            start_to_close_timeout=timedelta(hours=2),
+            heartbeat_timeout=timedelta(seconds=rule.HEARTBEAT_TIMEOUT_S),
+            retry_policy=_SEAL_RETRY,
+        )
+        resealed: Prepared = await workflow.execute_activity(
+            rule.PREPARE_ACTIVITY,
+            PrepareInput(
+                job_id=prepared.job_id,
+                workflow_id=workflow.info().workflow_id,
+                force=True,
+                trigger=input.trigger,
+                model=input.model,
+                index_type=input.index_type,
+            ),
+            result_type=Prepared,
+            start_to_close_timeout=timedelta(minutes=1),
+            retry_policy=_DB_RETRY,
+        )
+        if resealed.decision == "build" and resealed.build is not None:
+            prepared = resealed
 
         assert prepared.build is not None and prepared.job_id is not None
         result: Result = await workflow.execute_activity(

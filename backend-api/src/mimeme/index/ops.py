@@ -6,20 +6,24 @@ from datetime import UTC, datetime, timedelta
 
 from pydantic import ValidationError
 
-from mimeme import search, storage
+from mimeme import inference, search, storage
 from mimeme.config import Settings
 from mimeme.db import Db
 from mimeme.db.schema import Job, JobStatus, JobType
+from mimeme.index import pack, rule
 from mimeme.index.client import Client
 from mimeme.index.model import (
     Activated,
     ActivateInput,
+    Backfilled,
     Build,
     Encoder,
     Manifest,
     Prepared,
     PrepareInput,
     Result,
+    Sealed,
+    SealInput,
     Trigger,
 )
 from mimeme.index.store import Store
@@ -27,15 +31,12 @@ from mimeme.job.model import ClaimOwnership, StateMissing
 from mimeme.job.store import Store as JobStore
 
 _MANIFEST_MAX = 1024 * 1024
+_BACKFILL_BATCH = 1000
 _TERMINAL = (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED)
 
 
-async def prepare(
-    db: Db,
-    artifacts: storage.Store,
-    settings: Settings,
-    input: PrepareInput,
-) -> Prepared:
+async def prepare(db: Db, settings: Settings, input: PrepareInput) -> Prepared:
+    now = datetime.now(UTC)
     async with db.write_session() as session:
         jobs = JobStore(session)
         view = await jobs.lock_freshness()
@@ -43,9 +44,10 @@ async def prepare(
         owns_claim = claim is not None and claim.job_id == input.job_id
         if claim is not None:
             owner = await session.get(Job, claim.job_id)
-            expired = claim.claimed_at + timedelta(
-                minutes=settings.index.rebuild_claim_timeout_minutes
-            ) <= datetime.now(UTC)
+            expired = (
+                claim.claimed_at + timedelta(minutes=settings.index.rebuild_claim_timeout_minutes)
+                <= now
+            )
             if owner is None or owner.status in _TERMINAL or expired:
                 if owner is not None and owner.status not in _TERMINAL:
                     await jobs.fail_rebuild(
@@ -72,6 +74,26 @@ async def prepare(
                     message="Index already current",
                 )
             return Prepared(decision="clean", job_id=input.job_id)
+        if not input.force and not rule.settled(
+            now=now,
+            last_dirty_at=view.last_dirty_at,
+            last_reconciled_at=view.last_reconciled_at,
+            settle=timedelta(minutes=settings.index.rebuild_settle_minutes),
+            max_stale=timedelta(hours=settings.index.rebuild_max_stale_hours),
+        ):
+            if input.trigger is Trigger.MANUAL and input.job_id is not None:
+                await jobs.complete_rebuild(
+                    job_id=input.job_id,
+                    version="",
+                    num_vectors=0,
+                    dimension=0,
+                    removed_versions=[],
+                    text_num_vectors=None,
+                    skipped=True,
+                    skip_reason="dirty_stream_moving",
+                    message="Rebuild deferred until the dirty stream settles",
+                )
+            return Prepared(decision="deferred", job_id=input.job_id)
         job_id = input.job_id
         if input.trigger is Trigger.SCHEDULED:
             assert job_id is not None
@@ -85,7 +107,7 @@ async def prepare(
         if owns_claim:
             target_generation = view.rebuild_target_generation
         else:
-            claim_result = await jobs.claim(job_id=job_id, force=input.force, now=datetime.now(UTC))
+            claim_result = await jobs.claim(job_id=job_id, force=input.force, now=now)
             target_generation = claim_result.view.rebuild_target_generation
         assert target_generation is not None
         await jobs.mark_running(job_id)
@@ -93,7 +115,7 @@ async def prepare(
             model=input.model,
             target_generation=target_generation,
         )
-    embeddings = await _with_text_refs(artifacts, snapshot.embeddings)
+    planned_reads = pack.reads(snapshot.embeddings)
     version = _version(job_id, target_generation)
     return Prepared(
         decision="build",
@@ -112,13 +134,56 @@ async def prepare(
                 variant=settings.search.encoder_variant,
                 threads=settings.search.encoder_threads,
             ),
-            embeddings=embeddings,
+            embeddings=snapshot.embeddings,
+            planned_reads=planned_reads,
         ),
     )
 
 
+async def backfill_text_presence(
+    db: Db,
+    artifacts: storage.Store,
+    *,
+    model: str,
+    batch: int = _BACKFILL_BATCH,
+) -> Backfilled:
+    seen = 0
+    marked = 0
+    pending: list[str] = []
+    async for info in artifacts.list(prefix=inference.embedding_prefix(model)):
+        if not inference.is_text_embedding_key(info.object.key):
+            continue
+        seen += 1
+        pending.append(inference.image_embedding_key_of(info.object.key))
+        if len(pending) >= batch:
+            marked += await _mark_present(db, model=model, image_keys=pending)
+            pending = []
+    marked += await _mark_present(db, model=model, image_keys=pending)
+    async with db.write_session() as session:
+        absent = await Store(session).mark_text_absent(model=model)
+    return Backfilled(model=model, text_objects=seen, marked_present=marked, marked_absent=absent)
+
+
+async def _mark_present(db: Db, *, model: str, image_keys: list[str]) -> int:
+    if not image_keys:
+        return 0
+    async with db.write_session() as session:
+        return await Store(session).mark_text_present(model=model, image_keys=image_keys)
+
+
 async def build(client: Client, request: Build, *, progress=None) -> Result:  # noqa: ANN001
     return await client.build(request, progress=progress)
+
+
+async def seal(db: Db, client: Client, settings: Settings, input: SealInput) -> Sealed:
+    return await pack.seal(
+        db,
+        client,
+        job_id=input.job_id,
+        model=input.model,
+        shard_rows=settings.index.shard_rows,
+        max_shards=settings.index.seal_max_shards,
+    )
 
 
 async def activate(
@@ -246,18 +311,6 @@ async def _record_failure(db: Db, input: ActivateInput) -> None:
             )
         except (ClaimOwnership, StateMissing):
             pass
-
-
-async def _with_text_refs(artifacts: storage.Store, embeddings):  # noqa: ANN001, ANN202
-    semaphore = asyncio.Semaphore(16)
-
-    async def one(item):  # noqa: ANN001, ANN202
-        text_key = item.image_key.removesuffix(".npy") + "_text.npy"
-        async with semaphore:
-            exists = await artifacts.stat(storage.Object(text_key))
-        return item.model_copy(update={"text_key": text_key if exists is not None else None})
-
-    return list(await asyncio.gather(*(one(item) for item in embeddings)))
 
 
 async def _delete_prefix(artifacts: storage.Store, prefix: str) -> None:

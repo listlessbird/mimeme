@@ -16,7 +16,10 @@ from mimeme.inference.model import (
     Ok,
     Timeout,
     Unavailable,
+    embedding_prefix,
     image_embedding_key,
+    image_embedding_key_of,
+    is_text_embedding_key,
     text_embedding_key,
 )
 
@@ -62,6 +65,9 @@ __all__ = [
     "Timeout",
     "Unavailable",
     "create",
+    "embedding_prefix",
     "image_embedding_key",
+    "image_embedding_key_of",
+    "is_text_embedding_key",
     "text_embedding_key",
 ]

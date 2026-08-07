@@ -4,7 +4,7 @@ import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -82,6 +82,9 @@ class Processing(Base):
     embed_dim: Mapped[int | None] = mapped_column(Integer, nullable=True)
     embed_updated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(), nullable=True)
     embed_s3_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    embed_text_present: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    embed_shard: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    embed_row: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     image: Mapped[Image] = relationship(back_populates="processing")
 

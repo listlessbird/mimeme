@@ -39,6 +39,33 @@ class Unavailable(Error):
     pass
 
 
+class Counts(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    get_object: int = 0
+    head_object: int = 0
+    head_bucket: int = 0
+    put_object: int = 0
+    create_multipart: int = 0
+    upload_part: int = 0
+    complete_multipart: int = 0
+    list_page: int = 0
+
+    @property
+    def class_a(self) -> int:
+        return (
+            self.put_object
+            + self.create_multipart
+            + self.upload_part
+            + self.complete_multipart
+            + self.list_page
+        )
+
+    @property
+    def class_b(self) -> int:
+        return self.get_object + self.head_object + self.head_bucket
+
+
 class Object(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
