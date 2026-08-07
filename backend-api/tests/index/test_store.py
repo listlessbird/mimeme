@@ -2,9 +2,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import pytest
 from sqlalchemy.orm import Session
 from tests.factories import (
     create_image,
+    create_index_build,
     create_job,
     create_processing,
     create_search_index_state,
@@ -138,6 +140,45 @@ async def test_startup_reconciliation_clears_compute_when_db_has_no_active_versi
 
     assert status is not None
     assert status.serving_version is None
+
+
+async def test_startup_reconciliation_drops_an_active_version_with_no_manifest(
+    index_db: SavepointDb, run_sync_seed
+) -> None:
+    def seed(session: Session) -> None:
+        create_index_build(session=session, version="v-pre-rewrite", is_active=True)
+
+    await run_sync_seed(seed)
+    remote = _Activation()
+    remote.serving = "v-pre-rewrite"
+
+    status = await ops.reconcile(index_db, Memory(), remote)
+
+    assert status is not None
+    assert status.serving_version is None
+    async with index_db.read_session() as session:
+        assert await Store(session).active_version() is None
+
+
+async def test_startup_reconciliation_fails_loudly_on_a_corrupt_manifest(
+    index_db: SavepointDb, run_sync_seed
+) -> None:
+    def seed(session: Session) -> None:
+        create_index_build(session=session, version="v-corrupt", is_active=True)
+
+    await run_sync_seed(seed)
+    artifacts = Memory()
+    await artifacts.put_bytes(
+        storage.Object("indexes/v-corrupt/complete.json"),
+        b"{not json",
+        content_type="application/json",
+    )
+
+    with pytest.raises(ValueError):
+        await ops.reconcile(index_db, artifacts, _Activation())
+
+    async with index_db.read_session() as session:
+        assert await Store(session).active_version() == "v-corrupt"
 
 
 async def test_activation_commit_is_atomic_and_releases_the_claim(

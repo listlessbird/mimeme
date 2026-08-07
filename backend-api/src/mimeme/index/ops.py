@@ -232,19 +232,28 @@ async def reconcile(
     async with db.read_session() as session:
         version = await Store(session).active_version()
     if version is None:
-        status = await remote.status()
-        if (
-            status.serving_version is None
-            and status.candidate_version is None
-            and status.retained_version is None
-        ):
-            return status
-        return await remote.clear()
-    raw = await artifacts.read_bytes(
-        storage.Object(f"indexes/{version}/complete.json"), max_bytes=_MANIFEST_MAX
-    )
+        return await _clear_remote(remote)
+    try:
+        raw = await artifacts.read_bytes(
+            storage.Object(f"indexes/{version}/complete.json"), max_bytes=_MANIFEST_MAX
+        )
+    except storage.Missing:
+        async with db.write_session() as session:
+            await Store(session).deactivate(version)
+        return await _clear_remote(remote)
     manifest = await validate(artifacts, Manifest.model_validate_json(raw))
     return await search.reconcile(_load(manifest), activation=remote)
+
+
+async def _clear_remote(remote: search.Activation) -> search.Status | None:
+    status = await remote.status()
+    if (
+        status.serving_version is None
+        and status.candidate_version is None
+        and status.retained_version is None
+    ):
+        return status
+    return await remote.clear()
 
 
 async def validate(artifacts: storage.Store, expected: Manifest) -> Manifest:

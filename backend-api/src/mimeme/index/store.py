@@ -39,6 +39,13 @@ class Store:
             select(IndexBuild.version).where(IndexBuild.is_active.is_(True))
         )
 
+    async def deactivate(self, version: str) -> None:
+        await self._session.execute(
+            update(IndexBuild)
+            .where(IndexBuild.version == version, IndexBuild.is_active.is_(True))
+            .values(is_active=False)
+        )
+
     async def snapshot(self, *, model: str, target_generation: int) -> Snapshot:
         rows = (
             await self._session.execute(
