@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 import pytest
 from temporalio.exceptions import ApplicationError
@@ -11,6 +11,7 @@ from tests.support.storage import Memory
 from mimeme import index
 from mimeme.config import Settings
 from mimeme.index import activity as index_activity
+from mimeme.index import rule
 from mimeme.index.activity import Activities
 
 
@@ -96,3 +97,47 @@ async def test_activate_activity_heartbeats_while_work_is_running(monkeypatch) -
 
     assert result.version == "v2"
     assert heartbeats == [{"phase": "activate", "job_id": "rebuild-activity"}]
+
+
+async def test_seal_activity_skips_when_another_seal_holds_the_lock(monkeypatch) -> None:  # noqa: ANN001
+    async def busy(*args, **kwargs) -> index.Sealed:  # noqa: ANN002, ANN003
+        raise index_activity.pack.Busy("another seal holds the pack lock")
+
+    monkeypatch.setattr(index_activity.index, "seal", busy)
+
+    result = await ActivityEnvironment().run(
+        Activities(_Env(index=_Success())).seal,  # type: ignore[arg-type]
+        index.SealInput(job_id="rebuild-activity", model="test/embed"),
+    )
+
+    assert (result.shards, result.rows) == (0, 0)
+
+
+async def test_seal_activity_retries_before_giving_up_the_claim(monkeypatch) -> None:  # noqa: ANN001
+    released: list[str] = []
+
+    async def unreachable(*args, **kwargs) -> index.Sealed:  # noqa: ANN002, ANN003
+        raise RuntimeError("compute unreachable")
+
+    async def fail(db, *, job_id: str, error: str, cancelled: bool) -> None:  # noqa: ANN001
+        released.append(job_id)
+
+    async def cleanup(*args, **kwargs) -> None:  # noqa: ANN002, ANN003
+        return None
+
+    monkeypatch.setattr(index_activity.index, "seal", unreachable)
+    monkeypatch.setattr(index_activity.index, "fail", fail)
+    monkeypatch.setattr(index_activity.index, "cleanup_incomplete", cleanup)
+    request = index.SealInput(job_id="rebuild-activity", model="test/embed")
+
+    first = ActivityEnvironment()
+    first.info = replace(first.info, attempt=1)
+    with pytest.raises(RuntimeError, match="compute unreachable"):
+        await first.run(Activities(_Env(index=_Success())).seal, request)  # type: ignore[arg-type]
+    assert released == []
+
+    last = ActivityEnvironment()
+    last.info = replace(last.info, attempt=rule.SEAL_MAX_ATTEMPTS)
+    with pytest.raises(RuntimeError, match="compute unreachable"):
+        await last.run(Activities(_Env(index=_Success())).seal, request)  # type: ignore[arg-type]
+    assert released == ["rebuild-activity"]

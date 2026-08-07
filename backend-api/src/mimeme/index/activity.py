@@ -77,6 +77,20 @@ class Activities:
                 "index seal skipped", extra={"job_id": input.job_id, "reason": str(busy)}
             )
             return Sealed(model=input.model, shards=0, rows=0)
+        except BaseException as failure:
+            activity.logger.error(
+                "index seal failed",
+                extra={"job_id": input.job_id, "error": str(failure)},
+            )
+            terminal = _terminal(failure)
+            if (
+                isinstance(failure, asyncio.CancelledError)
+                or terminal
+                or activity.info().attempt >= rule.SEAL_MAX_ATTEMPTS
+            ):
+                await _bookkeep_failure(self._env, input.job_id, failure, version=None)
+            _raise_terminal(failure, terminal)
+            raise
         finally:
             heartbeat.cancel()
             try:
