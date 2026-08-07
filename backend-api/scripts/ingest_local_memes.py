@@ -93,7 +93,9 @@ def _wait_for_job(client: httpx.Client, api_base: str, job_id: str, timeout_sec:
         time.sleep(2)
 
 
-def _fetch_single_image_for_dataset(client: httpx.Client, api_base: str, dataset: str) -> dict | None:
+def _fetch_single_image_for_dataset(
+    client: httpx.Client, api_base: str, dataset: str
+) -> dict | None:
     resp = client.get(
         f"{api_base}/images",
         params={"dataset": dataset, "limit": 1, "offset": 0, "sort": "newest"},

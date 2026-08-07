@@ -21,7 +21,7 @@ test:
     uv run pytest -q
 
 test-model:
-    RUN_MODEL_SMOKE=1 uv run --all-extras pytest -q --tb=short --show-capture=no model_smoke
+    RUN_MODEL_SMOKE=1 uv run --all-extras pytest -q --tb=short --show-capture=no tests/compute/test_model_smoke.py
 
 cov:
     uv run pytest --cov=src --cov-report=term-missing -q
@@ -35,10 +35,13 @@ hooks:
     uv run pre-commit run --all-files
 
 api:
-    uv run uvicorn api.main:app --reload
+    uv run uvicorn mimeme.api.main:app --reload
 
 worker:
-    uv run python -m workers.worker
+    uv run python -m mimeme.worker
+
+compute:
+    uv run python -m mimeme.compute
 
 migrate:
     uv run alembic upgrade head
@@ -55,6 +58,11 @@ migrate-down:
 
 prod-env:
     ./scripts/print-prod-env.sh
+
+# Copy a subset of production into the local stack. Reads prod read-only;
+# truncates the local application tables. Drop `--apply` for a dry run.
+seed-local limit="500":
+    uv run python scripts/seed_from_prod.py --limit {{limit}} --apply
 
 modal-deploy:
     ./scripts/deploy-modal.sh

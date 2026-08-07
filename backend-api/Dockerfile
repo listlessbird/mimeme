@@ -1,12 +1,16 @@
+ARG RELEASE_ID=dev
+
 FROM python:3.13-slim AS base
+
+ARG RELEASE_ID
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PYTHONFAULTHANDLER=1
+    PYTHONFAULTHANDLER=1 \
+    MIMEME_RELEASE_ID=${RELEASE_ID}
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
-    libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
 FROM base AS builder
@@ -19,8 +23,6 @@ ENV UV_COMPILE_BYTECODE=1 \
 
 WORKDIR /app
 
-
-COPY vendored ./vendored
 
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=type=bind,source=uv.lock,target=uv.lock \
@@ -56,7 +58,43 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/ready || exit 1
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn api.main:app --host 0.0.0.0 --port 8000"]
+CMD ["sh", "-c", "alembic upgrade head && uvicorn mimeme.api.main:app --host 0.0.0.0 --port 8000"]
+
+FROM builder AS compute-builder
+
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-editable --extra compute --extra local-gpu
+
+FROM base AS compute
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgl1 libglib2.0-0 libgomp1 libvips42 \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN useradd --create-home --shell /bin/bash appuser
+
+WORKDIR /app
+
+COPY --from=compute-builder --chown=appuser:appuser /app/.venv /app/.venv
+
+RUN mkdir -p /app/.cache/huggingface /tmp/mimeme-compute && \
+    chown appuser:appuser /app/.cache/huggingface /tmp/mimeme-compute
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    HF_HOME="/app/.cache/huggingface" \
+    HUGGINGFACE_HUB_CACHE="/app/.cache/huggingface/hub" \
+    COMPUTE_BIND_HOST=0.0.0.0 \
+    COMPUTE_BIND_PORT=8010 \
+    COMPUTE_SOCKET_DIR=/tmp/mimeme-compute
+
+USER appuser
+
+EXPOSE 8010
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --retries=3 \
+    CMD curl -f http://localhost:8010/ready || exit 1
+
+CMD ["python", "-m", "mimeme.compute"]
 
 FROM base AS worker
 
@@ -75,4 +113,4 @@ ENV PATH="/app/.venv/bin:$PATH" \
 
 USER appuser
 
-CMD ["python", "-m", "workers.worker"]
+CMD ["python", "-m", "mimeme.worker"]

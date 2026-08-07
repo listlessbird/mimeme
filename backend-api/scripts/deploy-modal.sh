@@ -44,8 +44,8 @@ uv run modal secret create --force "${modal_secret_name}" \
 
 (
   cd "${backend_dir}"
-  MODAL_APP_NAME="${modal_app_name}" \
-  MODAL_HF_CACHE_VOLUME_NAME="${modal_volume_name}" \
-  MODAL_S3_SECRET_NAME="${modal_secret_name}" \
-    uv run modal deploy -m modal_app.app --name "${modal_app_name}"
+  COMPUTE_MODAL_APP_NAME="${modal_app_name}" \
+  COMPUTE_MODAL_HF_CACHE_VOLUME_NAME="${modal_volume_name}" \
+  COMPUTE_MODAL_S3_SECRET_NAME="${modal_secret_name}" \
+    uv run modal deploy -m mimeme.modal_app.app --name "${modal_app_name}"
 )

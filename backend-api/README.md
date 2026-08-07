@@ -1,299 +1,53 @@
-# Backend API
-
-FastAPI + Temporal backend for meme ingestion, annotation, embedding, indexing, and search.
-
-## Recommended Local Development
-
-Run infrastructure in Docker, then run the API and Temporal worker locally with `uv`.
-
-This is the most reliable local setup because the development compose file currently provides Postgres, Redis, MinIO, and optional Temporal services, while the API and worker are easier to run directly from the checked-out source.
-
-### 1. Configure Environment
+## Local development
 
 From `backend-api/`:
 
 ```bash
 cp .env.example .env
-```
-
-The defaults in `.env.example` point at local Docker services:
-
-- Postgres: `localhost:5432`
-- Redis: `localhost:6379`
-- MinIO S3: `localhost:9000`
-- Temporal: `localhost:7233`
-
-For local CPU-only embedding runs, set:
-
-```bash
-EMBED_DEVICE=cpu
-```
-
-The default `GPU_BACKEND=local` runs local model inference in the worker. To use Modal instead, complete the Modal setup below and set:
-
-```bash
-GPU_BACKEND=modal
-```
-
-### 2. Start Infra
-
-Start Postgres, Redis, and MinIO:
-
-```bash
-docker compose up -d postgres redis minio
-```
-
-Start Temporal with the Temporal CLI:
-
-```bash
-temporal server start-dev
-```
-
-Keep this command running. It starts both the Temporal server and Temporal Web UI.
-
-Do not also start the Docker `temporal` service when using `temporal server start-dev`; both bind to port `7233`.
-
-### 3. Apply Migrations
-
-In a second terminal:
-
-```bash
-cd backend-api
+uv sync --all-groups --all-extras
+docker compose up -d postgres minio temporal temporal-ui
 uv run alembic upgrade head
 ```
 
-Create the test database once if you want backend tests to run against local Postgres:
+Start the three application processes in separate terminals:
 
 ```bash
-docker compose exec postgres createdb -U postgres mimeme_test
+uv run api
+uv run worker
+uv run compute
 ```
 
-The test suite looks for `TEST_DB_URL` first, then tries
-`postgresql://postgres:postgres@localhost:5432/mimeme_test`. If that database
-is not reachable, tests fall back to an in-memory SQLite database.
+The default URLs are API `http://localhost:8000`, Temporal UI
+`http://localhost:8088`, and MinIO console `http://localhost:9001`. Development
+mode bypasses API-key auth. Production requests use `X-API-Key`.
 
-### 4. Start The API
-
-```bash
-cd backend-api
-uv run uvicorn api.main:app --reload
-```
-
-The API will create the configured MinIO bucket on startup if it does not already exist.
-
-### 5. Start The Worker
-
-In a third terminal:
-
-```bash
-cd backend-api
-uv run python -m workers.worker
-```
-
-The worker must be running for ingest and rebuild jobs to execute.
-
-### 6. Local URLs
-
-- API: `http://localhost:8000`
-- API docs: `http://localhost:8000/docs`
-- Health check: `http://localhost:8000/ready`
-- Temporal UI: `http://localhost:8233`
-- MinIO console: `http://localhost:9001`
-
-MinIO credentials:
-
-```text
-minioadmin / minioadmin
-```
-
-### 7. Manual Smoke Test
-
-Check service health:
-
-```bash
-curl http://localhost:8000/ready
-```
-
-Queue one image for ingestion:
-
-```bash
-curl -X POST http://localhost:8000/images \
-  -H 'Content-Type: application/json' \
-  -d '{"urls":["https://picsum.photos/seed/test-meme/512/512"],"dataset":"manual","tags":["manual"]}'
-```
-
-Check the returned job:
-
-```bash
-curl http://localhost:8000/jobs/<job_id>
-```
-
-After images are embedded, rebuild the search index:
-
-```bash
-curl -X POST http://localhost:8000/jobs/rebuild-index \
-  -H 'Content-Type: application/json' \
-  -d '{"force":true}'
-```
-
-Search once the rebuild job completes:
-
-```bash
-curl 'http://localhost:8000/search?q=cat&mode=hybrid'
-```
-
-In `APP_ENV=development`, API-key auth is bypassed for local manual testing.
-
-### 8. Stop Services
-
-Stop local foreground processes with `Ctrl-C`.
-
-Stop Docker infra:
-
-```bash
-docker compose down
-```
-
-To also remove local Docker volumes:
-
-```bash
-docker compose down -v
-```
-
-## Tmux Dev Helper
-
-The repo includes a tmux helper that starts Docker infra, Temporal CLI, API, and worker panes:
-
-```bash
-cd backend-api
-./dev.sh
-```
-
-## Alternative Docker Temporal
-
-If you prefer Docker Temporal instead of the Temporal CLI:
-
-```bash
-docker compose up -d postgres redis minio temporal temporal-ui
-```
-
-Then keep running the API and worker locally:
-
-```bash
-uv run alembic upgrade head
-uv run uvicorn api.main:app --reload
-uv run python -m workers.worker
-```
-
-Temporal UI is available at `http://localhost:8088` in this mode.
-
-## Production Deploy & Rollback
-
-CI publishes both images to GHCR tagged `latest` and `sha-<short-commit>`. Deploy on the prod host:
-
-```bash
-just deploy
-```
-
-To roll back, pin the previous SHA tag. Tags are listed on the GHCR package pages for `mimeme-api` and `mimeme-worker`.
-
-```bash
-IMAGE_TAG=sha-81aa28f docker compose -f docker.compose.prod.yml up -d api worker
-```
-
-Unset `IMAGE_TAG` and deploy again to get back on `latest`.
-
-## Modal Setup
+To use Modal inference instead of local inference:
 
 ```bash
 uv run modal setup
 just modal-deploy
 ```
 
-## Development Commands
+Set `COMPUTE__GPU_BACKEND=modal` and deploy the matching Modal app before
+starting API/worker readiness checks.
 
-Install all backend development groups:
-
-```bash
-uv sync --all-groups
-```
-
-The repo includes a `justfile` for common backend commands if you have `just` installed:
+## Verification
 
 ```bash
-just fmt
-just lint
-just type
-just test
-just test-model
-just check
-```
-
-The same commands can be run directly with `uv`:
-
-Format code and sort imports:
-
-```bash
-uv run ruff check --select I --fix src tests
-uv run ruff format src tests
-```
-
-Run lint, typecheck, and tests:
-
-```bash
-uv run ruff format --check src tests
-uv run ruff check src tests
-uv run pyright
-uv run pytest -q
-```
-
-Install pre-commit hooks:
-
-```bash
-uv run pre-commit install
-```
-
-Run tests:
-
-```bash
-uv run pytest -q
-```
-
-Run real model smoke tests explicitly:
-
-```bash
-just test-model
-```
-
-These load the configured Moondream2 and SigLIP2 models and are intentionally
-kept outside the normal `uv run pytest -q`, `just test`, and `just check` paths.
-Use them before changing model IDs/revisions or packages such as `transformers`,
-`torch`, `torchvision`, `accelerate`, or `bitsandbytes`. Those packages live in
-the `local-gpu` extra and are not installed in the runtime images. `just test-model`
-runs with `uv run --all-extras`, which pulls the extra in.
-
-To force tests to use a specific Postgres database:
-
-```bash
-TEST_DB_URL=postgresql://postgres:postgres@localhost:5432/mimeme_test uv run pytest -q
-```
-
-Run Ruff:
-
-```bash
-uv run ruff format --check src tests
-uv run ruff check src tests
-```
-
-Create a migration after model changes:
-
-```bash
-uv run alembic revision --autogenerate -m "describe change"
+DEBUG=false just check
+uv sync --frozen --all-groups --all-extras
+uv build
 uv run alembic upgrade head
+uv run alembic current
+uv run alembic check
+docker compose config
+docker compose build api worker compute
 ```
+`just test-model` tests models
 
-Apply migrations against the production database:
+## Production
 
-```bash
-DB_URL=$(terraform -chdir=../terraform/infra output -raw db_url | sed 's|^postgres://|postgresql://|') uv run alembic upgrade head
-```
+CI publishes API, worker, and compute artifacts tagged by release. Deploy one
+matching release ID across Modal, compute, API, and worker. Do not deploy a new
+worker onto an old task queue or expose the API before migrations, schedule
+reconciliation, and readiness pass.

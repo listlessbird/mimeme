@@ -17,7 +17,7 @@ from typing import Any, cast
 import factory
 from sqlalchemy.orm import Session
 
-from shared.models.orm import (
+from mimeme.db.schema import (
     Annotation,
     Artifact,
     Image,

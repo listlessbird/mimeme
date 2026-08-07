@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-from httpx import AsyncClient
+from mimeme.api.main import create_app
+from mimeme.config import Settings
 
 
-async def test_async_client_can_call_app_without_lifespan_side_effects(
-    async_client: AsyncClient,
-) -> None:
-    response = await async_client.get("/openapi.json")
-
-    assert response.status_code == 200
-    assert response.json()["openapi"].startswith("3.")
+def test_app_builds_openapi_without_lifespan_side_effects() -> None:
+    app = create_app(Settings())
+    assert app.openapi()["openapi"].startswith("3.")

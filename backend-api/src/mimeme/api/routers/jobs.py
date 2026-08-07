@@ -1,0 +1,148 @@
+from __future__ import annotations
+
+from typing import Annotated
+
+from fastapi import APIRouter, HTTPException, Query
+
+from mimeme import index, job
+from mimeme.api.auth import AdminRequired
+from mimeme.api.deps import DbDep, SettingsDep, TemporalClientDep
+from mimeme.api.models.errors import error_responses
+from mimeme.api.models.health import IndexVersionResponse, IndexVersionsResponse
+from mimeme.api.models.jobs import (
+    IndexFreshnessResponse,
+    JobListResponse,
+    JobResponse,
+    RebuildIndexRequest,
+)
+from mimeme.db.schema import JobStatus, JobType
+from mimeme.index.workflow import RebuildWorkflow
+
+router = APIRouter(prefix="/jobs", tags=["Jobs"], responses=error_responses(403, 429, 500))
+
+
+@router.get("/{job_id}", response_model=JobResponse, responses=error_responses(404))
+async def get_job(_auth: AdminRequired, db: DbDep, job_id: str) -> JobResponse:
+    try:
+        view = await job.find_exn(db, job_id)
+    except job.NotFound:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return JobResponse.model_validate(view.model_dump())
+
+
+@router.post("/rebuild-index", response_model=JobResponse, status_code=202)
+async def trigger_rebuild_index(
+    _auth: AdminRequired,
+    db: DbDep,
+    settings: SettingsDep,
+    temporal: TemporalClientDep,
+    request: RebuildIndexRequest | None = None,
+) -> JobResponse:
+    request = request or RebuildIndexRequest()
+    rebuild = await job.create_rebuild(
+        db,
+        force=request.force,
+        model_name=request.model_name or settings.inference.embed_model,
+        index_type=settings.index.type,
+    )
+
+    await temporal.start_workflow(
+        RebuildWorkflow.run,
+        index.WorkflowInput(
+            job_id=rebuild.job.id,
+            force=rebuild.force,
+            model=rebuild.model_name,
+            index_type=rebuild.index_type,
+            trigger=index.Trigger.MANUAL,
+        ),
+        id=rebuild.workflow_id,
+        task_queue=settings.temporal.task_queue,
+    )
+
+    await job.record_workflow_id(db, rebuild.job.id, rebuild.workflow_id)
+
+    return JobResponse(
+        id=rebuild.job.id,
+        type=JobType.REBUILD_INDEX,
+        status=JobStatus.PENDING,
+        progress=0.0,
+        message="Index rebuild queued",
+        created_at=rebuild.job.created_at,
+    )
+
+
+@router.delete("/{job_id}", status_code=204, responses=error_responses(400, 404))
+async def cancel_job(
+    _auth: AdminRequired, db: DbDep, job_id: str, temporal: TemporalClientDep
+) -> None:
+    try:
+        cancellation = await job.request_cancellation(db, job_id)
+    except job.NotFound:
+        raise HTTPException(status_code=404, detail="Job not found")
+    except job.InvalidState as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    if cancellation.workflow_id:
+        handle = temporal.get_workflow_handle(cancellation.workflow_id)
+        await handle.cancel()
+
+    await job.mark_cancelled(db, job_id)
+    await job.release_claim(db, job_id)
+
+
+@router.get("", response_model=JobListResponse)
+async def list_jobs(
+    _auth: AdminRequired,
+    db: DbDep,
+    status: Annotated[JobStatus | None, Query()] = None,
+    job_type: Annotated[JobType | None, Query()] = None,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> JobListResponse:
+    result = await job.list_jobs(db, status=status, job_type=job_type, limit=limit)
+
+    return JobListResponse(
+        jobs=[JobResponse.model_validate(view.model_dump()) for view in result.jobs],
+        total=result.total,
+    )
+
+
+@router.get("/indexes/freshness", response_model=IndexFreshnessResponse)
+async def get_index_freshness(_auth: AdminRequired, db: DbDep) -> IndexFreshnessResponse:
+    status = await job.index_status(db)
+    view = status.view
+    return IndexFreshnessResponse(
+        desired_generation=view.desired_generation,
+        active_generation=view.active_generation,
+        is_stale=view.is_stale,
+        active_version=status.active_version,
+        rebuild_job_id=view.rebuild_job_id,
+        rebuild_target_generation=view.rebuild_target_generation,
+        rebuild_claimed_at=view.rebuild_claimed_at,
+        last_dirty_at=view.last_dirty_at,
+        last_dirty_reason=view.last_dirty_reason,
+        last_reconciled_at=view.last_reconciled_at,
+    )
+
+
+@router.get("/indexes/versions", response_model=IndexVersionsResponse)
+async def list_index_versions(
+    _auth: AdminRequired,
+    db: DbDep,
+    limit: Annotated[int, Query(ge=1, le=50)] = 10,
+) -> IndexVersionsResponse:
+    builds = await job.list_index_builds(db, limit=limit)
+
+    return IndexVersionsResponse(
+        versions=[
+            IndexVersionResponse(
+                version=b.version,
+                embed_model=b.embed_model,
+                index_type=b.index_type,
+                num_vectors=b.num_vectors,
+                dimension=b.dimension,
+                is_active=b.is_active,
+                created_at=b.created_at.isoformat() if b.created_at else None,
+            )
+            for b in builds
+        ]
+    )

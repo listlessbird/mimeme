@@ -5,17 +5,17 @@ Revises: b745c57e8993
 Create Date: 2026-06-26 03:30:00.000000
 
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = 'd0d65c1bccf2'
-down_revision: Union[str, Sequence[str], None] = 'b745c57e8993'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = 'b745c57e8993'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 # Pipeline-position enum backing `ingest_urls.stage`. Positions only — never an
 # outcome; failure is carried by `status`/`error_message`.

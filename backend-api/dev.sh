@@ -43,15 +43,15 @@ if [ "$STAGING_MODE" = true ]; then
 
   # Pane 1 (bottom-left): API Server
   tmux select-pane -t 1
-  tmux send-keys "sleep 3 && uv run uvicorn api.main:app --reload" C-m
+  tmux send-keys "sleep 3 && uv run uvicorn mimeme.api.main:app --reload" C-m
 
   # Pane 2 (top-right): Worker
   tmux select-pane -t 2
-  tmux send-keys "sleep 5 && uv run python -m workers.worker" C-m
+  tmux send-keys "sleep 5 && uv run python -m mimeme.workers.worker" C-m
 
   # Pane 3 (bottom-right): Modal app
   tmux select-pane -t 3
-  # tmux send-keys "sleep 5 && cd src && uv run modal serve modal_app.app" C-m
+  # tmux send-keys "sleep 5 && cd src && uv run modal serve mimeme.modal_app.app" C-m
 else
   # Default development mode commands
 
@@ -61,11 +61,11 @@ else
 
   # Pane 1 (bottom-left): API Server
   tmux select-pane -t 1
-  tmux send-keys "sleep 3 && uv run alembic upgrade head && uv run uvicorn api.main:app --reload" C-m
+  tmux send-keys "sleep 3 && uv run alembic upgrade head && uv run uvicorn mimeme.api.main:app --reload" C-m
 
   # Pane 2 (top-right): Worker
   tmux select-pane -t 2
-  tmux send-keys "sleep 5 && uv run python -m workers.worker" C-m
+  tmux send-keys "sleep 5 && uv run python -m mimeme.workers.worker" C-m
 
   # Pane 3 (bottom-right): free
   tmux select-pane -t 3

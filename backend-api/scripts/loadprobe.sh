@@ -3,7 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-DB_URL="${DB_URL:-postgresql://postgres:postgres@localhost:5432/mimeme}"
+DATABASE_URL="${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/mimeme}"
 PG_CONTAINER="${PG_CONTAINER:-mimeme-postgres}"
 API_PORT="${API_PORT:-8000}"
 DURATION="${DURATION:-30s}"
@@ -24,44 +24,50 @@ if ! docker ps --format '{{.Names}}' | grep -qx "$PG_CONTAINER"; then
   sleep 3
 fi
 
-export DB_URL
+export DATABASE_URL
 SEED_COUNT="$SEED_COUNT" uv run python - <<'PY'
+import asyncio
 import os
 
-from sqlalchemy import create_engine, func, select
-from sqlalchemy.orm import Session
+from sqlalchemy import func, select
 
-from shared.config import settings
-from shared.models.orm import Base, Image
+from mimeme.config import Settings
+from mimeme.db import Db
+from mimeme.db.schema import Base, Image
 
-seed_count = int(os.environ["SEED_COUNT"])
-engine = create_engine(settings.db_url_str)
-Base.metadata.create_all(engine)
-with Session(engine) as session:
-    existing = session.scalar(select(func.count()).select_from(Image)) or 0
-    for i in range(existing, seed_count):
-        session.add(
-            Image(
-                sha256=f"loadprobe-{i:056d}",
-                dataset="loadprobe",
-                s3_key=f"images/loadprobe/{i}.jpg",
-                width=640,
-                height=480,
-                format="jpeg",
-                file_size=12345,
-            )
-        )
-    session.commit()
-    total = session.scalar(select(func.count()).select_from(Image)) or 0
-print(f"images in db: {total}")
+async def main() -> None:
+    seed_count = int(os.environ["SEED_COUNT"])
+    db = Db(Settings().database)
+    try:
+        async with db.write_session() as session:
+            existing = await session.scalar(select(func.count()).select_from(Image)) or 0
+            for i in range(existing, seed_count):
+                session.add(
+                    Image(
+                        sha256=f"loadprobe-{i:056d}",
+                        dataset="loadprobe",
+                        s3_key=f"images/loadprobe/{i}.jpg",
+                        width=640,
+                        height=480,
+                        format="jpeg",
+                        file_size=12345,
+                    )
+                )
+        async with db.read_session() as session:
+            total = await session.scalar(select(func.count()).select_from(Image)) or 0
+        print(f"images in db: {total}")
+    finally:
+        await db.close()
+
+asyncio.run(main())
 PY
 
 APP_ENV=development DEBUG=false LOG_LEVEL=INFO \
-RATE_LIMIT_ENABLED=false PRELOAD_TEXT_ENCODER_ON_STARTUP=false GPU_BACKEND=local \
-AXIOM_API_TOKEN= AXIOM_DATASET= \
+HTTP_RATE_LIMIT_ENABLED=false INFERENCE_PRELOAD_TEXT_ENCODER_ON_STARTUP=false COMPUTE_GPU_BACKEND=local \
+LOG_AXIOM_API_TOKEN= LOG_AXIOM_DATASET= \
 MEDIA_S3_ENDPOINT_URL=http://127.0.0.1:9 \
 ARTIFACT_S3_ENDPOINT_URL=http://127.0.0.1:9 \
-uv run uvicorn api.main:app --host 127.0.0.1 --port "$API_PORT" --log-level warning \
+uv run uvicorn mimeme.api.main:app --host 127.0.0.1 --port "$API_PORT" --log-level warning \
   >"$API_LOG" 2>&1 &
 API_PID=$!
 trap 'kill "$API_PID" 2>/dev/null || true; docker update --cpus 0 "$PG_CONTAINER" >/dev/null 2>&1 || true' EXIT

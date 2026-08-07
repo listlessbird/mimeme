@@ -16,20 +16,21 @@ services:
     env_file: .env
     environment:
       - TEMPORAL_HOST=temporal:7233
+      - COMPUTE_GATEWAY_URL=http://compute:8010
       - APP_ENV=production
     ports:
       - "0.0.0.0:8000:8000"
     depends_on:
       temporal:
         condition: service_started
-    volumes:
-      - faiss_data:/app/data
-      - huggingface_cache:/app/.cache/huggingface
+      compute:
+        condition: service_healthy
     deploy:
       resources:
         limits:
-          memory: 2048M
+          memory: 768M
     restart: unless-stopped
+    stop_grace_period: 30s
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:8000/ready" ]
       interval: 30s
@@ -56,20 +57,45 @@ services:
     env_file: .env
     environment:
       - TEMPORAL_HOST=temporal:7233
-      - GPU_BACKEND=modal
+      - COMPUTE_GPU_BACKEND=modal
+      - COMPUTE_GATEWAY_URL=http://compute:8010
       - APP_ENV=production
     depends_on:
       temporal:
         condition: service_started
-    volumes:
-      - faiss_data:/app/data
-      - huggingface_cache:/app/.cache/huggingface
+      compute:
+        condition: service_healthy
     deploy:
       resources:
         limits:
           memory: 1024M
     restart: unless-stopped
+    stop_grace_period: 30s
+
+  compute:
+    image: ghcr.io/listlessbird/mimeme-compute:${IMAGE_TAG:-latest}
+    env_file: .env
+    environment:
+      - APP_ENV=production
+      - COMPUTE_GPU_BACKEND=modal
+      - OMP_NUM_THREADS=4
+      - OPENBLAS_NUM_THREADS=1
+    ports:
+      - "127.0.0.1:8010:8010"
+    volumes:
+      - huggingface_cache:/app/.cache/huggingface
+    deploy:
+      resources:
+        limits:
+          memory: 2048M
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8010/ready" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
 
 volumes:
-  faiss_data:
   huggingface_cache:

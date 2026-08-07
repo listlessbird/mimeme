@@ -8,7 +8,6 @@ from pathlib import Path
 from huggingface_hub import snapshot_download
 from transformers.dynamic_module_utils import check_imports
 
-
 MISSING_RE = re.compile(
     r"requires the following packages that were not found in your environment:\s*(.+?)\.",
     re.IGNORECASE | re.DOTALL,

@@ -14,13 +14,13 @@ APP_ENV=production
 DEBUG=false
 LOG_LEVEL=INFO
 
-DB_URL=$(tf_output db_url)
+DATABASE_URL=$(tf_output db_url)
 
 TEMPORAL_HOST=localhost:7233
 TEMPORAL_NAMESPACE=default
 
-GPU_BACKEND=modal
-MODAL_APP_NAME=$(tf_output modal_app_name)
+COMPUTE_GPU_BACKEND=modal
+COMPUTE_MODAL_APP_NAME=$(tf_output modal_app_name)
 
 MEDIA_S3_ENDPOINT_URL=$(tf_output media_s3_endpoint_url)
 MEDIA_S3_REGION=$(tf_output media_s3_region)
@@ -37,8 +37,8 @@ ARTIFACT_S3_SECRET_ACCESS_KEY=$(tf_output artifact_s3_secret_access_key)
 ARTIFACT_S3_BUCKET=$(tf_output artifact_s3_bucket_name)
 ARTIFACT_S3_FORCE_PATH_STYLE=$(tf_output artifact_s3_force_path_style)
 
-AXIOM_DATASET=$(tf_output axiom_dataset_name)
-AXIOM_API_TOKEN=$(tf_output axiom_ingest_token)
+LOG_AXIOM_DATASET=$(tf_output axiom_dataset_name)
+LOG_AXIOM_API_TOKEN=$(tf_output axiom_ingest_token)
 
 API_BASE_URL=$(tf_output api_url)
 EOF

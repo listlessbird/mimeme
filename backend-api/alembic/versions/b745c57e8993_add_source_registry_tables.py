@@ -5,17 +5,17 @@ Revises: e71941847b1f
 Create Date: 2026-06-10 20:07:16.074763
 
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
+from alembic import op
 from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = 'b745c57e8993'
-down_revision: Union[str, Sequence[str], None] = 'e71941847b1f'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = 'e71941847b1f'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 # Named so they are droppable on downgrade (anonymous FKs can't be dropped by name).
 FK_INGEST_URLS_SOURCE = "fk_ingest_urls_source_id_ingestion_sources"

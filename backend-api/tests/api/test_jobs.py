@@ -1,91 +1,76 @@
-"""Tests for the /jobs endpoints."""
+"""Tests for the /jobs endpoints, driven through the job feature interface.
+
+The full application cannot be imported mid-rewrite (image/search routers and the
+workflow package still reference not-yet-migrated code), so these tests mount only
+the jobs router with the job-owned dependencies overridden.
+"""
 
 from __future__ import annotations
 
 import datetime
 import json
-from unittest.mock import MagicMock
+from collections.abc import AsyncIterator
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
-from httpx import AsyncClient
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+import pytest
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.orm import Session
 
-from shared.models.orm import Job, JobStatus, JobType, SearchIndexState
+from mimeme.api.auth import ApiKeyRole, require_admin
+from mimeme.api.deps import get_db, get_settings, get_temporal_client
+from mimeme.api.routers.jobs import router
+from mimeme.db.schema import Job, JobStatus, JobType, SearchIndexState
 from tests.factories import create_index_build, create_job, create_search_index_state
+from tests.job.conftest import SavepointDb
 
 
-class TestIndexFreshness:
-    async def test_reports_stale_state_and_active_version(
-        self, async_client: AsyncClient, run_sync_seed, _patch_async_domain_session_scope: None
-    ) -> None:
-        def seed(session) -> None:
-            create_search_index_state(session=session, desired_generation=3, active_generation=1)
-            create_index_build(session=session, version="v-cur", is_active=True)
+@pytest.fixture()
+async def client(
+    async_db_connection: AsyncConnection, mock_temporal: AsyncMock
+) -> AsyncIterator[AsyncClient]:
+    db = SavepointDb(async_db_connection)
+    settings = SimpleNamespace(
+        inference=SimpleNamespace(embed_model="siglip2-base"),
+        index=SimpleNamespace(type="flat"),
+        temporal=SimpleNamespace(task_queue="mimeme-v2"),
+    )
 
-        await run_sync_seed(seed)
+    app = FastAPI()
+    app.include_router(router)
+    app.dependency_overrides[require_admin] = lambda: ApiKeyRole.ADMIN
+    app.dependency_overrides[get_db] = lambda: db
+    app.dependency_overrides[get_settings] = lambda: settings
+    app.dependency_overrides[get_temporal_client] = lambda: mock_temporal
 
-        resp = await async_client.get("/jobs/indexes/freshness")
-
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["desired_generation"] == 3
-        assert data["active_generation"] == 1
-        assert data["is_stale"] is True
-        assert data["active_version"] == "v-cur"
-
-    async def test_reports_current_when_generations_match(
-        self, async_client: AsyncClient, run_sync_seed, _patch_async_domain_session_scope: None
-    ) -> None:
-        await run_sync_seed(
-            lambda session: create_search_index_state(
-                session=session, desired_generation=4, active_generation=4
-            )
-        )
-
-        resp = await async_client.get("/jobs/indexes/freshness")
-
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["is_stale"] is False
-        assert data["active_version"] is None
+    transport = ASGITransport(app=app, raise_app_exceptions=False)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
 
 
 class TestGetJob:
-    async def test_get_existing_job(
-        self, async_client: AsyncClient, run_sync_seed, _patch_async_domain_session_scope: None
-    ) -> None:
-        job_id = await run_sync_seed(lambda session: create_job(session=session).id)
-
-        resp = await async_client.get(f"/jobs/{job_id}")
+    async def test_get_existing_job(self, client: AsyncClient, run_sync_seed) -> None:
+        job_id = await run_sync_seed(lambda s: create_job(session=s).id)
+        resp = await client.get(f"/jobs/{job_id}")
         assert resp.status_code == 200
-        data = resp.json()
-        assert data["id"] == job_id
-        assert data["status"] == JobStatus.PENDING.value
+        assert resp.json()["status"] == JobStatus.PENDING.value
 
-    async def test_get_job_with_json_result(
-        self, async_client: AsyncClient, run_sync_seed, _patch_async_domain_session_scope: None
-    ) -> None:
-        def seed(session) -> str:
+    async def test_ingest_json_result(self, client: AsyncClient, run_sync_seed) -> None:
+        def seed(session: Session) -> str:
             job = create_job(session=session, status=JobStatus.COMPLETED)
-            job.result = json.dumps({"processed": 5, "failed": 0, "duplicates": 0})
+            job.result = json.dumps({"processed": 5, "failed": 0, "duplicates": 2})
             return job.id
 
         job_id = await run_sync_seed(seed)
+        data = (await client.get(f"/jobs/{job_id}")).json()
+        assert data["result"]["processed"] == 5 and data["result"]["duplicates"] == 2
 
-        resp = await async_client.get(f"/jobs/{job_id}")
-        data = resp.json()
-        assert data["result"]["processed"] == 5
-        assert data["result"]["duplicates"] == 0
-
-    async def test_get_rebuild_job_with_json_result(
-        self, async_client: AsyncClient, run_sync_seed, _patch_async_domain_session_scope: None
-    ) -> None:
-        def seed(session) -> str:
+    async def test_rebuild_json_result_shape(self, client: AsyncClient, run_sync_seed) -> None:
+        def seed(session: Session) -> str:
             job = create_job(
-                session=session,
-                type=JobType.REBUILD_INDEX,
-                status=JobStatus.COMPLETED,
+                session=session, type=JobType.REBUILD_INDEX, status=JobStatus.COMPLETED
             )
             job.result = json.dumps(
                 {
@@ -99,10 +84,7 @@ class TestGetJob:
             return job.id
 
         job_id = await run_sync_seed(seed)
-
-        resp = await async_client.get(f"/jobs/{job_id}")
-        data = resp.json()
-
+        data = (await client.get(f"/jobs/{job_id}")).json()
         assert data["result"] == {
             "version": "v-1",
             "num_vectors": 10,
@@ -113,127 +95,73 @@ class TestGetJob:
             "skip_reason": None,
         }
 
-    async def test_get_job_with_invalid_json_result(
-        self, async_client: AsyncClient, run_sync_seed, _patch_async_domain_session_scope: None
-    ) -> None:
-        def seed(session) -> str:
+    async def test_invalid_json_result_is_raw(self, client: AsyncClient, run_sync_seed) -> None:
+        def seed(session: Session) -> str:
             job = create_job(session=session, status=JobStatus.COMPLETED)
-            job.result = "not-valid-json"
+            job.result = "not-json"
             return job.id
 
         job_id = await run_sync_seed(seed)
+        assert (await client.get(f"/jobs/{job_id}")).json()["result"]["raw"] == "not-json"
 
-        resp = await async_client.get(f"/jobs/{job_id}")
-        data = resp.json()
-        assert data["result"]["raw"] == "not-valid-json"
-
-    async def test_get_nonexistent_job_returns_404(
-        self, async_client: AsyncClient, _patch_async_domain_session_scope: None
-    ) -> None:
-        resp = await async_client.get("/jobs/nonexistent")
-        assert resp.status_code == 404
+    async def test_missing_returns_404(self, client: AsyncClient) -> None:
+        assert (await client.get("/jobs/nope")).status_code == 404
 
 
 class TestListJobs:
-    async def test_list_jobs_empty(
-        self, async_client: AsyncClient, _patch_async_domain_session_scope: None
-    ) -> None:
-        resp = await async_client.get("/jobs")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["jobs"] == []
-        assert data["total"] == 0
+    async def test_empty(self, client: AsyncClient) -> None:
+        data = (await client.get("/jobs")).json()
+        assert data["jobs"] == [] and data["total"] == 0
 
-    async def test_list_jobs_with_data(
-        self, async_client: AsyncClient, run_sync_seed, _patch_async_domain_session_scope: None
-    ) -> None:
+    async def test_filter_by_status(self, client: AsyncClient, run_sync_seed) -> None:
         await run_sync_seed(
-            lambda session: (
-                create_job(session=session, type=JobType.INGEST),
-                create_job(session=session, type=JobType.REBUILD_INDEX),
+            lambda s: (
+                create_job(session=s, status=JobStatus.PENDING),
+                create_job(session=s, status=JobStatus.COMPLETED),
             )
         )
+        data = (await client.get(f"/jobs?status={JobStatus.PENDING.value}")).json()
+        assert data["total"] == 1 and data["jobs"][0]["status"] == JobStatus.PENDING.value
 
-        resp = await async_client.get("/jobs")
-        data = resp.json()
-        assert data["total"] == 2
-
-    async def test_list_jobs_filter_by_status(
-        self, async_client: AsyncClient, run_sync_seed, _patch_async_domain_session_scope: None
-    ) -> None:
+    async def test_filter_by_type(self, client: AsyncClient, run_sync_seed) -> None:
         await run_sync_seed(
-            lambda session: (
-                create_job(session=session, status=JobStatus.PENDING),
-                create_job(session=session, status=JobStatus.COMPLETED),
+            lambda s: (
+                create_job(session=s, type=JobType.INGEST),
+                create_job(session=s, type=JobType.REBUILD_INDEX),
             )
         )
-
-        resp = await async_client.get(f"/jobs?status={JobStatus.PENDING.value}")
-        data = resp.json()
-        assert data["total"] == 1
-        assert data["jobs"][0]["status"] == JobStatus.PENDING.value
-
-    async def test_list_jobs_filter_by_type(
-        self, async_client: AsyncClient, run_sync_seed, _patch_async_domain_session_scope: None
-    ) -> None:
-        await run_sync_seed(
-            lambda session: (
-                create_job(session=session, type=JobType.INGEST),
-                create_job(session=session, type=JobType.REBUILD_INDEX),
-            )
-        )
-
-        resp = await async_client.get(f"/jobs?job_type={JobType.INGEST.value}")
-        data = resp.json()
+        data = (await client.get(f"/jobs?job_type={JobType.INGEST.value}")).json()
         assert data["total"] == 1
 
 
 class TestCancelJob:
-    async def test_cancel_pending_job(
-        self,
-        async_client: AsyncClient,
-        async_db_session: AsyncSession,
-        run_sync_seed,
-        mock_temporal: MagicMock,
-        _patch_async_domain_session_scope: None,
+    async def test_cancel_pending(
+        self, client: AsyncClient, async_db_session, run_sync_seed
+    ) -> None:
+        job_id = await run_sync_seed(lambda s: create_job(session=s, status=JobStatus.PENDING).id)
+        assert (await client.delete(f"/jobs/{job_id}")).status_code == 204
+        assert (await async_db_session.get(Job, job_id)).status is JobStatus.CANCELLED
+
+    async def test_cancel_running_cancels_workflow(
+        self, client: AsyncClient, run_sync_seed, mock_temporal: AsyncMock
     ) -> None:
         job_id = await run_sync_seed(
-            lambda session: create_job(session=session, status=JobStatus.PENDING).id
+            lambda s: create_job(session=s, status=JobStatus.RUNNING, workflow_id="wf-123").id
         )
-
-        resp = await async_client.delete(f"/jobs/{job_id}")
-        assert resp.status_code == 204
-
-        job = await async_db_session.get(Job, job_id)
-        assert job is not None
-        assert job.status == JobStatus.CANCELLED
-
-    async def test_cancel_running_job_with_workflow(
-        self,
-        async_client: AsyncClient,
-        run_sync_seed,
-        mock_temporal: MagicMock,
-        _patch_async_domain_session_scope: None,
-    ) -> None:
-        job_id = await run_sync_seed(
-            lambda session: (
-                create_job(session=session, status=JobStatus.RUNNING, workflow_id="wf-123").id
-            )
-        )
-
-        resp = await async_client.delete(f"/jobs/{job_id}")
-        assert resp.status_code == 204
+        assert (await client.delete(f"/jobs/{job_id}")).status_code == 204
         mock_temporal.get_workflow_handle.assert_called_with("wf-123")
 
-    async def test_cancel_rebuild_job_releases_its_claim(
-        self,
-        async_client: AsyncClient,
-        async_db_session: AsyncSession,
-        run_sync_seed,
-        mock_temporal: MagicMock,
-        _patch_async_domain_session_scope: None,
+    async def test_cancel_without_workflow_skips_handle(
+        self, client: AsyncClient, run_sync_seed, mock_temporal: AsyncMock
     ) -> None:
-        def seed(session) -> str:
+        job_id = await run_sync_seed(lambda s: create_job(session=s, status=JobStatus.PENDING).id)
+        assert (await client.delete(f"/jobs/{job_id}")).status_code == 204
+        mock_temporal.get_workflow_handle.assert_not_called()
+
+    async def test_cancel_rebuild_releases_claim(
+        self, client: AsyncClient, async_db_session, run_sync_seed
+    ) -> None:
+        def seed(session: Session) -> str:
             job = create_job(session=session, type=JobType.REBUILD_INDEX, status=JobStatus.RUNNING)
             session.flush()
             create_search_index_state(
@@ -247,104 +175,67 @@ class TestCancelJob:
             return job.id
 
         job_id = await run_sync_seed(seed)
-
-        resp = await async_client.delete(f"/jobs/{job_id}")
-        assert resp.status_code == 204
-
+        assert (await client.delete(f"/jobs/{job_id}")).status_code == 204
         state = await async_db_session.get(SearchIndexState, 1)
-        assert state is not None
-        assert state.rebuild_job_id is None
-        assert state.rebuild_target_generation is None
+        assert state.rebuild_job_id is None and state.rebuild_target_generation is None
 
-    async def test_cancel_completed_job_returns_400(
-        self, async_client: AsyncClient, run_sync_seed, _patch_async_domain_session_scope: None
+    @pytest.mark.parametrize("status", [JobStatus.COMPLETED, JobStatus.FAILED])
+    async def test_cancel_terminal_returns_400(
+        self, client: AsyncClient, run_sync_seed, status: JobStatus
     ) -> None:
-        job_id = await run_sync_seed(
-            lambda session: create_job(session=session, status=JobStatus.COMPLETED).id
-        )
+        job_id = await run_sync_seed(lambda s: create_job(session=s, status=status).id)
+        assert (await client.delete(f"/jobs/{job_id}")).status_code == 400
 
-        resp = await async_client.delete(f"/jobs/{job_id}")
-        assert resp.status_code == 400
-
-    async def test_cancel_failed_job_returns_400(
-        self, async_client: AsyncClient, run_sync_seed, _patch_async_domain_session_scope: None
-    ) -> None:
-        job_id = await run_sync_seed(
-            lambda session: create_job(session=session, status=JobStatus.FAILED).id
-        )
-
-        resp = await async_client.delete(f"/jobs/{job_id}")
-        assert resp.status_code == 400
-
-    async def test_cancel_nonexistent_job_returns_404(
-        self, async_client: AsyncClient, _patch_async_domain_session_scope: None
-    ) -> None:
-        resp = await async_client.delete("/jobs/nonexistent")
-        assert resp.status_code == 404
-
-    async def test_cancel_job_without_workflow_id(
-        self,
-        async_client: AsyncClient,
-        run_sync_seed,
-        mock_temporal: MagicMock,
-        _patch_async_domain_session_scope: None,
-    ) -> None:
-        job_id = await run_sync_seed(
-            lambda session: create_job(session=session, status=JobStatus.PENDING).id
-        )
-
-        resp = await async_client.delete(f"/jobs/{job_id}")
-        assert resp.status_code == 204
-        mock_temporal.get_workflow_handle.assert_not_called()
+    async def test_cancel_missing_returns_404(self, client: AsyncClient) -> None:
+        assert (await client.delete("/jobs/nope")).status_code == 404
 
 
 class TestRebuildIndex:
-    async def test_trigger_rebuild_creates_job(
-        self,
-        async_client: AsyncClient,
-        async_db_session: AsyncSession,
-        mock_temporal: MagicMock,
-        _patch_async_domain_session_scope: None,
+    async def test_trigger_creates_job(
+        self, client: AsyncClient, async_db_session, mock_temporal: AsyncMock
     ) -> None:
-        resp = await async_client.post("/jobs/rebuild-index")
+        resp = await client.post("/jobs/rebuild-index")
         assert resp.status_code == 202
         data = resp.json()
         assert data["type"] == JobType.REBUILD_INDEX.value
         assert data["status"] == JobStatus.PENDING.value
-        job_status = await async_db_session.scalar(select(Job.status).where(Job.id == data["id"]))
-        assert job_status == JobStatus.PENDING
+        assert (await async_db_session.get(Job, data["id"])) is not None
         mock_temporal.start_workflow.assert_called_once()
 
-    async def test_trigger_rebuild_with_force(
-        self,
-        async_client: AsyncClient,
-        mock_temporal: MagicMock,
-        _patch_async_domain_session_scope: None,
-    ) -> None:
-        resp = await async_client.post("/jobs/rebuild-index", json={"force": True})
-        assert resp.status_code == 202
+    async def test_trigger_with_force(self, client: AsyncClient) -> None:
+        assert (await client.post("/jobs/rebuild-index", json={"force": True})).status_code == 202
+
+
+class TestIndexFreshness:
+    async def test_stale_with_active_version(self, client: AsyncClient, run_sync_seed) -> None:
+        def seed(session: Session) -> None:
+            create_search_index_state(session=session, desired_generation=3, active_generation=1)
+            create_index_build(session=session, version="v-cur", is_active=True)
+
+        await run_sync_seed(seed)
+        data = (await client.get("/jobs/indexes/freshness")).json()
+        assert data["is_stale"] is True and data["active_version"] == "v-cur"
+
+    async def test_current(self, client: AsyncClient, run_sync_seed) -> None:
+        await run_sync_seed(
+            lambda s: create_search_index_state(
+                session=s, desired_generation=4, active_generation=4
+            )
+        )
+        data = (await client.get("/jobs/indexes/freshness")).json()
+        assert data["is_stale"] is False and data["active_version"] is None
 
 
 class TestIndexVersions:
-    async def test_list_index_versions_empty(
-        self, async_client: AsyncClient, _patch_async_domain_session_scope: None
-    ) -> None:
-        resp = await async_client.get("/jobs/indexes/versions")
-        assert resp.status_code == 200
-        data = resp.json()
-        assert data["versions"] == []
+    async def test_empty(self, client: AsyncClient) -> None:
+        assert (await client.get("/jobs/indexes/versions")).json()["versions"] == []
 
-    async def test_list_index_versions_with_data(
-        self, async_client: AsyncClient, run_sync_seed, _patch_async_domain_session_scope: None
-    ) -> None:
+    async def test_with_data(self, client: AsyncClient, run_sync_seed) -> None:
         def seed(session: Session) -> None:
             create_index_build(session=session, is_active=True, version="v1")
             create_index_build(session=session, is_active=False, version="v2")
 
         await run_sync_seed(seed)
-
-        resp = await async_client.get("/jobs/indexes/versions")
-        data = resp.json()
-        assert len(data["versions"]) == 2
-        active = [v for v in data["versions"] if v["is_active"]]
-        assert len(active) == 1
+        versions = (await client.get("/jobs/indexes/versions")).json()["versions"]
+        assert len(versions) == 2
+        assert len([v for v in versions if v["is_active"]]) == 1

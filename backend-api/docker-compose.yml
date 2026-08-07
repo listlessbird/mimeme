@@ -17,21 +17,6 @@ services:
       retries: 5
     restart: unless-stopped
 
-  redis:
-    image: redis:7-alpine
-    container_name: mimeme-redis
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    command: redis-server --appendonly yes
-    healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
   minio:
     image: minio/minio:latest
     container_name: mimeme-minio
@@ -96,7 +81,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile.cpu
+      dockerfile: Dockerfile
       target: api
     container_name: mimeme-api
     ports:
@@ -105,7 +90,7 @@ services:
       - APP_ENV=development
       - DEBUG=true
       - LOG_LEVEL=INFO
-      - DB_URL=postgresql://postgres:postgres@postgres:5432/mimeme
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/mimeme
       - TEMPORAL_HOST=temporal:7233
       - MEDIA_S3_ENDPOINT_URL=http://minio:9000
       - MEDIA_S3_BUCKET=mimeme-media
@@ -116,13 +101,12 @@ services:
       - ARTIFACT_S3_BUCKET=mimeme-artifacts
       - ARTIFACT_S3_ACCESS_KEY_ID=minioadmin
       - ARTIFACT_S3_SECRET_ACCESS_KEY=minioadmin
+      - COMPUTE_GATEWAY_URL=http://compute:8010
     volumes:
       - ./data:/app/data
       - huggingface_cache:/app/.cache/huggingface
     depends_on:
       postgres:
-        condition: service_healthy
-      redis:
         condition: service_healthy
       temporal:
         condition: service_started
@@ -136,18 +120,19 @@ services:
       timeout: 10s
       retries: 3
     restart: unless-stopped
+    stop_grace_period: 30s
 
   worker:
     build:
       context: .
-      dockerfile: Dockerfile.cpu
+      dockerfile: Dockerfile
       target: worker
     container_name: mimeme-worker
-    command: python -m workers.worker
+    command: python -m mimeme.worker
     environment:
       - APP_ENV=development
       - LOG_LEVEL=INFO
-      - DB_URL=postgresql://postgres:postgres@postgres:5432/mimeme
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/mimeme
       - TEMPORAL_HOST=temporal:7233
       - MEDIA_S3_ENDPOINT_URL=http://minio:9000
       - MEDIA_S3_BUCKET=mimeme-media
@@ -157,7 +142,9 @@ services:
       - ARTIFACT_S3_BUCKET=mimeme-artifacts
       - ARTIFACT_S3_ACCESS_KEY_ID=minioadmin
       - ARTIFACT_S3_SECRET_ACCESS_KEY=minioadmin
-      - EMBED_DEVICE=cpu
+      - INFERENCE_EMBED_DEVICE=cpu
+      - COMPUTE_GPU_BACKEND=local
+      - COMPUTE_GATEWAY_URL=http://compute:8010
     volumes:
       - ./data:/app/data
       - huggingface_cache:/app/.cache/huggingface
@@ -170,11 +157,50 @@ services:
         condition: service_healthy
       minio-init:
         condition: service_completed_successfully
+      compute:
+        condition: service_started
     restart: unless-stopped
+    stop_grace_period: 30s
+
+  compute:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: compute
+    container_name: mimeme-compute
+    ports:
+      - "127.0.0.1:8010:8010"
+    environment:
+      - APP_ENV=development
+      - LOG_LEVEL=INFO
+      - MEDIA_S3_ENDPOINT_URL=http://minio:9000
+      - MEDIA_S3_BUCKET=mimeme-media
+      - MEDIA_S3_ACCESS_KEY_ID=minioadmin
+      - MEDIA_S3_SECRET_ACCESS_KEY=minioadmin
+      - ARTIFACT_S3_ENDPOINT_URL=http://minio:9000
+      - ARTIFACT_S3_BUCKET=mimeme-artifacts
+      - ARTIFACT_S3_ACCESS_KEY_ID=minioadmin
+      - ARTIFACT_S3_SECRET_ACCESS_KEY=minioadmin
+      - INFERENCE_EMBED_DEVICE=cpu
+      - OMP_NUM_THREADS=4
+      - OPENBLAS_NUM_THREADS=1
+    volumes:
+      - huggingface_cache:/app/.cache/huggingface
+    depends_on:
+      minio:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8010/ready" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    stop_grace_period: 30s
 
 volumes:
   postgres_data:
-  redis_data:
   minio_data:
   huggingface_cache:
 
