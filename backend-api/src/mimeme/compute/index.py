@@ -123,13 +123,13 @@ def _dimension(member: LocalMember) -> int:
 
 def _read(path: str, image_id: int, dimension: int) -> np.ndarray:
     vector = np.load(path, allow_pickle=False)
-    if vector.dtype != np.float32 or vector.ndim != 1:
-        raise ValueError(f"embedding for image {image_id} is not a 1-D float32 vector")
+    if vector.ndim != 1 or not np.issubdtype(vector.dtype, np.floating):
+        raise ValueError(f"embedding for image {image_id} is not a 1-D float vector")
     if vector.shape[0] != dimension:
         raise ValueError(
             f"embedding for image {image_id} has dimension {vector.shape[0]}, expected {dimension}"
         )
-    return vector
+    return vector.astype(np.float32, copy=False)
 
 
 def _save(path: Path, matrix: np.ndarray) -> None:

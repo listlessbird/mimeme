@@ -34,5 +34,10 @@
 		"source.fixAll.oxc": "explicit"
 	},
 	"oxc.enable": true,
-	"oxc.fmt.experimental": true
+	"oxc.fmt.experimental": true,
+	"workbench.colorCustomizations": {
+		"statusBar.background": "#335c99",
+		"statusBar.foreground": "#ffffff",
+		"sash.hoverBorder": "#335c99"
+	}
 }

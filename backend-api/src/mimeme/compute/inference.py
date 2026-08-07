@@ -38,7 +38,8 @@ def _to_numpy(output: object, *, kind: Literal["image", "text"]) -> np.ndarray:
                 break
         if tensor is None:
             raise ValueError(f"unknown {kind} model output format")
-    return cast(np.ndarray, tensor.cpu().numpy())  # type: ignore[union-attr]
+    array = cast(np.ndarray, tensor.cpu().numpy())  # type: ignore[union-attr]
+    return array.astype(np.float32, copy=False)
 
 
 class Models:

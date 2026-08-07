@@ -4,6 +4,7 @@ import asyncio
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, suppress
+from typing import cast
 
 import structlog
 from fastapi import FastAPI
@@ -11,6 +12,7 @@ from fastapi import FastAPI
 from mimeme import search
 from mimeme.config import Settings
 from mimeme.env import Env
+from mimeme.index import ops as index
 from mimeme.logging import setup_logging
 
 
@@ -43,6 +45,29 @@ async def loop_lag_probe(threshold_ms: float = 50.0, interval_s: float = 0.1) ->
         lag_ms = (time.monotonic() - started - interval_s) * 1000
         if lag_ms > threshold_ms:
             log.warning("event_loop_lag", lag_ms=round(lag_ms, 2), threshold_ms=threshold_ms)
+
+
+async def search_reconcile_probe(env: Env, interval_s: float) -> None:
+    log = structlog.get_logger()
+    while True:
+        await asyncio.sleep(interval_s)
+        try:
+            status = await env.search.status()
+        except search.Error:
+            continue
+        if status.ready:
+            continue
+        try:
+            reconciled = await index.reconcile(
+                env.db, env.artifacts, cast(search.Activation, env.search)
+            )
+        except Exception as exc:
+            log.warning("search_reconcile_failed", error=str(exc))
+            continue
+        log.info(
+            "search_reconciled",
+            serving_version=reconciled.serving_version if reconciled else None,
+        )
 
 
 @asynccontextmanager
@@ -81,12 +106,18 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     else:
         log.warning("inference_compute_unavailable")
 
-    lag_probe = asyncio.create_task(loop_lag_probe(settings.http.loop_lag_threshold_ms))
+    probes = [asyncio.create_task(loop_lag_probe(settings.http.loop_lag_threshold_ms))]
+    if settings.index.reconcile_interval_s > 0:
+        probes.append(
+            asyncio.create_task(search_reconcile_probe(env, settings.index.reconcile_interval_s))
+        )
     try:
         yield
     finally:
-        lag_probe.cancel()
-        with suppress(asyncio.CancelledError):
-            await lag_probe
+        for probe in probes:
+            probe.cancel()
+        for probe in probes:
+            with suppress(asyncio.CancelledError):
+                await probe
         await env.aclose()
         log.info("shutting_down_app")

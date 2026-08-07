@@ -64,7 +64,7 @@ def _to_numpy(output: Any, *, kind: Literal["image", "text"]) -> Any:
                 break
         if tensor is None:
             raise ValueError(f"unknown {kind} model output format")
-    return tensor.cpu().numpy()
+    return tensor.cpu().numpy().astype("float32", copy=False)
 
 
 async def _open_media():  # noqa: ANN202

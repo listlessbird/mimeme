@@ -134,6 +134,37 @@ def test_pack_writes_paired_matrices_and_zeroes_a_missing_text_row(tmp_path) -> 
     assert packed.image.length == (tmp_path / "image.npy").stat().st_size
 
 
+def test_pack_upcasts_half_precision_embeddings(tmp_path) -> None:
+    inputs = tmp_path / "inputs"
+    inputs.mkdir()
+    np.save(inputs / "1.npy", np.array([3.0, 0.0], dtype=np.float16))
+    np.save(inputs / "1_text.npy", np.array([0.0, 3.0], dtype=np.float16))
+    np.save(inputs / "2.npy", np.array([0.0, 4.0], dtype=np.float32))
+
+    packed = pack(
+        index.PackCall(
+            members=[
+                index.LocalMember(
+                    image_id=1,
+                    image_path=str(inputs / "1.npy"),
+                    text_path=str(inputs / "1_text.npy"),
+                ),
+                index.LocalMember(image_id=2, image_path=str(inputs / "2.npy")),
+            ],
+            image_out=str(tmp_path / "image.npy"),
+            text_out=str(tmp_path / "text.npy"),
+        )
+    )
+
+    images = np.load(tmp_path / "image.npy")
+    texts = np.load(tmp_path / "text.npy")
+    assert (packed.rows, packed.dimension) == (2, 2)
+    assert images.dtype == np.float32
+    assert texts.dtype == np.float32
+    assert images.tolist() == [[3.0, 0.0], [0.0, 4.0]]
+    assert texts.tolist() == [[0.0, 3.0], [0.0, 0.0]]
+
+
 async def test_the_spawned_index_child_serves_both_build_and_pack(tmp_path) -> None:
     np.save(tmp_path / "1.npy", np.array([3.0, 0.0], dtype=np.float32))
     supervisor = Supervisor(tmp_path / "sock")
