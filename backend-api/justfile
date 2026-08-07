@@ -59,6 +59,11 @@ migrate-down:
 prod-env:
     ./scripts/print-prod-env.sh
 
+# Copy a subset of production into the local stack. Reads prod read-only;
+# truncates the local application tables. Drop `--apply` for a dry run.
+seed-local limit="500":
+    uv run python scripts/seed_from_prod.py --limit {{limit}} --apply
+
 modal-deploy:
     ./scripts/deploy-modal.sh
 
