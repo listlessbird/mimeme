@@ -74,9 +74,16 @@ def pack(request: PackCall) -> Packed:
     if not request.members:
         raise ValueError("a shard needs at least one member")
     dimension = _dimension(request.members[0])
-    images = np.empty((len(request.members), dimension), dtype=np.float32)
-    texts = np.zeros((len(request.members), dimension), dtype=np.float32)
-    for row, member in enumerate(request.members):
+    base_images = _base(request.base_image, request.base_rows, dimension)
+    base_texts = _base(request.base_text, request.base_rows, dimension)
+    total = request.base_rows + len(request.members)
+    images = np.empty((total, dimension), dtype=np.float32)
+    texts = np.zeros((total, dimension), dtype=np.float32)
+    if base_images is not None and base_texts is not None:
+        images[: request.base_rows] = base_images
+        texts[: request.base_rows] = base_texts
+    for offset, member in enumerate(request.members):
+        row = request.base_rows + offset
         images[row] = _read(member.image_path, member.image_id, dimension)
         if member.text_path is not None:
             texts[row] = _read(member.text_path, member.image_id, dimension)
@@ -85,11 +92,26 @@ def pack(request: PackCall) -> Packed:
     _save(image_out, images)
     _save(text_out, texts)
     return Packed(
-        rows=len(request.members),
+        rows=total,
         dimension=dimension,
         image=_packed_file(image_out),
         text=_packed_file(text_out),
     )
+
+
+def _base(path: str | None, rows: int, dimension: int) -> np.ndarray | None:
+    if path is None:
+        if rows:
+            raise ValueError("a shard rewrite needs its base object")
+        return None
+    matrix = np.load(path, allow_pickle=False)
+    if matrix.ndim != 2 or matrix.dtype != np.float32:
+        raise ValueError("shard base is not a 2-D float32 matrix")
+    if matrix.shape[0] != rows:
+        raise ValueError(f"shard base has {matrix.shape[0]} rows, expected {rows}")
+    if matrix.shape[1] != dimension:
+        raise ValueError(f"shard base has dimension {matrix.shape[1]}, expected {dimension}")
+    return matrix
 
 
 def _dimension(member: LocalMember) -> int:

@@ -158,18 +158,26 @@ async def _fetch_shards(
     artifacts: storage.Store, request: Build, workspace: Workspace
 ) -> list[LocalShard]:
     wanted: dict[int, bool] = {}
+    generation: dict[int, int] = {}
     for item in request.embeddings:
         if item.shard is None:
             continue
+        assert item.seq is not None
         wanted[item.shard] = wanted.get(item.shard, False) or item.text_present
+        recorded = generation.setdefault(item.shard, item.seq)
+        if recorded != item.seq:
+            raise Failed(f"shard {item.shard} appears at two generations in one build")
     shards: list[LocalShard] = []
     for number in sorted(wanted):
+        seq = generation[number]
         image_path = workspace.path(f"shard-image-{number:06d}.npy")
-        await _download(artifacts, pack.locate(request.model, number, text=False), image_path)
+        await _download(artifacts, pack.locate(request.model, number, seq, text=False), image_path)
         text_path: Path | None = None
         if wanted[number]:
             text_path = workspace.path(f"shard-text-{number:06d}.npy")
-            await _download(artifacts, pack.locate(request.model, number, text=True), text_path)
+            await _download(
+                artifacts, pack.locate(request.model, number, seq, text=True), text_path
+            )
         shards.append(
             LocalShard(
                 number=number,

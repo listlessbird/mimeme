@@ -183,6 +183,7 @@ async def seal(db: Db, client: Client, settings: Settings, input: SealInput) -> 
         model=input.model,
         shard_rows=settings.index.shard_rows,
         max_shards=settings.index.seal_max_shards,
+        min_rows=settings.index.seal_min_rows,
     )
 
 

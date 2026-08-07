@@ -170,6 +170,7 @@ class IndexConfig(BaseSettings):
     build_threads: int = 2
     shard_rows: int = 1_500
     seal_max_shards: int = 50
+    seal_min_rows: int = 100
 
     @field_validator("cache_dir", mode="before")
     @classmethod

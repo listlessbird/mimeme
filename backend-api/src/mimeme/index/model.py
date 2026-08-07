@@ -36,6 +36,7 @@ class Embedding(_Frozen):
     text_key: str | None = Field(default=None, min_length=1)
     shard: int | None = Field(default=None, ge=0)
     row: int | None = Field(default=None, ge=0)
+    seq: int | None = Field(default=None, ge=0)
     text_present: bool = False
 
     @property
@@ -46,6 +47,8 @@ class Embedding(_Frozen):
     def _one_layout(self) -> Self:
         if (self.shard is None) != (self.row is None):
             raise ValueError("a shard coordinate needs both a shard and a row")
+        if (self.shard is None) != (self.seq is None):
+            raise ValueError("a shard coordinate needs the object generation it lives in")
         if (self.image_key is None) == (self.shard is None):
             raise ValueError("an embedding is either sealed into a shard or a standalone object")
         if self.text_key is not None and self.image_key is None:
@@ -258,6 +261,9 @@ class PackCall(_Frozen):
     members: list[LocalMember]
     image_out: str
     text_out: str
+    base_image: str | None = None
+    base_text: str | None = None
+    base_rows: int = Field(default=0, ge=0)
 
 
 class PackedFile(_Frozen):
@@ -307,14 +313,23 @@ class SealMember(_Frozen):
 
 class SealShard(_Frozen):
     number: int = Field(ge=0)
+    seq: int = Field(ge=0)
     image_key: str = Field(min_length=1)
     text_key: str = Field(min_length=1)
+    base_image_key: str | None = Field(default=None, min_length=1)
+    base_text_key: str | None = Field(default=None, min_length=1)
+    base_rows: int = Field(default=0, ge=0)
+    sealed: bool = False
     members: list[SealMember]
 
     @model_validator(mode="after")
     def _has_members(self) -> Self:
         if not self.members:
             raise ValueError("a shard needs at least one member")
+        if (self.base_image_key is None) != (self.base_rows == 0):
+            raise ValueError("a shard rewrite needs both a base object and its row count")
+        if self.base_image_key is None and self.seq != 0:
+            raise ValueError("only a rewrite advances the object generation")
         return self
 
 
@@ -342,6 +357,7 @@ class Sealed(_Frozen):
 
 class SealedShard(_Frozen):
     number: int = Field(ge=0)
+    seq: int = Field(ge=0)
     rows: int = Field(ge=0)
 
 

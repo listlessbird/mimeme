@@ -7,18 +7,19 @@ from sqlalchemy import CursorResult, Row, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mimeme import inference
-from mimeme.db.schema import IndexBuild, Processing, ProcessingStatus
+from mimeme.db.schema import EmbeddingShard, IndexBuild, Processing, ProcessingStatus
 from mimeme.index.model import Embedding, Manifest, Snapshot
 from mimeme.job.model import ClaimOwnership
 from mimeme.job.store import Store as JobStore
 
 
 def _embedding(row: Row) -> Embedding:
-    if row.embed_shard is not None and row.embed_row is not None:
+    if row.embed_shard is not None and row.embed_row is not None and row.seq is not None:
         return Embedding(
             image_id=row.image_id,
             shard=row.embed_shard,
             row=row.embed_row,
+            seq=row.seq,
             text_present=bool(row.embed_text_present),
         )
     image_key = str(row.embed_s3_key)
@@ -48,6 +49,12 @@ class Store:
                     Processing.embed_text_present,
                     Processing.embed_shard,
                     Processing.embed_row,
+                    EmbeddingShard.seq,
+                )
+                .outerjoin(
+                    EmbeddingShard,
+                    (EmbeddingShard.embed_model == Processing.embed_model)
+                    & (EmbeddingShard.number == Processing.embed_shard),
                 )
                 .where(
                     Processing.embed_status == ProcessingStatus.DONE,
@@ -99,17 +106,50 @@ class Store:
 
     async def next_shard(self, *, model: str) -> int:
         highest = await self._session.scalar(
-            select(func.max(Processing.embed_shard)).where(Processing.embed_model == model)
+            select(func.max(EmbeddingShard.number)).where(EmbeddingShard.embed_model == model)
         )
         return 0 if highest is None else int(highest) + 1
 
-    async def record_shard(self, *, shard: int, image_ids: list[int]) -> None:
-        for row, image_id in enumerate(image_ids):
+    async def open_shard(self, *, model: str) -> EmbeddingShard | None:
+        return (
+            await self._session.scalars(
+                select(EmbeddingShard).where(
+                    EmbeddingShard.embed_model == model,
+                    EmbeddingShard.sealed.is_(False),
+                )
+            )
+        ).first()
+
+    async def record_shard(
+        self,
+        *,
+        model: str,
+        shard: int,
+        seq: int,
+        first_row: int,
+        image_ids: list[int],
+        sealed: bool,
+    ) -> None:
+        for offset, image_id in enumerate(image_ids):
             await self._session.execute(
                 update(Processing)
                 .where(Processing.image_id == image_id, Processing.embed_shard.is_(None))
-                .values(embed_shard=shard, embed_row=row)
+                .values(embed_shard=shard, embed_row=first_row + offset)
             )
+        row = (
+            await self._session.scalars(
+                select(EmbeddingShard).where(
+                    EmbeddingShard.embed_model == model, EmbeddingShard.number == shard
+                )
+            )
+        ).first()
+        if row is None:
+            row = EmbeddingShard(embed_model=model, number=shard)
+            self._session.add(row)
+        row.seq = seq
+        row.row_count = first_row + len(image_ids)
+        row.sealed = sealed
+        await self._session.flush()
 
     async def mark_text_present(self, *, model: str, image_keys: list[str]) -> int:
         if not image_keys:

@@ -5,6 +5,7 @@ import io
 import numpy as np
 import pytest
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from tests.factories import (
     create_image,
@@ -20,10 +21,11 @@ from mimeme.compute.index import build as build_child
 from mimeme.compute.index import pack as pack_child
 from mimeme.compute.model import ChildOk
 from mimeme.config import Settings
-from mimeme.db.schema import JobType, Processing, ProcessingStatus
+from mimeme.db.schema import EmbeddingShard, JobType, Processing, ProcessingStatus
 from mimeme.index import ops, pack, rule
 from mimeme.index.gateway import Gateway
 from mimeme.index.model import BuildCall, PackCall
+from mimeme.index.store import Store
 
 _MODEL = "test/embed"
 _PREFIX = "embeddings/test_embed"
@@ -75,14 +77,14 @@ class _BuildCalls:
 
 class _FailingUpload(Memory):
     async def put(self, obj, body, **kwargs):  # noqa: ANN001, ANN003, ANN202
-        if obj.key.endswith("/text/000000.npy"):
+        if obj.key.endswith("/text/000000-0000.npy"):
             raise storage.Unavailable("upload interrupted")
         return await super().put(obj, body, **kwargs)
 
 
 class _FailingSecondShard(Memory):
     async def put(self, obj, body, **kwargs):  # noqa: ANN001, ANN003, ANN202
-        if obj.key.endswith("/image/000001.npy"):
+        if obj.key.endswith("/image/000001-0000.npy"):
             raise storage.Unavailable("upload interrupted")
         return await super().put(obj, body, **kwargs)
 
@@ -150,23 +152,127 @@ async def test_seals_for_different_models_do_not_block_each_other(pool_db) -> No
             pass
 
 
+async def test_a_model_can_only_ever_have_one_open_shard(index_db: SavepointDb) -> None:
+    async with index_db.write_session() as session:
+        session.add(EmbeddingShard(embed_model=_MODEL, number=0, seq=0, row_count=1, sealed=False))
+    with pytest.raises(IntegrityError):
+        async with index_db.write_session() as session:
+            session.add(
+                EmbeddingShard(embed_model=_MODEL, number=1, seq=0, row_count=1, sealed=False)
+            )
+
+
 def test_locate_puts_the_two_families_under_one_coordinate() -> None:
-    assert pack.locate(_MODEL, 7, text=False) == f"{_PREFIX}/shards/image/000007.npy"
-    assert pack.locate(_MODEL, 7, text=True) == f"{_PREFIX}/shards/text/000007.npy"
+    assert pack.locate(_MODEL, 7, 0, text=False) == f"{_PREFIX}/shards/image/000007-0000.npy"
+    assert pack.locate(_MODEL, 7, 3, text=True) == f"{_PREFIX}/shards/text/000007-0003.npy"
 
 
-async def test_plan_seals_only_full_shards_and_leaves_a_bounded_tail(
+async def test_plan_absorbs_every_row_leaving_the_remainder_as_one_open_shard(
     index_db: SavepointDb, run_sync_seed
 ) -> None:
     await _seed_corpus(index_db, run_sync_seed, Memory(), count=7)
 
     target = await pack.plan(index_db, model=_MODEL, shard_rows=3)
 
-    assert [shard.number for shard in target.shards] == [0, 1]
-    assert [len(shard.members) for shard in target.shards] == [3, 3]
+    assert [shard.number for shard in target.shards] == [0, 1, 2]
+    assert [len(shard.members) for shard in target.shards] == [3, 3, 1]
+    assert [shard.sealed for shard in target.shards] == [True, True, False]
+    assert [shard.seq for shard in target.shards] == [0, 0, 0]
     assert target.unsealed == 7
-    assert target.tail == 1
-    assert target.tail < target.shard_rows
+    assert target.tail == 0
+
+
+async def test_a_later_plan_appends_to_the_open_shard_at_the_next_generation(
+    index_db: SavepointDb, run_sync_seed, tmp_path
+) -> None:
+    artifacts = Memory()
+    await _seed_corpus(index_db, run_sync_seed, artifacts, count=4)
+    await _seal(index_db, artifacts, tmp_path, shard_rows=3)
+
+    def seed(session: Session) -> None:
+        for position in range(2):
+            image = create_image(session=session)
+            processing = create_processing(session=session, image=image)
+            processing.embed_status = ProcessingStatus.DONE
+            processing.embed_model = _MODEL
+            processing.embed_dim = _DIM
+            processing.embed_s3_key = f"{_PREFIX}/api-ingested/late-{position}.npy"
+            processing.embed_text_present = False
+            session.flush()
+
+    await run_sync_seed(seed)
+    for position in range(2):
+        await artifacts.put_bytes(
+            storage.Object(f"{_PREFIX}/api-ingested/late-{position}.npy"),
+            _npy(_vector(50 + position)),
+            content_type="application/octet-stream",
+        )
+
+    target = await pack.plan(index_db, model=_MODEL, shard_rows=3)
+
+    assert len(target.shards) == 1
+    appended = target.shards[0]
+    assert (appended.number, appended.seq) == (1, 1)
+    assert (appended.first_row, appended.base_rows) == (1, 1)
+    assert appended.sealed is True
+    assert appended.base_image_key == pack.locate(_MODEL, 1, 0, text=False)
+
+
+async def test_a_growing_corpus_keeps_the_tail_at_one_object_per_family(
+    index_db: SavepointDb, run_sync_seed, tmp_path
+) -> None:
+    artifacts = Memory()
+    calls = _Calls()
+    seen = 0
+
+    async def arrive(count: int) -> None:
+        nonlocal seen
+        first = seen
+        seen += count
+
+        def seed(session: Session) -> None:
+            for position in range(first, first + count):
+                image = create_image(session=session)
+                processing = create_processing(session=session, image=image)
+                processing.embed_status = ProcessingStatus.DONE
+                processing.embed_model = _MODEL
+                processing.embed_dim = _DIM
+                processing.embed_s3_key = f"{_PREFIX}/api-ingested/{position:04d}.npy"
+                processing.embed_text_present = True
+                session.flush()
+
+        await run_sync_seed(seed)
+        for position in range(first, first + count):
+            key = f"{_PREFIX}/api-ingested/{position:04d}.npy"
+            await artifacts.put_bytes(
+                storage.Object(key),
+                _npy(_vector(position)),
+                content_type="application/octet-stream",
+            )
+            await artifacts.put_bytes(
+                storage.Object(key.replace(".npy", "_text.npy")),
+                _npy(_vector(position + 100)),
+                content_type="application/octet-stream",
+            )
+
+    for _ in range(5):
+        await arrive(2)
+        await _seal(index_db, artifacts, tmp_path, shard_rows=100, calls=calls)
+
+    async with index_db.read_session() as session:
+        snapshot = await Store(session).snapshot(model=_MODEL, target_generation=1)
+
+    assert len(snapshot.embeddings) == 10
+    assert all(item.sealed for item in snapshot.embeddings)
+    assert pack.reads(snapshot.embeddings) == 2
+
+    live = {key for key in artifacts._objects if "/shards/" in key}  # noqa: SLF001
+    assert live == {
+        pack.locate(_MODEL, 0, 4, text=False),
+        pack.locate(_MODEL, 0, 4, text=True),
+        pack.locate(_MODEL, 0, 3, text=False),
+        pack.locate(_MODEL, 0, 3, text=True),
+    }
 
 
 async def test_sealed_rows_reproduce_the_individual_objects_byte_for_byte(
@@ -217,7 +323,7 @@ async def test_a_missing_text_vector_becomes_a_zero_row(
     texts = np.load(
         io.BytesIO(
             await artifacts.read_bytes(
-                storage.Object(pack.locate(_MODEL, 0, text=True)), max_bytes=10**6
+                storage.Object(pack.locate(_MODEL, 0, 0, text=True)), max_bytes=10**6
             )
         )
     )
@@ -336,7 +442,7 @@ async def test_a_sealed_rebuild_matches_the_unsealed_one_it_replaces(
         loose.build
     )
 
-    await _seal(index_db, artifacts, tmp_path, shard_rows=2)
+    await _seal(index_db, artifacts, tmp_path, shard_rows=3)
 
     sealed = await ops.prepare(index_db, settings, _rebuild(job_id))
     assert sealed.build is not None
@@ -344,6 +450,12 @@ async def test_a_sealed_rebuild_matches_the_unsealed_one_it_replaces(
         sealed.build
     )
 
+    assert [(item.shard, item.row, item.seq) for item in sealed.build.embeddings] == [
+        (0, 0, 0),
+        (0, 1, 0),
+        (0, 2, 0),
+        (1, 0, 0),
+    ]
     assert loose.build.planned_reads == 8
     assert sealed.build.planned_reads == 4
     assert before.manifest is not None and after.manifest is not None

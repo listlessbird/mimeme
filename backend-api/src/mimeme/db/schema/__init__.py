@@ -14,7 +14,12 @@ from mimeme.db.schema.ingest import (
     IngestURL,
 )
 from mimeme.db.schema.job import Job, JobStatus, JobType
-from mimeme.db.schema.search_index import IndexBuild, RebuildTrigger, SearchIndexState
+from mimeme.db.schema.search_index import (
+    EmbeddingShard,
+    IndexBuild,
+    RebuildTrigger,
+    SearchIndexState,
+)
 from mimeme.db.schema.source import (
     IngestionSource,
     SourceItem,
@@ -38,6 +43,7 @@ __all__ = [
     "ProcessingStatus",
     "Annotation",
     "Artifact",
+    "EmbeddingShard",
     "IndexBuild",
     "SearchIndexState",
     "RebuildTrigger",

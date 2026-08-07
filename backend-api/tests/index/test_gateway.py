@@ -140,19 +140,19 @@ async def test_a_mixed_corpus_reads_one_object_per_shard_plus_the_unsealed_tail(
     tmp_path,
 ) -> None:
     artifacts = _CountingMemory()
-    await _shard(artifacts, pack.locate("test/embed", 0, text=False), [[1, 0], [0, 1], [1, 1]])
-    await _shard(artifacts, pack.locate("test/embed", 0, text=True), [[0, 1], [0, 0], [1, 0]])
-    await _shard(artifacts, pack.locate("test/embed", 1, text=False), [[1, 2]])
-    await _shard(artifacts, pack.locate("test/embed", 1, text=True), [[0, 0]])
+    await _shard(artifacts, pack.locate("test/embed", 0, 0, text=False), [[1, 0], [0, 1], [1, 1]])
+    await _shard(artifacts, pack.locate("test/embed", 0, 0, text=True), [[0, 1], [0, 0], [1, 0]])
+    await _shard(artifacts, pack.locate("test/embed", 1, 0, text=False), [[1, 2]])
+    await _shard(artifacts, pack.locate("test/embed", 1, 0, text=True), [[0, 0]])
     await artifacts.put_bytes(
         storage.Object("embeddings/tail.npy"), _npy([2, 1]), content_type="application/octet-stream"
     )
     gateway = Gateway(_Calls(), artifacts=artifacts, workspace_dir=tmp_path)
     embeddings = [
-        index.Embedding(image_id=1, shard=0, row=0, text_present=True),
-        index.Embedding(image_id=2, shard=0, row=1, text_present=False),
-        index.Embedding(image_id=3, shard=0, row=2, text_present=True),
-        index.Embedding(image_id=4, shard=1, row=0, text_present=False),
+        index.Embedding(image_id=1, shard=0, row=0, seq=0, text_present=True),
+        index.Embedding(image_id=2, shard=0, row=1, seq=0, text_present=False),
+        index.Embedding(image_id=3, shard=0, row=2, seq=0, text_present=True),
+        index.Embedding(image_id=4, shard=1, row=0, seq=0, text_present=False),
         index.Embedding(image_id=5, image_key="embeddings/tail.npy"),
     ]
     request = index.Build(
@@ -174,9 +174,9 @@ async def test_a_mixed_corpus_reads_one_object_per_shard_plus_the_unsealed_tail(
     assert result.manifest.text_count == 2
     assert artifacts.probes == []
     assert artifacts.reads == [
-        pack.locate("test/embed", 0, text=False),
-        pack.locate("test/embed", 0, text=True),
-        pack.locate("test/embed", 1, text=False),
+        pack.locate("test/embed", 0, 0, text=False),
+        pack.locate("test/embed", 0, 0, text=True),
+        pack.locate("test/embed", 1, 0, text=False),
         "embeddings/tail.npy",
     ]
     assert len(artifacts.reads) == request.planned_reads == 4

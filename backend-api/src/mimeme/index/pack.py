@@ -62,16 +62,32 @@ class Member(_Frozen):
 
 class Shard(_Frozen):
     number: int = Field(ge=0)
+    seq: int = Field(ge=0)
     model: str = Field(min_length=1)
+    first_row: int = Field(ge=0)
+    base_rows: int = Field(ge=0)
+    sealed: bool
     members: list[Member]
 
     @property
     def image_key(self) -> str:
-        return locate(self.model, self.number, text=False)
+        return locate(self.model, self.number, self.seq, text=False)
 
     @property
     def text_key(self) -> str:
-        return locate(self.model, self.number, text=True)
+        return locate(self.model, self.number, self.seq, text=True)
+
+    @property
+    def base_image_key(self) -> str | None:
+        if self.base_rows == 0:
+            return None
+        return locate(self.model, self.number, self.seq - 1, text=False)
+
+    @property
+    def base_text_key(self) -> str | None:
+        if self.base_rows == 0:
+            return None
+        return locate(self.model, self.number, self.seq - 1, text=True)
 
 
 class Plan(_Frozen):
@@ -81,13 +97,17 @@ class Plan(_Frozen):
     shards: list[Shard]
 
     @property
+    def absorbed(self) -> int:
+        return sum(len(shard.members) for shard in self.shards)
+
+    @property
     def tail(self) -> int:
-        return self.unsealed - sum(len(shard.members) for shard in self.shards)
+        return self.unsealed - self.absorbed
 
 
-def locate(model: str, number: int, *, text: bool) -> str:
+def locate(model: str, number: int, seq: int, *, text: bool) -> str:
     family = "text" if text else "image"
-    return f"{inference.embedding_prefix(model)}shards/{family}/{number:06d}.npy"
+    return f"{inference.embedding_prefix(model)}shards/{family}/{number:06d}-{seq:04d}.npy"
 
 
 def reads(embeddings: list[Embedding]) -> int:
@@ -97,12 +117,20 @@ def reads(embeddings: list[Embedding]) -> int:
     return len(image_shards) + len(text_shards) + loose
 
 
-async def plan(db: Db, *, model: str, shard_rows: int, max_shards: int | None = None) -> Plan:
+async def plan(
+    db: Db,
+    *,
+    model: str,
+    shard_rows: int,
+    max_shards: int | None = None,
+    min_rows: int = 1,
+) -> Plan:
     limit = None if max_shards is None else shard_rows * max_shards
     async with db.read_session() as session:
         store = Store(session)
         rows = await store.unsealed(model=model, limit=limit)
-        first = await store.next_shard(model=model)
+        open_shard = await store.open_shard(model=model)
+        next_number = await store.next_shard(model=model)
     members = [
         Member(
             image_id=row.image_id,
@@ -111,14 +139,45 @@ async def plan(db: Db, *, model: str, shard_rows: int, max_shards: int | None = 
         )
         for row in rows
     ]
-    shards = [
-        Shard(
-            number=first + position,
-            model=model,
-            members=members[position * shard_rows : (position + 1) * shard_rows],
+    empty = Plan(model=model, shard_rows=shard_rows, unsealed=len(members), shards=[])
+    if not members:
+        return empty
+
+    shards: list[Shard] = []
+    remaining = members
+    if open_shard is not None and open_shard.row_count < shard_rows:
+        take = min(shard_rows - open_shard.row_count, len(remaining))
+        shards.append(
+            Shard(
+                number=open_shard.number,
+                seq=open_shard.seq + 1,
+                model=model,
+                first_row=open_shard.row_count,
+                base_rows=open_shard.row_count,
+                sealed=open_shard.row_count + take == shard_rows,
+                members=remaining[:take],
+            )
         )
-        for position in range(len(members) // shard_rows)
-    ]
+        remaining = remaining[take:]
+    while remaining:
+        take = min(shard_rows, len(remaining))
+        shards.append(
+            Shard(
+                number=next_number,
+                seq=0,
+                model=model,
+                first_row=0,
+                base_rows=0,
+                sealed=take == shard_rows,
+                members=remaining[:take],
+            )
+        )
+        next_number += 1
+        remaining = remaining[take:]
+
+    absorbed = sum(len(shard.members) for shard in shards)
+    if absorbed < min_rows and not any(shard.sealed for shard in shards):
+        return empty
     return Plan(model=model, shard_rows=shard_rows, unsealed=len(members), shards=shards)
 
 
@@ -144,8 +203,13 @@ def request(target: Plan, *, job_id: str) -> Seal:
         shards=[
             SealShard(
                 number=shard.number,
+                seq=shard.seq,
                 image_key=shard.image_key,
                 text_key=shard.text_key,
+                base_image_key=shard.base_image_key,
+                base_text_key=shard.base_text_key,
+                base_rows=shard.base_rows,
+                sealed=shard.sealed,
                 members=[
                     SealMember(
                         image_id=member.image_id,
@@ -172,9 +236,16 @@ async def seal(
     model: str,
     shard_rows: int,
     max_shards: int | None = None,
+    min_rows: int = 1,
 ) -> Sealed:
     async with _exclusive(db, model):
-        target = await plan(db, model=model, shard_rows=shard_rows, max_shards=max_shards)
+        target = await plan(
+            db,
+            model=model,
+            shard_rows=shard_rows,
+            max_shards=max_shards,
+            min_rows=min_rows,
+        )
         if not target.shards:
             return Sealed(model=model, shards=0, rows=0)
         result = await packer.seal(request(target, job_id=job_id))
@@ -182,16 +253,22 @@ async def seal(
         rows = 0
         for done in result.shards:
             shard = planned[done.number]
-            if done.rows != len(shard.members):
+            expected = shard.base_rows + len(shard.members)
+            if done.rows != expected or done.seq != shard.seq:
                 raise Failed(
-                    f"shard {done.number} sealed {done.rows} rows for {len(shard.members)} members"
+                    f"shard {done.number} came back as {done.rows} rows at generation "
+                    f"{done.seq}, expected {expected} at {shard.seq}"
                 )
             async with db.write_session() as session:
                 await Store(session).record_shard(
+                    model=model,
                     shard=shard.number,
+                    seq=shard.seq,
+                    first_row=shard.first_row,
                     image_ids=[member.image_id for member in shard.members],
+                    sealed=shard.sealed,
                 )
-            rows += done.rows
+            rows += len(shard.members)
         sealed = Sealed(model=target.model, shards=len(result.shards), rows=rows)
     if result.error is not None:
         raise Failed(result.error)
@@ -211,7 +288,7 @@ async def perform(
             rows = await _seal_one(artifacts, calls, workspace_dir, target.model, shard)
         except Exception as failure:
             return SealResult(shards=done, error=f"{type(failure).__name__}: {failure}")
-        done.append(SealedShard(number=shard.number, rows=rows))
+        done.append(SealedShard(number=shard.number, seq=shard.seq, rows=rows))
     return SealResult(shards=done)
 
 
@@ -223,8 +300,16 @@ async def _seal_one(
     shard: SealShard,
 ) -> int:
     name = model.replace("/", "_")
-    workspace = Workspace.create(workspace_dir, f"seal-{name}-{shard.number:06d}")
+    workspace = Workspace.create(workspace_dir, f"seal-{name}-{shard.number:06d}-{shard.seq:04d}")
     try:
+        base_image: Path | None = None
+        base_text: Path | None = None
+        if shard.base_image_key is not None:
+            base_image = workspace.path("base-image.npy")
+            await _download(artifacts, shard.base_image_key, base_image)
+            assert shard.base_text_key is not None
+            base_text = workspace.path("base-text.npy")
+            await _download(artifacts, shard.base_text_key, base_text)
         members: list[LocalMember] = []
         for position, member in enumerate(shard.members):
             image_path = workspace.path(f"image-{position}.npy")
@@ -245,24 +330,44 @@ async def _seal_one(
             members,
             image_out=workspace.path("shard-image.npy"),
             text_out=workspace.path("shard-text.npy"),
+            base_image=base_image,
+            base_text=base_text,
+            base_rows=shard.base_rows,
         )
-        if packed.rows != len(shard.members):
-            raise Failed(
-                f"shard {shard.number} packed {packed.rows} rows for {len(shard.members)} members"
-            )
+        expected = shard.base_rows + len(shard.members)
+        if packed.rows != expected:
+            raise Failed(f"shard {shard.number} packed {packed.rows} rows, expected {expected}")
         await _upload(artifacts, packed.image, shard.image_key)
         await _upload(artifacts, packed.text, shard.text_key)
+        if shard.seq >= 2:
+            stale = shard.seq - 2
+            await artifacts.delete(storage.Object(locate(model, shard.number, stale, text=False)))
+            await artifacts.delete(storage.Object(locate(model, shard.number, stale, text=True)))
         return packed.rows
     finally:
         workspace.close()
 
 
 async def _pack(
-    calls: Calls, members: list[LocalMember], *, image_out: Path, text_out: Path
+    calls: Calls,
+    members: list[LocalMember],
+    *,
+    image_out: Path,
+    text_out: Path,
+    base_image: Path | None = None,
+    base_text: Path | None = None,
+    base_rows: int = 0,
 ) -> Packed:
     raw = await calls.call(
         "index",
-        PackCall(members=members, image_out=str(image_out), text_out=str(text_out))
+        PackCall(
+            members=members,
+            image_out=str(image_out),
+            text_out=str(text_out),
+            base_image=str(base_image) if base_image else None,
+            base_text=str(base_text) if base_text else None,
+            base_rows=base_rows,
+        )
         .model_dump_json()
         .encode(),
     )
