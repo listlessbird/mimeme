@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from mimeme.source.adapter import (
+    DEFAULT_TUMBLR_TAGS,
     KNOWN_ADAPTER_KEYS,
     TUMBLR_USER_AGENT,
     MemeApiAdapter,
@@ -118,6 +119,18 @@ class TestParse:
 
 
 class TestTumblrBuildRequests:
+    def test_uses_curated_default_tags(self) -> None:
+        requests = TumblrTaggedAdapter().build_requests(
+            {"api_key": "tumblr-key"}, rng=Random(0)
+        )
+
+        tags = {
+            parse_qs(urlsplit(request.url).query)["tag"][0]
+            for request in requests
+        }
+
+        assert tags == set(DEFAULT_TUMBLR_TAGS)
+
     def test_caps_each_tag_request_at_20_and_sets_user_agent(self) -> None:
         requests = TumblrTaggedAdapter().build_requests(
             {

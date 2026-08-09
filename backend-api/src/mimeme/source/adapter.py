@@ -14,6 +14,15 @@ MAX_PER_CALL = 50
 TUMBLR_TAGGED_URL = "https://api.tumblr.com/v2/tagged"
 TUMBLR_MAX_PER_CALL = 20
 TUMBLR_USER_AGENT = "MiMeMe/1.0 (https://mimeme.dev)"
+DEFAULT_TUMBLR_TAGS = (
+    "meme",
+    "memes",
+    "reaction image",
+    "shitpost",
+    "funny",
+    "programming",
+    "anime memes",
+)
 
 _BLOCKED_MEDIA_EXT = frozenset({".gif", ".gifv", ".mp4", ".webm", ".mov", ".m4v"})
 
@@ -55,7 +64,7 @@ class MemeApiConfig(BaseModel):
 
 
 class TumblrConfig(BaseModel):
-    tags: list[str] = Field(min_length=1)
+    tags: list[str] = Field(default_factory=lambda: list(DEFAULT_TUMBLR_TAGS), min_length=1)
     api_key: str = Field(min_length=1)
     min_note_count: int = Field(default=100, ge=0)
     max_items_per_run: int | None = Field(default=None, ge=0)
