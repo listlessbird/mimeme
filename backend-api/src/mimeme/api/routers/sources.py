@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Any
 
 import structlog
 from fastapi import APIRouter, HTTPException, Query
@@ -48,6 +48,17 @@ router = APIRouter(prefix="/sources", tags=["Sources"], responses=error_response
 log = structlog.get_logger()
 
 
+def _public_source_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    """Keep provider credentials out of source API responses."""
+
+    if payload.get("adapter_key") != "tumblr_tagged":
+        return payload
+    config = payload.get("adapter_config")
+    if not isinstance(config, dict) or "api_key" not in config:
+        return payload
+    return {**payload, "adapter_config": {**config, "api_key": "[REDACTED]"}}
+
+
 async def _sync_schedules(db: Db, temporal: TemporalClientDep) -> None:
     try:
         desired = await store.list_schedule_specs(db)
@@ -88,14 +99,17 @@ async def create_source(
 
     await _sync_schedules(db, temporal)
 
-    return SourceResponse.model_validate(view.model_dump())
+    return SourceResponse.model_validate(_public_source_payload(view.model_dump()))
 
 
 @router.get("", response_model=SourceListResponse)
 async def list_sources(_auth: AdminRequired, db: DbDep) -> SourceListResponse:
     items = await store.list_sources(db)
     return SourceListResponse(
-        sources=[SourceListItemResponse.model_validate(item.model_dump()) for item in items],
+        sources=[
+            SourceListItemResponse.model_validate(_public_source_payload(item.model_dump()))
+            for item in items
+        ],
         total=len(items),
     )
 
@@ -107,7 +121,7 @@ async def get_source(_auth: AdminRequired, db: DbDep, source_id: int) -> SourceD
     except SourceNotFound:
         raise HTTPException(status_code=404, detail="Source not found")
 
-    return SourceDetailResponse.model_validate(detail.model_dump())
+    return SourceDetailResponse.model_validate(_public_source_payload(detail.model_dump()))
 
 
 @router.patch("/{source_id}", response_model=SourceResponse, responses=error_responses(404))
@@ -128,7 +142,7 @@ async def update_source(
 
     await _sync_schedules(db, temporal)
 
-    return SourceResponse.model_validate(view.model_dump())
+    return SourceResponse.model_validate(_public_source_payload(view.model_dump()))
 
 
 @router.post(

@@ -45,10 +45,8 @@ async def discover(
         config = await Store(session).live_source_config(input.source_id)
 
     adapter = get_adapter(config.adapter_key)
-    requests = adapter.build_requests(
-        {**config.adapter_config, "max_items_per_run": config.max_items_per_run},
-        rng=Random(),
-    )
+    adapter_config = {**config.adapter_config, "max_items_per_run": config.max_items_per_run}
+    requests = adapter.build_requests(adapter_config, rng=Random())
 
     raws = []
     for index, request in enumerate(requests):
@@ -62,7 +60,7 @@ async def discover(
 
     discovered_items: list[DiscoveredItem] = []
     for raw in raws:
-        discovered_items.extend(adapter.parse(raw))
+        discovered_items.extend(adapter.parse(raw, adapter_config))
 
     if heartbeat is not None:
         heartbeat("persisting")

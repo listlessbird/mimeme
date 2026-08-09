@@ -3,6 +3,7 @@ from mimeme.source.adapter import (
     KNOWN_ADAPTER_KEYS,
     Adapter,
     MemeApiAdapter,
+    TumblrTaggedAdapter,
     UnknownAdapterKey,
     get_adapter,
 )
@@ -60,6 +61,7 @@ __all__ = [
     "SyncInput",
     "SyncResult",
     "UnknownAdapterKey",
+    "TumblrTaggedAdapter",
     "get_adapter",
     "rule",
 ]

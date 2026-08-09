@@ -67,6 +67,7 @@ def meme_response(*post_ids: str) -> RawResponse:
             "url": f"https://i.redd.it/{pid}.jpg",
             "title": f"meme {pid}",
             "nsfw": False,
+            "ups": 500,
         }
         for pid in post_ids
     ]

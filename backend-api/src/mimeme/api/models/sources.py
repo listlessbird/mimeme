@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, NotRequired, TypedDict
+from typing import Annotated, Any, NotRequired, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -12,7 +12,18 @@ from mimeme.source import SourceItemIngestState
 
 class MemeApiAdapterConfig(TypedDict):
     subreddits: Annotated[list[str], Field(min_length=1)]
+    min_score: NotRequired[Annotated[int, Field(ge=0)]]
     max_items_per_run: NotRequired[Annotated[int | None, Field(ge=0)]]
+
+
+class TumblrAdapterConfig(TypedDict):
+    tags: Annotated[list[str], Field(min_length=1)]
+    api_key: Annotated[str, Field(min_length=1)]
+    min_note_count: NotRequired[Annotated[int, Field(ge=0)]]
+    max_items_per_run: NotRequired[Annotated[int | None, Field(ge=0)]]
+
+
+AdapterConfig = MemeApiAdapterConfig | TumblrAdapterConfig
 
 
 class MemeApiRawMetadata(TypedDict, total=False):
@@ -26,8 +37,8 @@ class MemeApiRawMetadata(TypedDict, total=False):
 
 class CreateSourceRequest(BaseModel):
     name: str = Field(description="Unique (among live Sources) display name")
-    adapter_key: str = Field(description="Adapter the system supports, e.g. 'meme_api'")
-    adapter_config: MemeApiAdapterConfig
+    adapter_key: str = Field(description="Adapter the system supports, e.g. 'meme_api' or 'tumblr_tagged'")
+    adapter_config: AdapterConfig
     dataset: str | None = None
     schedule_cron: str | None = None
     schedule_timezone: str = "UTC"
@@ -36,7 +47,7 @@ class CreateSourceRequest(BaseModel):
 
 
 class UpdateSourceRequest(BaseModel):
-    adapter_config: MemeApiAdapterConfig | None = None
+    adapter_config: AdapterConfig | None = None
     dataset: str | None = None
     schedule_cron: str | None = None
     schedule_timezone: str = "UTC"
@@ -48,7 +59,7 @@ class SourceResponse(BaseModel):
     id: int
     name: str
     adapter_key: str
-    adapter_config: MemeApiAdapterConfig
+    adapter_config: AdapterConfig
     dataset: str | None
     schedule_cron: str | None
     schedule_timezone: str
@@ -111,7 +122,7 @@ class SourceItemResponse(BaseModel):
     id: int
     external_item_id: str
     title: str | None
-    raw_metadata: MemeApiRawMetadata | None
+    raw_metadata: dict[str, Any] | None
     thumbnail_url: str | None
     first_seen_at: datetime
     last_seen_at: datetime
