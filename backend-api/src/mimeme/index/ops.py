@@ -17,6 +17,8 @@ from mimeme.index.model import (
     ActivateInput,
     Backfilled,
     Build,
+    BuildPlan,
+    EmbeddingManifest,
     Encoder,
     Manifest,
     Prepared,
@@ -31,11 +33,39 @@ from mimeme.job.model import ClaimOwnership, StateMissing
 from mimeme.job.store import Store as JobStore
 
 _MANIFEST_MAX = 1024 * 1024
+_PLAN_MAX = 256 * 1024 * 1024
 _BACKFILL_BATCH = 1000
 _TERMINAL = (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED)
 
 
-async def prepare(db: Db, settings: Settings, input: PrepareInput) -> Prepared:
+def plan_key(version: str) -> str:
+    return f"indexes/{version}/plan.json"
+
+
+async def load_build(artifacts: storage.Store, plan: BuildPlan) -> Build:
+    raw = await artifacts.read_bytes(storage.Object(plan.embeddings_key), max_bytes=_PLAN_MAX)
+    manifest = EmbeddingManifest.model_validate_json(raw)
+    if manifest.version != plan.version:
+        raise ValueError("embedding manifest does not belong to this build")
+    if len(manifest.embeddings) != plan.num_embeddings:
+        raise ValueError("embedding manifest does not match the planned embedding count")
+    return Build(
+        job_id=plan.job_id,
+        version=plan.version,
+        target_generation=plan.target_generation,
+        model=plan.model,
+        index_type=plan.index_type,
+        dimension=plan.dimension,
+        native_threads=plan.native_threads,
+        encoder=plan.encoder,
+        embeddings=manifest.embeddings,
+        planned_reads=plan.planned_reads,
+    )
+
+
+async def prepare(
+    db: Db, artifacts: storage.Store, settings: Settings, input: PrepareInput
+) -> Prepared:
     now = datetime.now(UTC)
     async with db.write_session() as session:
         jobs = JobStore(session)
@@ -117,10 +147,22 @@ async def prepare(db: Db, settings: Settings, input: PrepareInput) -> Prepared:
         )
     planned_reads = pack.reads(snapshot.embeddings)
     version = _version(job_id, target_generation)
+    key = plan_key(version)
+    await artifacts.put_bytes(
+        storage.Object(key),
+        EmbeddingManifest(
+            version=version,
+            dimension=snapshot.dimension,
+            embeddings=snapshot.embeddings,
+        )
+        .model_dump_json()
+        .encode(),
+        content_type="application/json",
+    )
     return Prepared(
         decision="build",
         job_id=job_id,
-        build=Build(
+        build=BuildPlan(
             job_id=job_id,
             version=version,
             target_generation=target_generation,
@@ -134,7 +176,8 @@ async def prepare(db: Db, settings: Settings, input: PrepareInput) -> Prepared:
                 variant=settings.search.encoder_variant,
                 threads=settings.search.encoder_threads,
             ),
-            embeddings=snapshot.embeddings,
+            embeddings_key=key,
+            num_embeddings=len(snapshot.embeddings),
             planned_reads=planned_reads,
         ),
     )

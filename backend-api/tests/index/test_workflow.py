@@ -13,8 +13,8 @@ from mimeme.index.activity import Activities
 from mimeme.index.workflow import RebuildWorkflow
 
 
-def _build() -> index.Build:
-    return index.Build(
+def _build() -> index.BuildPlan:
+    return index.BuildPlan(
         job_id="rebuild-1",
         version="v2-g3-test",
         target_generation=3,
@@ -22,7 +22,8 @@ def _build() -> index.Build:
         index_type="flat",
         dimension=2,
         encoder=index.Encoder(repo="encoder", revision="rev", variant="model.onnx"),
-        embeddings=[index.Embedding(image_id=1, image_key="embeddings/1.npy")],
+        embeddings_key="indexes/v2-g3-test/plan.json",
+        num_embeddings=1,
     )
 
 
@@ -53,7 +54,7 @@ async def test_workflow_runs_three_coarse_retry_units_in_order() -> None:
         return index.Sealed(model=build.model, shards=0, rows=0)
 
     @activity.defn(name=rule.BUILD_ACTIVITY)
-    async def run_build(_: index.Build) -> index.Result:
+    async def run_build(_: index.BuildPlan) -> index.Result:
         calls.append("build")
         return index.Result(outcome="empty")
 

@@ -157,10 +157,36 @@ class PrepareInput(_Frozen):
     index_type: Literal["flat", "hnsw"]
 
 
+class EmbeddingManifest(_Frozen):
+    version: str = Field(min_length=1)
+    dimension: int = Field(ge=0)
+    embeddings: list[Embedding]
+
+
+class BuildPlan(_Frozen):
+    job_id: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+    target_generation: int = Field(ge=0)
+    model: str = Field(min_length=1)
+    index_type: Literal["flat", "hnsw"]
+    dimension: int = Field(ge=0)
+    native_threads: int = Field(default=1, ge=1)
+    encoder: Encoder
+    embeddings_key: str = Field(min_length=1)
+    num_embeddings: int = Field(ge=0)
+    planned_reads: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def _sized_plan(self) -> Self:
+        if self.num_embeddings and self.dimension == 0:
+            raise ValueError("a non-empty build requires an embedding dimension")
+        return self
+
+
 class Prepared(_Frozen):
     decision: Literal["build", "clean", "busy", "deferred"]
     job_id: str | None = None
-    build: Build | None = None
+    build: BuildPlan | None = None
 
     @model_validator(mode="after")
     def _build_decision_has_manifest(self) -> Self:

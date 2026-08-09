@@ -436,21 +436,23 @@ async def test_a_sealed_rebuild_matches_the_unsealed_one_it_replaces(
         return job.id
 
     job_id = await run_sync_seed(seed)
-    loose = await ops.prepare(index_db, settings, _rebuild(job_id))
+    loose = await ops.prepare(index_db, artifacts, settings, _rebuild(job_id))
     assert loose.build is not None
+    loose_build = await ops.load_build(artifacts, loose.build)
     before = await Gateway(_BuildCalls(), artifacts=artifacts, workspace_dir=tmp_path).build(
-        loose.build
+        loose_build
     )
 
     await _seal(index_db, artifacts, tmp_path, shard_rows=3)
 
-    sealed = await ops.prepare(index_db, settings, _rebuild(job_id))
+    sealed = await ops.prepare(index_db, artifacts, settings, _rebuild(job_id))
     assert sealed.build is not None
+    sealed_build = await ops.load_build(artifacts, sealed.build)
     after = await Gateway(_BuildCalls(), artifacts=artifacts, workspace_dir=tmp_path).build(
-        sealed.build
+        sealed_build
     )
 
-    assert [(item.shard, item.row, item.seq) for item in sealed.build.embeddings] == [
+    assert [(item.shard, item.row, item.seq) for item in sealed_build.embeddings] == [
         (0, 0, 0),
         (0, 1, 0),
         (0, 2, 0),

@@ -8,15 +8,16 @@ from temporalio.exceptions import ApplicationError
 from temporalio.testing import ActivityEnvironment
 from tests.support.storage import Memory
 
-from mimeme import index
+from mimeme import index, storage
 from mimeme.config import Settings
 from mimeme.index import activity as index_activity
+from mimeme.index import ops as index_ops
 from mimeme.index import rule
 from mimeme.index.activity import Activities
 
 
-def _build() -> index.Build:
-    return index.Build(
+def _plan() -> index.BuildPlan:
+    return index.BuildPlan(
         job_id="rebuild-activity",
         version="v2-g2-activity",
         target_generation=2,
@@ -24,8 +25,25 @@ def _build() -> index.Build:
         index_type="flat",
         dimension=2,
         encoder=index.Encoder(repo="encoder", revision="rev", variant="model.onnx"),
-        embeddings=[index.Embedding(image_id=1, image_key="embeddings/1.npy")],
+        embeddings_key=index_ops.plan_key("v2-g2-activity"),
+        num_embeddings=1,
     )
+
+
+async def _seed(artifacts: Memory) -> index.BuildPlan:
+    plan = _plan()
+    await artifacts.put_bytes(
+        storage.Object(plan.embeddings_key),
+        index.EmbeddingManifest(
+            version=plan.version,
+            dimension=plan.dimension,
+            embeddings=[index.Embedding(image_id=1, image_key="embeddings/1.npy")],
+        )
+        .model_dump_json()
+        .encode(),
+        content_type="application/json",
+    )
+    return plan
 
 
 class _Success:
@@ -54,7 +72,10 @@ async def test_build_activity_heartbeats_compute_progress() -> None:
     activity_env = ActivityEnvironment()
     activity_env.on_heartbeat = lambda *details: heartbeats.extend(details)
 
-    result = await activity_env.run(Activities(_Env(index=_Success())).build, _build())  # type: ignore[arg-type]
+    env = _Env(index=_Success())
+    plan = await _seed(env.artifacts)
+
+    result = await activity_env.run(Activities(env).build, plan)  # type: ignore[arg-type]
 
     assert result.outcome == "empty"
     assert heartbeats == [{"phase": "native", "progress": 0.5, "version": "v2-g2-activity"}]
@@ -69,8 +90,10 @@ async def test_build_activity_marks_invalid_input_non_retryable(monkeypatch) -> 
 
     monkeypatch.setattr(index_activity.index, "fail", fail)
     monkeypatch.setattr(index_activity.index, "cleanup_incomplete", cleanup)
+    env = _Env(index=_Invalid())
+    plan = await _seed(env.artifacts)
     with pytest.raises(ApplicationError) as raised:
-        await ActivityEnvironment().run(Activities(_Env(index=_Invalid())).build, _build())  # type: ignore[arg-type]
+        await ActivityEnvironment().run(Activities(env).build, plan)  # type: ignore[arg-type]
 
     assert raised.value.non_retryable is True
     assert raised.value.type == "ValueError"

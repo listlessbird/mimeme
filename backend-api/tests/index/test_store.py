@@ -76,8 +76,10 @@ async def test_prepare_claims_and_freezes_object_reference_snapshot_atomically(
         return job.id
 
     job_id = await run_sync_seed(seed)
+    store = Memory()
     prepared = await ops.prepare(
         index_db,
+        store,
         Settings(),
         index.PrepareInput(
             job_id=job_id,
@@ -91,9 +93,10 @@ async def test_prepare_claims_and_freezes_object_reference_snapshot_atomically(
 
     assert prepared.build is not None
     assert prepared.build.target_generation == 4
-    assert prepared.build.embeddings == [
+    build = await ops.load_build(store, prepared.build)
+    assert build.embeddings == [
         index.Embedding(
-            image_id=prepared.build.embeddings[0].image_id,
+            image_id=build.embeddings[0].image_id,
             image_key="embeddings/one.npy",
             text_key="embeddings/one_text.npy",
         )
@@ -123,8 +126,8 @@ async def test_prepare_retry_resumes_its_own_claim(index_db: SavepointDb, run_sy
         index_type="flat",
     )
 
-    first = await ops.prepare(index_db, Settings(), request)
-    second = await ops.prepare(index_db, Settings(), request)
+    first = await ops.prepare(index_db, Memory(), Settings(), request)
+    second = await ops.prepare(index_db, Memory(), Settings(), request)
 
     assert first.decision == second.decision == "build"
     assert second.build is not None and second.build.target_generation == 2

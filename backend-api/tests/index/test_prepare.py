@@ -10,6 +10,7 @@ from tests.factories import (
     create_search_index_state,
 )
 from tests.job.conftest import SavepointDb
+from tests.support.storage import Memory
 
 from mimeme import index
 from mimeme.config import Settings
@@ -59,10 +60,12 @@ class TestTextPresence:
             return job.id
 
         job_id = await run_sync_seed(seed)
-        prepared = await ops.prepare(index_db, Settings(), _request(job_id))
+        store = Memory()
+        prepared = await ops.prepare(index_db, store, Settings(), _request(job_id))
 
         assert prepared.build is not None
-        by_key = {item.image_key: item.text_key for item in prepared.build.embeddings}
+        build = await ops.load_build(store, prepared.build)
+        by_key = {item.image_key: item.text_key for item in build.embeddings}
         assert by_key == {
             "embeddings/present.npy": "embeddings/present_text.npy",
             "embeddings/absent.npy": None,
@@ -80,7 +83,7 @@ class TestTextPresence:
             return job.id
 
         job_id = await run_sync_seed(seed)
-        prepared = await ops.prepare(index_db, Settings(), _request(job_id))
+        prepared = await ops.prepare(index_db, Memory(), Settings(), _request(job_id))
 
         assert prepared.build is not None
         assert prepared.build.planned_reads == 3
@@ -103,7 +106,7 @@ class TestSettleWindow:
             return job.id
 
         job_id = await run_sync_seed(seed)
-        prepared = await ops.prepare(index_db, Settings(), _request(job_id))
+        prepared = await ops.prepare(index_db, Memory(), Settings(), _request(job_id))
 
         assert prepared.decision == "deferred"
         assert (await job_ops.index_status(index_db)).view.active_claim is None
@@ -125,7 +128,7 @@ class TestSettleWindow:
             return job.id
 
         job_id = await run_sync_seed(seed)
-        prepared = await ops.prepare(index_db, Settings(), _request(job_id))
+        prepared = await ops.prepare(index_db, Memory(), Settings(), _request(job_id))
 
         assert prepared.decision == "build"
 
@@ -145,7 +148,7 @@ class TestSettleWindow:
             return job.id
 
         job_id = await run_sync_seed(seed)
-        prepared = await ops.prepare(index_db, Settings(), _request(job_id))
+        prepared = await ops.prepare(index_db, Memory(), Settings(), _request(job_id))
 
         assert prepared.decision == "build"
 
@@ -165,7 +168,7 @@ class TestSettleWindow:
             return job.id
 
         job_id = await run_sync_seed(seed)
-        prepared = await ops.prepare(index_db, Settings(), _request(job_id, force=True))
+        prepared = await ops.prepare(index_db, Memory(), Settings(), _request(job_id, force=True))
 
         assert prepared.decision == "build"
 
@@ -188,6 +191,7 @@ class TestSettleWindow:
                 await job_ops.Store(session).mark_dirty(reason="embedding_saved")
             prepared = await ops.prepare(
                 index_db,
+                Memory(),
                 Settings(),
                 _request(f"scheduled-{tick}", trigger=index.Trigger.SCHEDULED),
             )
@@ -218,7 +222,7 @@ class TestReadCount:
             return job.id
 
         job_id = await run_sync_seed(seed)
-        prepared = await ops.prepare(index_db, Settings(), _request(job_id))
+        prepared = await ops.prepare(index_db, Memory(), Settings(), _request(job_id))
 
         assert prepared.decision == "build"
         assert prepared.build is not None

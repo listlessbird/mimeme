@@ -15,7 +15,7 @@ from mimeme.index.client import Client
 from mimeme.index.model import (
     Activated,
     ActivateInput,
-    Build,
+    BuildPlan,
     Prepared,
     PrepareInput,
     Result,
@@ -41,7 +41,9 @@ class Activities:
     async def prepare(self, input: PrepareInput) -> Prepared:
         try:
             activity.logger.info("index prepare started", extra={"job_id": input.job_id})
-            result = await index.prepare(self._env.db, self._env.settings, input)
+            result = await index.prepare(
+                self._env.db, self._env.artifacts, self._env.settings, input
+            )
             activity.logger.info(
                 "index prepare finished",
                 extra={"job_id": result.job_id, "decision": result.decision},
@@ -99,7 +101,7 @@ class Activities:
                 pass
 
     @activity.defn(name=rule.BUILD_ACTIVITY)
-    async def build(self, request: Build) -> Result:
+    async def build(self, request: BuildPlan) -> Result:
         async def progress(phase: str, value: float) -> None:
             activity.heartbeat({"phase": phase, "progress": value, "version": request.version})
             try:
@@ -119,7 +121,8 @@ class Activities:
                 "index build started",
                 extra={"job_id": request.job_id, "version": request.version},
             )
-            result = await index.build(self._env.index, request, progress=progress)
+            build = await index.load_build(self._env.artifacts, request)
+            result = await index.build(self._env.index, build, progress=progress)
             activity.logger.info(
                 "index build finished",
                 extra={"job_id": request.job_id, "outcome": result.outcome},
