@@ -18,7 +18,6 @@ class MemeApiAdapterConfig(TypedDict):
 
 class TumblrAdapterConfig(TypedDict):
     tags: Annotated[list[str], Field(min_length=1)]
-    api_key: Annotated[str, Field(min_length=1)]
     min_note_count: NotRequired[Annotated[int, Field(ge=0)]]
     max_items_per_run: NotRequired[Annotated[int | None, Field(ge=0)]]
 

@@ -9,6 +9,15 @@ from mimeme import env as env_module
 from mimeme.config import Settings
 
 
+def test_tumblr_api_key_reads_from_environment(monkeypatch) -> None:
+    monkeypatch.setenv("TUMBLR_API_KEY", "test-tumblr-key")
+
+    settings = Settings(_env_file=None)
+
+    assert settings.tumblr_api_key is not None
+    assert settings.tumblr_api_key.get_secret_value() == "test-tumblr-key"
+
+
 async def test_partial_startup_closes_resources_in_reverse_order(monkeypatch) -> None:
     closed: list[str] = []
 

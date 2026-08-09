@@ -6,6 +6,7 @@ import pytest
 from sqlalchemy import Engine
 from sqlalchemy.ext.asyncio import AsyncConnection
 
+from mimeme.config import Settings
 from mimeme.source.http import Http
 from mimeme.source.model import FetchRequest, RawResponse
 from tests.job.conftest import PoolDb, SavepointDb, _async_url
@@ -54,6 +55,7 @@ class FakeHttp:
 class FakeEnv:
     db: object
     source_http: FakeHttp = field(default_factory=FakeHttp)
+    settings: Settings = field(default_factory=lambda: Settings(_env_file=None))
 
 
 def real_http(client) -> Http:

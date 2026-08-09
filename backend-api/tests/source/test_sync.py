@@ -4,6 +4,7 @@ import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from mimeme.config import Settings
 from mimeme.db.schema import (
     IngestURL,
     ProcessingStatus,
@@ -28,6 +29,7 @@ from tests.job.conftest import SavepointDb
 from tests.source.conftest import FakeEnv, FakeHttp, meme_response
 
 MEME_URL = "https://meme-api.com/gimme/memes/50"
+TUMBLR_URL = "https://api.tumblr.com/v2/tagged?tag=meme&api_key=env-key&limit=20"
 
 
 def _env(db: SavepointDb, http: FakeHttp | None = None) -> FakeEnv:
@@ -48,6 +50,53 @@ async def _source(db: SavepointDb, run_sync_seed, **kwargs) -> int:
 
 
 class TestDiscover:
+    async def test_tumblr_uses_application_api_key(self, db: SavepointDb, run_sync_seed) -> None:
+        source_id = await run_sync_seed(
+            lambda s: create_ingestion_source(
+                session=s,
+                adapter_key="tumblr_tagged",
+                adapter_config={"tags": ["meme"]},
+                max_items_per_run=20,
+            ).id
+        )
+        http = FakeHttp()
+        http.set(
+            TUMBLR_URL,
+            RawResponse(
+                success=True,
+                status_code=200,
+                raw={
+                    "response": [
+                        {
+                            "id_string": "123",
+                            "note_count": 100,
+                            "post_url": "https://example.tumblr.com/post/123/meme",
+                            "photos": [
+                                {
+                                    "alt_sizes": [
+                                        {
+                                            "width": 800,
+                                            "url": "https://64.media.tumblr.com/meme.jpg",
+                                        }
+                                    ]
+                                }
+                            ],
+                        }
+                    ]
+                },
+            ),
+        )
+        env = FakeEnv(
+            db=db,
+            source_http=http,
+            settings=Settings(_env_file=None, tumblr_api_key="env-key"),
+        )
+
+        result = await sync.discover(env, DiscoverInput(source_id=source_id))
+
+        assert result.queued == 1
+        assert http.calls[0].url == TUMBLR_URL
+
     async def test_new_items_create_run_job_and_refs(self, db: SavepointDb, run_sync_seed) -> None:
         source_id = await _source(db, run_sync_seed, dataset="d")
         http = FakeHttp()

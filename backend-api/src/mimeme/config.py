@@ -199,6 +199,7 @@ class Settings(BaseSettings):
 
     app_env: str = "development"
     debug: bool = True
+    tumblr_api_key: SecretStr | None = None
 
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)
     media: MediaConfig = Field(default_factory=MediaConfig)

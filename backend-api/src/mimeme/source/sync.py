@@ -5,6 +5,7 @@ from collections.abc import Callable
 from random import Random
 from typing import Protocol
 
+from mimeme.config import Settings
 from mimeme.db import Db
 from mimeme.db.schema import SourceRunStatus
 from mimeme.source import rule
@@ -28,6 +29,7 @@ Cancelled = Callable[[], bool]
 class Deps(Protocol):
     db: Db
     source_http: Http
+    settings: Settings
 
 
 async def discover(
@@ -46,6 +48,11 @@ async def discover(
 
     adapter = get_adapter(config.adapter_key)
     adapter_config = {**config.adapter_config, "max_items_per_run": config.max_items_per_run}
+    if config.adapter_key == "tumblr_tagged":
+        api_key = env.settings.tumblr_api_key
+        if api_key is None or not api_key.get_secret_value():
+            raise RuntimeError("TUMBLR_API_KEY is required for tumblr_tagged sources")
+        adapter_config["api_key"] = api_key.get_secret_value()
     requests = adapter.build_requests(adapter_config, rng=Random())
 
     raws = []

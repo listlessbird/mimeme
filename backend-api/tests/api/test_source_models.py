@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from mimeme.api.models.sources import CreateSourceRequest, SourceResponse
+from mimeme.api.models.sources import CreateSourceRequest
 from mimeme.api.routers.sources import _public_source_payload
 
 
@@ -12,7 +12,6 @@ def test_tumblr_source_config_is_accepted() -> None:
         adapter_key="tumblr_tagged",
         adapter_config={
             "tags": ["meme", "reaction image"],
-            "api_key": "tumblr-key",
             "min_note_count": 100,
         },
     )
@@ -37,6 +36,4 @@ def test_tumblr_api_key_is_redacted_from_source_responses() -> None:
         }
     )
 
-    response = SourceResponse.model_validate(payload)
-
-    assert response.adapter_config["api_key"] == "[REDACTED]"
+    assert payload["adapter_config"]["api_key"] == "[REDACTED]"
