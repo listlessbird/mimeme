@@ -1,10 +1,12 @@
 services:
   temporal:
     image: temporalio/temporal:latest
-    command: server start-dev --ip 0.0.0.0
+    command: server start-dev --ip 0.0.0.0 --db-filename /data/temporal.db
     ports:
       - "7233:7233"
       - "8233:8233"
+    volumes:
+      - temporal_data:/data
     deploy:
       resources:
         limits:
@@ -28,7 +30,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 768M
+          memory: 1280M
     restart: unless-stopped
     stop_grace_period: 30s
     healthcheck:
@@ -36,7 +38,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 120s
 
   cloudflared:
     image: cloudflare/cloudflared:latest
@@ -68,7 +70,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1024M
+          memory: 768M
     restart: unless-stopped
     stop_grace_period: 30s
 
@@ -87,7 +89,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 2048M
+          memory: 1024M
     restart: unless-stopped
     stop_grace_period: 30s
     healthcheck:
@@ -98,4 +100,5 @@ services:
       start_period: 120s
 
 volumes:
+  temporal_data:
   huggingface_cache:
