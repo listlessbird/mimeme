@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 import { Search, Loader2 } from "lucide-react";
@@ -112,13 +113,15 @@ function NavigateSearchBar({ isSearching }: { isSearching: boolean }) {
 					// oxlint-disable-next-line jsx-a11y/no-autofocus -- hero search is the primary action on this page
 					autoFocus
 				/>
-				<button
+				<Button
 					type="submit"
+					variant="ghost"
+					size="sm"
 					disabled={!query.trim() || loading}
-					className="text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-40"
+					className="h-auto px-0 text-xs font-normal text-muted-foreground hover:bg-transparent hover:text-foreground disabled:opacity-40"
 				>
-					{loading ? "searching..." : "[enter]"}
-				</button>
+					{loading ? "searching…" : "[enter]"}
+				</Button>
 			</div>
 		</form>
 	);

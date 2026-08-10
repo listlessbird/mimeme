@@ -1,11 +1,14 @@
 import { ErrorState } from "@/components/error-state";
-import { MemeGrid } from "@/components/meme-grid";
+import { MemeGrid, MemeGridSkeleton } from "@/components/meme-grid";
 import { SearchBar } from "@/components/search-bar";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Spinner } from "@/components/ui/spinner";
 import { type SearchResponse, searchMemesInfiniteQueryOptions } from "@/lib/api";
 import { logError, serializeError } from "@/lib/observability";
 import { useSuspenseInfiniteQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
-import { Loader2 } from "lucide-react";
+import { AlertCircle, ChevronDown, RotateCw } from "lucide-react";
 import { createStandardSchemaV1, parseAsString } from "nuqs";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -45,12 +48,8 @@ function ResultsPendingComponent() {
 				</div>
 			</div>
 
-			<div className="container mx-auto max-w-[1600px] px-4 pt-6 pb-10 md:px-6">
-				<div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-					{Array.from({ length: 12 }).map((_, i) => (
-						<div key={i} className="aspect-[4/5] animate-pulse rounded-lg bg-muted" />
-					))}
-				</div>
+			<div className="container mx-auto max-w-[1400px] px-4 pt-6 pb-10 md:px-6">
+				<MemeGridSkeleton />
 			</div>
 		</div>
 	);
@@ -87,15 +86,9 @@ function ResultsPage() {
 function QueryBackedResults({ query }: { query: string }) {
 	const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
 	const [autoLoadLimit, setAutoLoadLimit] = useState(AUTO_LOAD_WINDOW);
-	const {
-		data,
-		error,
-		fetchNextPage,
-		hasNextPage,
-		isFetching,
-		isFetchingNextPage,
-		isFetchNextPageError,
-	} = useSuspenseInfiniteQuery(searchMemesInfiniteQueryOptions(query));
+	const [isRetryingNextPage, setIsRetryingNextPage] = useState(false);
+	const { data, fetchNextPage, hasNextPage, isFetching, isFetchingNextPage, isFetchNextPageError } =
+		useSuspenseInfiniteQuery(searchMemesInfiniteQueryOptions(query));
 	const firstPage = data.pages[0];
 	const aggregatedData: SearchResponse = {
 		...firstPage,
@@ -106,17 +99,35 @@ function QueryBackedResults({ query }: { query: string }) {
 		(force = false) => {
 			if (
 				!hasNextPage ||
-				isFetching ||
+				isFetchingNextPage ||
+				(!force && isFetching) ||
 				(reachedAutoLoadLimit && !force) ||
 				(isFetchNextPageError && !force)
 			) {
 				return;
 			}
 
-			void fetchNextPage();
+			void fetchNextPage({ cancelRefetch: false });
 		},
-		[fetchNextPage, hasNextPage, isFetchNextPageError, isFetching, reachedAutoLoadLimit],
+		[
+			fetchNextPage,
+			hasNextPage,
+			isFetchNextPageError,
+			isFetching,
+			isFetchingNextPage,
+			reachedAutoLoadLimit,
+		],
 	);
+	const retryNextPage = useCallback(async () => {
+		if (!hasNextPage || isFetchingNextPage || isRetryingNextPage) return;
+
+		setIsRetryingNextPage(true);
+		try {
+			await fetchNextPage({ cancelRefetch: false });
+		} finally {
+			setIsRetryingNextPage(false);
+		}
+	}, [fetchNextPage, hasNextPage, isFetchingNextPage, isRetryingNextPage]);
 
 	useEffect(() => {
 		const node = loadMoreSentinelRef.current;
@@ -161,7 +172,7 @@ function QueryBackedResults({ query }: { query: string }) {
 			</div>
 
 			<main
-				className="container mx-auto max-w-[1600px] px-4 pt-6 pb-10 md:px-6"
+				className="container mx-auto max-w-[1400px] px-4 pt-6 pb-10 md:px-6"
 				aria-busy={isFetchingNextPage}
 			>
 				<MemeGrid data={aggregatedData} />
@@ -172,35 +183,48 @@ function QueryBackedResults({ query }: { query: string }) {
 						aria-live="polite"
 					>
 						{isFetchNextPageError ? (
-							<div className="flex flex-wrap items-center justify-center gap-3 text-xs">
-								<p className="text-destructive">
-									{error instanceof Error
-										? error.message
-										: "could not load more results. try again."}
-								</p>
-								<button
-									type="button"
-									onClick={() => loadMore(true)}
-									className="rounded-md border border-border bg-card px-3 py-2 text-foreground transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
-								>
-									Try again
-								</button>
-							</div>
+							<Alert variant="destructive" className="mx-auto max-w-xl text-left">
+								<AlertCircle aria-hidden="true" />
+								<AlertTitle>couldn’t load more results</AlertTitle>
+								<AlertDescription className="flex flex-col gap-3 text-xs sm:flex-row sm:items-center sm:justify-between">
+									<span>your loaded results are still available. try again when you’re ready.</span>
+									<Button
+										type="button"
+										size="sm"
+										variant="outline"
+										disabled={isRetryingNextPage || isFetchingNextPage}
+										onClick={() => void retryNextPage()}
+										className="shrink-0 transition-[background-color,box-shadow,transform] active:scale-[0.96]"
+									>
+										{isRetryingNextPage || isFetchingNextPage ? (
+											<Spinner data-icon="inline-start" />
+										) : (
+											<RotateCw data-icon="inline-start" />
+										)}
+										{isRetryingNextPage || isFetchingNextPage
+											? "retrying…"
+											: "retry loading results"}
+									</Button>
+								</AlertDescription>
+							</Alert>
 						) : null}
 						{isFetchingNextPage ? (
 							<div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
-								<Loader2 className="size-4 animate-spin" aria-hidden="true" />
-								Loading more results
+								<Spinner />
+								loading more results…
 							</div>
 						) : null}
 						{reachedAutoLoadLimit && !isFetchNextPageError ? (
-							<button
+							<Button
 								type="button"
+								size="sm"
+								variant="outline"
 								onClick={() => setAutoLoadLimit((limit) => limit + AUTO_LOAD_WINDOW)}
-								className="rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+								className="transition-[background-color,box-shadow,transform] active:scale-[0.96]"
 							>
-								Load more results
-							</button>
+								<ChevronDown data-icon="inline-start" />
+								load more results
+							</Button>
 						) : null}
 					</div>
 				) : aggregatedData.results.length > 0 ? (
@@ -212,6 +236,7 @@ function QueryBackedResults({ query }: { query: string }) {
 }
 
 function ResultsErrorComponent({ error, reset }: { error: unknown; reset: () => void }) {
+	const [isRetrying, setIsRetrying] = useState(false);
 	logError("results.loader.error", {
 		route: "/results",
 		outcome: "error",
@@ -220,9 +245,13 @@ function ResultsErrorComponent({ error, reset }: { error: unknown; reset: () => 
 
 	return (
 		<ErrorState
-			title="search failed"
-			detail="the request did not complete. retry the request."
-			onRetry={reset}
+			title="couldn’t load these results"
+			detail="the search request didn’t complete. check your connection and retry the search."
+			isRetrying={isRetrying}
+			onRetry={() => {
+				setIsRetrying(true);
+				reset();
+			}}
 		/>
 	);
 }

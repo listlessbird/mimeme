@@ -1,3 +1,4 @@
+import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import type { SearchResult } from "@/lib/api";
 import { Check, Copy, ExternalLink, X } from "lucide-react";
@@ -70,13 +71,15 @@ function ActionButton({
 	onClick: () => void;
 }) {
 	return (
-		<button
+		<Button
 			type="button"
 			onClick={onClick}
 			aria-label={label}
-			className="flex size-10 items-center justify-center rounded-full transition-[background-color,transform] hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-white focus-visible:outline-none active:scale-[0.96]"
+			variant="ghost"
+			size="icon-lg"
+			className="rounded-full text-white hover:bg-white/15 hover:text-white focus-visible:ring-white active:scale-[0.96]"
 		>
 			{children}
-		</button>
+		</Button>
 	);
 }
