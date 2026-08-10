@@ -56,6 +56,9 @@ const CRON_PRESETS = [
 const formSchema = z.object({
 	name: z.string().min(1, "name is required"),
 	subreddits: z.array(z.string().min(1)).min(1, "add at least one subreddit"),
+	min_score: z.string().refine((v) => /^\d+$/.test(v) && Number(v) >= 0, {
+		message: "must be a non-negative whole number",
+	}),
 	dataset: z.string(),
 	schedule_cron: z.string(),
 	schedule_timezone: z.string().min(1, "timezone is required"),
@@ -70,6 +73,7 @@ type FormValues = z.infer<typeof formSchema>;
 const EMPTY_VALUES: FormValues = {
 	name: "",
 	subreddits: [],
+	min_score: "500",
 	dataset: "",
 	schedule_cron: "0 * * * *",
 	schedule_timezone: "UTC",
@@ -81,6 +85,8 @@ function sourceToFormValues(source: Source): FormValues {
 	return {
 		name: source.name,
 		subreddits: source.adapter_config?.subreddits ?? [],
+		min_score:
+			source.adapter_config?.min_score == null ? "500" : String(source.adapter_config.min_score),
 		dataset: source.dataset ?? "",
 		schedule_cron: source.schedule_cron ?? "",
 		schedule_timezone: source.schedule_timezone,
@@ -126,7 +132,7 @@ export function SourceFormSheet({ mode, source, open, onOpenChange }: SourceForm
 				const body: CreateSourceRequest = {
 					name: values.name,
 					adapter_key: "meme_api",
-					adapter_config: { subreddits: values.subreddits },
+					adapter_config: { subreddits: values.subreddits, min_score: Number(values.min_score) },
 					dataset: toNullable(values.dataset),
 					schedule_cron: toNullable(values.schedule_cron),
 					schedule_timezone: values.schedule_timezone,
@@ -137,7 +143,7 @@ export function SourceFormSheet({ mode, source, open, onOpenChange }: SourceForm
 			}
 			if (!source) shouldNeverHappen("edit mode requires a source");
 			const body: UpdateSourceRequest = {
-				adapter_config: { subreddits: values.subreddits },
+				adapter_config: { subreddits: values.subreddits, min_score: Number(values.min_score) },
 				dataset: toNullable(values.dataset),
 				schedule_cron: toNullable(values.schedule_cron),
 				schedule_timezone: values.schedule_timezone,
@@ -207,6 +213,21 @@ export function SourceFormSheet({ mode, source, open, onOpenChange }: SourceForm
 										{mode === "edit" ? (
 											<FormDescription>a source's name cannot be changed.</FormDescription>
 										) : null}
+										<FormMessage />
+									</FormItem>
+								)}
+							/>
+
+							<FormField
+								control={form.control}
+								name="min_score"
+								render={({ field }) => (
+									<FormItem>
+										<FormLabel>minimum score</FormLabel>
+										<FormControl>
+											<Input {...field} inputMode="numeric" placeholder="500" />
+										</FormControl>
+										<FormDescription>Reddit score, treated as the post's upvotes.</FormDescription>
 										<FormMessage />
 									</FormItem>
 								)}
