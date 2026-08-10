@@ -44,6 +44,7 @@ async def run(
     seen_ids: set[int] = set()
     ranked: list[Result] = []
     version: str | None = None
+    has_more = False
 
     while len(ranked) < required:
         count = min(
@@ -83,7 +84,9 @@ async def run(
             )
 
         if batch.exhausted:
+            has_more = False
             break
+        has_more = True
         assert batch.cursor is not None
         if batch.cursor in seen_cursors or batch.cursor == cursor:
             raise Failed("search compute returned a repeated cursor")
@@ -98,6 +101,7 @@ async def run(
         total=len(ranked),
         limit=query.limit,
         offset=query.offset,
+        has_more=has_more,
         search_time_ms=elapsed_ms,
         index_version=version,
     )

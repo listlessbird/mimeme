@@ -783,6 +783,8 @@ export interface components {
         MemeApiAdapterConfig: {
             /** Subreddits */
             subreddits: string[];
+            /** Min Score */
+            min_score?: number;
             /** Max Items Per Run */
             max_items_per_run?: number | null;
         };

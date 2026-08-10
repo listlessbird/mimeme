@@ -84,6 +84,7 @@ async def test_run_fetches_more_candidates_for_sparse_rows_and_preserves_rank() 
     assert [result.id for result in page.results] == [2, 3]
     assert [result.score for result in page.results] == [0.8, 0.7]
     assert page.total == 3
+    assert page.has_more is False
     assert page.index_version == "v1"
     assert client.cursors == [None, "next"]
     assert page.results[0].url == "https://media.test/images/2.jpg"
@@ -112,4 +113,32 @@ async def test_similar_search_excludes_the_query_image_before_total() -> None:
 
     assert [result.id for result in page.results] == [2]
     assert page.total == 1
+    assert page.has_more is False
     assert page.query == "similar_to:1"
+
+
+async def test_run_reports_more_when_a_full_page_has_an_unexhausted_batch() -> None:
+    client = _Client(
+        [
+            search.Batch(
+                candidates=[
+                    search.Candidate(image_id=1, score=0.9),
+                    search.Candidate(image_id=2, score=0.8),
+                    search.Candidate(image_id=3, score=0.7),
+                ],
+                exhausted=False,
+                cursor="next",
+                version="v1",
+            )
+        ]
+    )
+
+    page = await run(
+        search.Query(text="cat", mode="hybrid", limit=2),
+        client=client,
+        rows=_Rows([_row(1), _row(2), _row(3)]),
+        media_urls=_Urls(),
+    )
+
+    assert [result.id for result in page.results] == [1, 2]
+    assert page.has_more is True

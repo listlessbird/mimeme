@@ -7,11 +7,13 @@ import { useSuspenseInfiniteQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { Loader2 } from "lucide-react";
 import { createStandardSchemaV1, parseAsString } from "nuqs";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const searchParams = {
 	q: parseAsString.withDefault(""),
 };
+
+const AUTO_LOAD_WINDOW = 200;
 
 export const Route = createFileRoute("/results")({
 	validateSearch: createStandardSchemaV1(searchParams, {
@@ -38,15 +40,15 @@ function ResultsPendingComponent() {
 	return (
 		<div className="min-h-screen bg-background">
 			<div className="sticky top-0 z-40 border-b border-border/50 bg-background/80 backdrop-blur-sm">
-				<div className="mx-auto max-w-6xl px-4 pt-4 pb-3 md:px-6 md:pt-6">
+				<div className="container mx-auto max-w-[1600px] px-4 pt-4 pb-3 md:px-6 md:pt-6">
 					<SearchBar live isSearching />
 				</div>
 			</div>
 
-			<div className="mx-auto max-w-6xl px-4 pt-4 pb-6 md:px-6">
-				<div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+			<div className="container mx-auto max-w-[1600px] px-4 pt-6 pb-10 md:px-6">
+				<div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
 					{Array.from({ length: 12 }).map((_, i) => (
-						<div key={i} className="aspect-square animate-pulse rounded-md bg-muted" />
+						<div key={i} className="aspect-[4/5] animate-pulse rounded-lg bg-muted" />
 					))}
 				</div>
 			</div>
@@ -62,14 +64,17 @@ function ResultsPage() {
 		return (
 			<div className="min-h-screen bg-background">
 				<div className="sticky top-0 z-40 border-b border-border/50 bg-background/80 backdrop-blur-sm">
-					<div className="mx-auto max-w-6xl px-4 pt-4 pb-3 md:px-6 md:pt-6">
+					<div className="container mx-auto max-w-[1600px] px-4 pt-4 pb-3 md:px-6 md:pt-6">
 						<SearchBar live />
 					</div>
 				</div>
 
-				<div className="mx-auto max-w-6xl px-4 pt-4 pb-6 md:px-6">
-					<div className="py-20 text-center text-sm text-muted-foreground">
-						<p>enter a search query above</p>
+				<div className="container mx-auto max-w-[1600px] px-4 pt-6 pb-10 md:px-6">
+					<div className="py-24 text-center">
+						<p className="text-sm text-foreground">Start with a description</p>
+						<p className="mt-2 text-xs text-muted-foreground">
+							Describe the meme you want to find in the search box above.
+						</p>
 					</div>
 				</div>
 			</div>
@@ -80,8 +85,8 @@ function ResultsPage() {
 }
 
 function QueryBackedResults({ query }: { query: string }) {
-	const [showLoadMore, setShowLoadMore] = useState(false);
 	const loadMoreSentinelRef = useRef<HTMLDivElement | null>(null);
+	const [autoLoadLimit, setAutoLoadLimit] = useState(AUTO_LOAD_WINDOW);
 	const {
 		data,
 		error,
@@ -96,18 +101,34 @@ function QueryBackedResults({ query }: { query: string }) {
 		...firstPage,
 		results: data.pages.flatMap((page) => page.results),
 	};
+	const reachedAutoLoadLimit = aggregatedData.results.length >= autoLoadLimit;
+	const loadMore = useCallback(
+		(force = false) => {
+			if (
+				!hasNextPage ||
+				isFetching ||
+				(reachedAutoLoadLimit && !force) ||
+				(isFetchNextPageError && !force)
+			) {
+				return;
+			}
+
+			void fetchNextPage();
+		},
+		[fetchNextPage, hasNextPage, isFetchNextPageError, isFetching, reachedAutoLoadLimit],
+	);
 
 	useEffect(() => {
 		const node = loadMoreSentinelRef.current;
 
-		if (!node || !hasNextPage || showLoadMore) {
+		if (!node || !hasNextPage || isFetching || isFetchNextPageError || reachedAutoLoadLimit) {
 			return undefined;
 		}
 
 		const observer = new IntersectionObserver(
 			(entries) => {
 				if (entries[0]?.isIntersecting) {
-					setShowLoadMore(true);
+					loadMore();
 				}
 			},
 			{
@@ -122,55 +143,70 @@ function QueryBackedResults({ query }: { query: string }) {
 		return () => {
 			observer.disconnect();
 		};
-	}, [hasNextPage, showLoadMore]);
+	}, [hasNextPage, isFetchNextPageError, isFetching, loadMore, reachedAutoLoadLimit]);
 
 	return (
 		<div className="min-h-screen bg-background">
 			<div className="sticky top-0 z-40 border-b border-border/50 bg-background/80 backdrop-blur-sm">
-				<div className="mx-auto max-w-6xl px-4 pt-4 pb-3 md:px-6 md:pt-6">
+				<div className="container mx-auto max-w-[1600px] px-4 pt-4 pb-3 md:px-6 md:pt-6">
 					<SearchBar live isSearching={isFetching && !isFetchingNextPage} />
-					<div className="text-xs text-muted-foreground">
-						{firstPage.total} results for "{firstPage.query}" ({firstPage.search_time_ms.toFixed(0)}
-						ms)
+					<div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-xs text-muted-foreground">
+						<p>
+							<span className="text-foreground">{aggregatedData.results.length}</span> results
+							loaded for "{firstPage.query}"
+						</p>
+						<p>{firstPage.search_time_ms.toFixed(0)} ms</p>
 					</div>
 				</div>
 			</div>
 
-			<div className="mx-auto max-w-6xl px-4 pt-4 pb-6 md:px-6">
+			<main
+				className="container mx-auto max-w-[1600px] px-4 pt-6 pb-10 md:px-6"
+				aria-busy={isFetchingNextPage}
+			>
 				<MemeGrid data={aggregatedData} />
 				{hasNextPage ? (
 					<div
 						ref={loadMoreSentinelRef}
-						className="mt-6 flex min-h-12 flex-col items-center justify-center gap-3"
+						className="mt-8 flex min-h-16 flex-col items-center justify-center gap-3"
+						aria-live="polite"
 					>
 						{isFetchNextPageError ? (
-							<p className="text-xs text-destructive">
-								{error instanceof Error ? error.message : "could not load more results. try again."}
-							</p>
+							<div className="flex flex-wrap items-center justify-center gap-3 text-xs">
+								<p className="text-destructive">
+									{error instanceof Error
+										? error.message
+										: "could not load more results. try again."}
+								</p>
+								<button
+									type="button"
+									onClick={() => loadMore(true)}
+									className="rounded-md border border-border bg-card px-3 py-2 text-foreground transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+								>
+									Try again
+								</button>
+							</div>
 						) : null}
-						{showLoadMore ? (
+						{isFetchingNextPage ? (
+							<div className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+								<Loader2 className="size-4 animate-spin" aria-hidden="true" />
+								Loading more results
+							</div>
+						) : null}
+						{reachedAutoLoadLimit && !isFetchNextPageError ? (
 							<button
 								type="button"
-								onClick={() => {
-									if (!isFetchingNextPage) {
-										void fetchNextPage();
-									}
-								}}
-								disabled={isFetchingNextPage}
-								className="inline-flex items-center gap-2 rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+								onClick={() => setAutoLoadLimit((limit) => limit + AUTO_LOAD_WINDOW)}
+								className="rounded-md border border-border bg-card px-4 py-2 text-sm text-foreground transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
 							>
-								{isFetchingNextPage ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-								{isFetchingNextPage
-									? "loading more"
-									: `load ${Math.min(
-											firstPage.limit,
-											firstPage.total - aggregatedData.results.length,
-										)} more`}
+								Load more results
 							</button>
 						) : null}
 					</div>
+				) : aggregatedData.results.length > 0 ? (
+					<p className="mt-8 text-center text-xs text-muted-foreground">You've reached the end.</p>
 				) : null}
-			</div>
+			</main>
 		</div>
 	);
 }

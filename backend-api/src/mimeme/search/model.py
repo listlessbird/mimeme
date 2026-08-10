@@ -76,6 +76,7 @@ class Page(_Frozen):
     total: int
     limit: int
     offset: int
+    has_more: bool
     search_time_ms: float
     index_version: str | None
 

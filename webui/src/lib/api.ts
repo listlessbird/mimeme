@@ -23,6 +23,7 @@ const searchResponseSchema = z.object({
 	total: z.number(),
 	limit: z.number(),
 	offset: z.number(),
+	has_more: z.boolean(),
 	search_time_ms: z.number(),
 });
 
@@ -41,10 +42,8 @@ export const searchMemesInfiniteQueryOptions = (q: string) =>
 				},
 			}),
 		initialPageParam: 0,
-		getNextPageParam: (lastPage) => {
-			const nextOffset = lastPage.offset + lastPage.results.length;
-			return nextOffset < lastPage.total ? nextOffset : undefined;
-		},
+		getNextPageParam: (lastPage) =>
+			lastPage.has_more ? lastPage.offset + lastPage.results.length : undefined,
 	});
 
 class SearchApiError extends Error {
