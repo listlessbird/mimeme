@@ -11,6 +11,7 @@ with workflow.unsafe.imports_passed_through():
     from mimeme.ingest.workflow import IngestWorkflow
     from mimeme.source import rule
     from mimeme.source.model import (
+        CleanupInput,
         DiscoverInput,
         DiscoverResult,
         FinishInput,
@@ -40,12 +41,27 @@ class SourceSyncWorkflow:
     async def run(self, input: SyncInput) -> SyncResult:
         discovered: DiscoverResult = await workflow.execute_activity(
             rule.DISCOVER_ACTIVITY,
-            DiscoverInput(source_id=input.source_id, trigger=input.trigger),
+            DiscoverInput(
+                source_id=input.source_id,
+                trigger=input.trigger,
+                checkpoint_id=workflow.info().run_id,
+            ),
             result_type=DiscoverResult,
             start_to_close_timeout=timedelta(minutes=10),
             heartbeat_timeout=timedelta(seconds=rule.HEARTBEAT_TIMEOUT_S),
             retry_policy=_RETRY_DISCOVER,
         )
+
+        try:
+            await workflow.execute_activity(
+                rule.CHECKPOINT_CLEANUP_ACTIVITY,
+                CleanupInput(checkpoint_id=workflow.info().run_id),
+                start_to_close_timeout=timedelta(minutes=1),
+                retry_policy=_RETRY_FINISH,
+            )
+        except Exception:
+            # Checkpoint cleanup is best effort and must not block ingestion.
+            pass
 
         try:
             if discovered.ingest_job_id is not None:

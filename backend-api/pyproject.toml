@@ -16,6 +16,7 @@ dependencies = [
     "slowapi==0.1.9",
     "asyncpg>=0.31.0",
     "aiobotocore>=3.7.0",
+    "scrapling[fetchers]>=0.4,<0.5",
 ]
 
 # Extras only needed to run models locally (GPU_BACKEND=local) or to import

@@ -50,9 +50,10 @@ class Modal:
 
     async def annotate(self, input: Input, *, progress: Progress | None = None) -> Annotation:
         instance = self._vision_cls()()
-        result = await self._call(
-            instance.annotate_image, progress, media_key=input.media_key, length=input.length
-        )
+        kwargs: dict[str, Any] = {"media_key": input.media_key, "length": input.length}
+        if input.context is not None:
+            kwargs["context"] = input.context.model_dump(mode="json")
+        result = await self._call(instance.annotate_image, progress, **kwargs)
         return Annotation(
             image_id=input.image_id,
             caption=result["caption"],

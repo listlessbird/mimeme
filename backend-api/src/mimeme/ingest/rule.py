@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 import uuid
 
@@ -17,6 +18,7 @@ MAX_IMAGE_BYTES = 64 * 1024 * 1024
 INGEST_STAGING_PREFIX = "uploads/ingest-staging"
 UPLOAD_STAGING_PREFIX = "uploads/staging"
 ERROR_LIMIT = 500
+EMBED_RECIPE_VERSION = "known-facts-v1"
 
 IMAGE_ACCEPT_HEADER = "image/avif,image/webp,image/apng,image/png,image/jpeg,image/*,*/*;q=0.8"
 DOWNLOAD_USER_AGENT = (
@@ -76,6 +78,31 @@ def is_terminal_http_status(status: int) -> bool:
 
 def compose_embedding_text(caption: str | None, ocr_text: str | None) -> str:
     return " ".join(part for part in [caption, ocr_text] if part)
+
+
+def compose_search_text(context, caption: str | None, ocr_text: str | None) -> str:  # noqa: ANN001
+    parts: list[str] = []
+    if context is not None:
+        if context.title:
+            parts.append(f"Title: {context.title}.")
+        labels = [*context.tags, *context.categories, *context.types][:10]
+        if labels:
+            parts.append(f"Tags: {', '.join(labels)}.")
+        if context.origin:
+            parts.append(f"Origin: {context.origin}.")
+        if context.year:
+            parts.append(f"Year: {context.year}.")
+    if caption:
+        parts.append(f"Caption: {caption}")
+    if ocr_text:
+        parts.append(f"Visible text: {ocr_text}")
+    if context is not None and context.description:
+        parts.append(f"Background: {context.description}")
+    return " ".join(" ".join(parts).split()[:64])
+
+
+def text_sha256(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()
 
 
 def truncate_error(message: str, limit: int = ERROR_LIMIT) -> str:

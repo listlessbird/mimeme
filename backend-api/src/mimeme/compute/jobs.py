@@ -135,7 +135,7 @@ class Jobs:
         path = workspace.write_atomic("input", data)
         job.state.phase = "annotate"
         job.state.progress = 0.5
-        call = AnnotateCall(path=str(path), length=spec.length)
+        call = AnnotateCall(path=str(path), length=spec.length, context=spec.context)
         reply = await self._call_inference(call.model_dump_json().encode("utf-8"))
         result = AnnotateResult.model_validate(reply.result)
         return result.model_dump()

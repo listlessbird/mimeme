@@ -19,7 +19,9 @@ from mimeme.ingest.model import RemoteUrl
 from mimeme.source import store as source_store
 from mimeme.source.model import (
     DiscoveredItem,
+    DiscoveredMedia,
     DuplicateSourceName,
+    KnownFacts,
     RunNotFound,
     SourceItemNotFound,
     SourceNotFound,
@@ -36,7 +38,11 @@ from tests.job.conftest import PoolDb, SavepointDb
 
 
 def _item(ext: str) -> DiscoveredItem:
-    return DiscoveredItem(external_item_id=ext, media_url=f"https://a/{ext}.jpg", title=ext)
+    return DiscoveredItem(
+        external_item_id=ext,
+        title=ext,
+        media=[DiscoveredMedia(external_media_id="primary", media_url=f"https://a/{ext}.jpg")],
+    )
 
 
 class TestCrud:
@@ -127,11 +133,11 @@ class TestDiscoveryPersistence:
         async with db.write_session() as session:
             store = Store(session)
             run_id = await store.create_run(source_id=source_id, trigger=SourceRunTrigger.MANUAL)
-            pairs = await store.insert_source_items(
+            media = await store.reconcile_discovery(
                 source_id=source_id, source_run_id=run_id, items=[_item("a"), _item("b")]
             )
             job_id, refs = await store.create_ingest_job(
-                source_id=source_id, source_run_id=run_id, pairs=pairs
+                source_id=source_id, source_run_id=run_id, media=media
             )
             await store.link_run_ingest_job(source_run_id=run_id, ingest_job_id=job_id)
 
@@ -149,6 +155,41 @@ class TestDiscoveryPersistence:
             run = await session.get(SourceRun, run_id)
             assert run.ingest_job_id == job_id
 
+    async def test_changed_facts_requeue_existing_media(
+        self, db: SavepointDb, run_sync_seed
+    ) -> None:
+        source_id = await run_sync_seed(lambda s: create_ingestion_source(session=s).id)
+        first = _item("same")
+        changed = first.model_copy(
+            update={"known_facts": KnownFacts(title="same", tags=["reaction image"])}
+        )
+
+        async with db.write_session() as session:
+            store = Store(session)
+            run_id = await store.create_run(source_id=source_id, trigger=SourceRunTrigger.MANUAL)
+            assert (
+                len(
+                    await store.reconcile_discovery(
+                        source_id=source_id, source_run_id=run_id, items=[first]
+                    )
+                )
+                == 1
+            )
+            assert (
+                await store.reconcile_discovery(
+                    source_id=source_id, source_run_id=run_id, items=[first]
+                )
+                == []
+            )
+            assert (
+                len(
+                    await store.reconcile_discovery(
+                        source_id=source_id, source_run_id=run_id, items=[changed]
+                    )
+                )
+                == 1
+            )
+
     async def test_seen_ids_excludes_existing(self, db: SavepointDb, run_sync_seed) -> None:
         def seed(s: Session) -> int:
             source = create_ingestion_source(session=s)
@@ -165,7 +206,7 @@ class TestAccountingQueries:
     async def test_discovered_count_and_outcomes(self, db: SavepointDb, run_sync_seed) -> None:
         def seed(s: Session) -> tuple[int, int]:
             source = create_ingestion_source(session=s)
-            run = create_source_run(session=s, source=source)
+            run = create_source_run(session=s, source=source, discovered_count=1)
             job = create_job(session=s)
             create_source_item(
                 session=s, source=source, external_item_id="x", last_source_run_id=run.id

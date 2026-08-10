@@ -16,6 +16,7 @@ from mimeme.compute.model import (
     EmbedReplyItem,
 )
 from mimeme.config import InferenceConfig
+from mimeme.inference.model import caption_prompt
 
 
 def _to_numpy(output: object, *, kind: Literal["image", "text"]) -> np.ndarray:
@@ -113,7 +114,14 @@ class Models:
         model = cast("object", self._load_vision())
         image = prepare_rgb(Image.open(call.path))
         encoded = model.encode_image(image)  # type: ignore[attr-defined]
-        caption = model.caption(encoded, length=call.length)["caption"]  # type: ignore[attr-defined]
+        if call.context is None:
+            caption = model.caption(encoded, length=call.length)["caption"]  # type: ignore[attr-defined]
+        else:
+            caption = model.query(  # type: ignore[attr-defined]
+                encoded,
+                caption_prompt(call.context),
+                reasoning=False,
+            )["answer"]
         ocr = model.query(  # type: ignore[attr-defined]
             encoded,
             "Transcribe the text in natural reading order.",

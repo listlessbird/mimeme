@@ -54,7 +54,7 @@ class Local:
         return bool(resp.json().get("ok"))
 
     async def annotate(self, input: Input, *, progress: Progress | None = None) -> Annotation:
-        spec = AnnotateSpec(media_key=input.media_key, length=input.length)
+        spec = AnnotateSpec(media_key=input.media_key, length=input.length, context=input.context)
         job_id = _annotate_job_id(input)
         state = await self._drive(job_id, spec.model_dump(), progress)
         result = AnnotateResult.model_validate(state.result)
@@ -162,7 +162,8 @@ def _state(resp: httpx.Response) -> JobState:
 
 
 def _annotate_job_id(input: Input) -> str:
-    digest = hashlib.sha256(f"{input.media_key}|{input.length}".encode()).hexdigest()[:32]
+    context = input.context.model_dump_json() if input.context is not None else ""
+    digest = hashlib.sha256(f"{input.media_key}|{input.length}|{context}".encode()).hexdigest()[:32]
     return f"annotate-{digest}"
 
 

@@ -23,6 +23,7 @@ from mimeme.db.schema.search_index import (
 from mimeme.db.schema.source import (
     IngestionSource,
     SourceItem,
+    SourceMedia,
     SourceRun,
     SourceRunStatus,
     SourceRunTrigger,
@@ -51,6 +52,7 @@ __all__ = [
     "IngestionSource",
     "SourceRun",
     "SourceItem",
+    "SourceMedia",
     "SourceType",
     "SourceRunTrigger",
     "SourceRunStatus",

@@ -62,13 +62,30 @@ class RawResponse(_Frozen):
     error: str | None = None
 
 
+class KnownFacts(_Frozen):
+    title: str | None = None
+    description: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    categories: list[str] = Field(default_factory=list)
+    types: list[str] = Field(default_factory=list)
+    origin: str | None = None
+    year: str | None = None
+
+
+class DiscoveredMedia(_Frozen):
+    external_media_id: str
+    media_url: str
+    canonical_media_url: str | None = None
+    raw_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class DiscoveredItem(_Frozen):
     external_item_id: str
-    media_url: str
     canonical_item_url: str | None = None
-    canonical_image_url: str | None = None
     title: str | None = None
+    known_facts: KnownFacts = Field(default_factory=KnownFacts)
     raw_metadata: dict[str, Any] = Field(default_factory=dict)
+    media: list[DiscoveredMedia] = Field(min_length=1)
 
 
 class SourceItemDedup(_Frozen):
@@ -242,6 +259,7 @@ class RetryPlan(_Frozen):
 class DiscoverInput(_Frozen):
     source_id: int
     trigger: SourceRunTrigger = SourceRunTrigger.MANUAL
+    checkpoint_id: str | None = None
 
 
 class DiscoverResult(_Frozen):
@@ -251,6 +269,10 @@ class DiscoverResult(_Frozen):
     items: list[ItemRef]
     discovered: int
     queued: int
+
+
+class CleanupInput(_Frozen):
+    checkpoint_id: str
 
 
 class FinishInput(_Frozen):

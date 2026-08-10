@@ -41,7 +41,9 @@ async def run(env: Deps, input: Input) -> Result:
         data, staging = await _acquire(env, input)
         await job_ops.record_stage(env.db, input.item_id, IngestStage.PROCESSING)
         facts = await env.image_facts.inspect(staging, role="artifacts")
-        result = await _resolve(env, input, data, staging, facts)
+        async with env.db.read_session() as session:
+            context = await Store(session).inference_context(input.item_id)
+        result = await _resolve(env, input, data, staging, facts, context)
     except InvalidImage as exc:
         result = await _fail(env, input, exc)
     if staging is not None:
@@ -105,15 +107,18 @@ async def _download(http: httpx.AsyncClient, url: str) -> bytes:
         raise Retryable(f"download transport error for {url}: {exc}") from exc
 
 
-async def _resolve(env: Deps, input: Input, data: bytes | None, staging: str, facts) -> Result:
+async def _resolve(
+    env: Deps, input: Input, data: bytes | None, staging: str, facts, context
+) -> Result:
     async with env.db.read_session() as session:
         store = Store(session)
+        phash_dedup_allowed = await store.phash_dedup_allowed(input.item_id)
         sha_id = await store.find_by_sha(facts.sha256)
-        phash_id = None if sha_id is not None else await store.find_by_phash(facts.phash)
+        phash_match = None if sha_id is not None else await store.find_phash_match(facts.phash)
     if sha_id is not None:
-        return await _duplicate(env, input, sha_id, DuplicateReason.SHA256)
-    if phash_id is not None:
-        return await _duplicate(env, input, phash_id, DuplicateReason.PHASH)
+        return await _duplicate(env, input, sha_id, DuplicateReason.SHA256, context)
+    if phash_match is not None and phash_dedup_allowed:
+        return await _duplicate(env, input, phash_match.image_id, DuplicateReason.PHASH, context)
 
     payload = data if data is not None else await _read_staged(env, staging)
     media_key = rule.canonical_media_key(
@@ -137,9 +142,9 @@ async def _resolve(env: Deps, input: Input, data: bytes | None, staging: str, fa
         if sha_id is not None:
             resolved = (sha_id, DuplicateReason.SHA256)
         else:
-            phash_id = await store.find_by_phash(facts.phash)
-            if phash_id is not None:
-                resolved = (phash_id, DuplicateReason.PHASH)
+            phash_match = await store.find_phash_match(facts.phash)
+            if phash_match is not None and phash_dedup_allowed:
+                resolved = (phash_match.image_id, DuplicateReason.PHASH)
             else:
                 image_id = await store.insert_canonical(
                     facts=facts,
@@ -152,12 +157,29 @@ async def _resolve(env: Deps, input: Input, data: bytes | None, staging: str, fa
                 resolved = None
 
     if resolved is not None:
-        return await _duplicate(env, input, resolved[0], resolved[1])
-    return await _complete_new(env, input, image_id, media_key, facts.sha256)
+        return await _duplicate(env, input, resolved[0], resolved[1], context)
+    return await _complete_new(
+        env,
+        input,
+        image_id,
+        media_key,
+        facts.sha256,
+        context,
+        similar_image_id=(phash_match.image_id if phash_match is not None else None),
+        phash_distance=(phash_match.distance if phash_match is not None else None),
+    )
 
 
 async def _complete_new(
-    env: Deps, input: Input, image_id: int, media_key: str, sha256: str
+    env: Deps,
+    input: Input,
+    image_id: int,
+    media_key: str,
+    sha256: str,
+    context,
+    *,
+    similar_image_id: int | None,
+    phash_distance: int | None,
 ) -> Result:
     await _annotate_and_embed(
         env,
@@ -169,25 +191,45 @@ async def _complete_new(
         do_embedding=True,
         caption=None,
         ocr_text=None,
+        context=context,
     )
-    await job_ops.mark_item_done(env.db, input.item_id, image_id)
+    await job_ops.mark_item_done(
+        env.db,
+        input.item_id,
+        image_id,
+        similar_image_id=similar_image_id,
+        phash_distance=phash_distance,
+    )
     await job_ops.record_stage(env.db, input.item_id, IngestStage.COMPLETE)
     return Result(item_id=input.item_id, outcome="processed", image_id=image_id)
 
 
-async def _duplicate(env: Deps, input: Input, image_id: int, reason: DuplicateReason) -> Result:
+async def _duplicate(
+    env: Deps, input: Input, image_id: int, reason: DuplicateReason, context
+) -> Result:
     async with env.db.write_session() as session:
         view: ExistingImage = await Store(session).duplicate_view(image_id)
+    context_hash = rule.text_sha256(context.model_dump_json()) if context is not None else None
+    caption_context_changed = context is not None and (
+        view.caption_context_sha256 != context_hash
+        or view.caption_prompt_version != inference.CAPTION_PROMPT_VERSION
+    )
+    desired_text = rule.compose_search_text(context, view.existing_caption, view.existing_ocr_text)
+    facts_changed = context is not None and (
+        view.embed_text_sha256 != rule.text_sha256(desired_text)
+        or view.embed_recipe_version != rule.EMBED_RECIPE_VERSION
+    )
     await _annotate_and_embed(
         env,
         input,
         image_id=image_id,
         media_key=view.s3_key,
         sha256=view.sha256,
-        do_annotation=view.needs_annotation,
-        do_embedding=view.needs_embedding,
+        do_annotation=view.needs_annotation or caption_context_changed,
+        do_embedding=view.needs_embedding or facts_changed or caption_context_changed,
         caption=view.existing_caption,
         ocr_text=view.existing_ocr_text,
+        context=context,
     )
     await job_ops.record_stage(env.db, input.item_id, IngestStage.DEDUPED)
     await job_ops.mark_item_done(
@@ -213,10 +255,11 @@ async def _annotate_and_embed(
     do_embedding: bool,
     caption: str | None,
     ocr_text: str | None,
+    context,
 ) -> None:
     if do_annotation:
         await job_ops.record_stage(env.db, input.item_id, IngestStage.ANNOTATING)
-        annotation = await _annotate(env, image_id, media_key)
+        annotation = await _annotate(env, image_id, media_key, context)
         await job_ops.save_annotations(
             env.db,
             image_id=image_id,
@@ -224,12 +267,19 @@ async def _annotate_and_embed(
             caption_model=annotation.caption_model,
             ocr_text=annotation.ocr_text,
             ocr_model=annotation.ocr_model,
+            caption_context_sha256=(
+                rule.text_sha256(context.model_dump_json()) if context is not None else None
+            ),
+            caption_prompt_version=(
+                inference.CAPTION_PROMPT_VERSION if context is not None else None
+            ),
         )
         caption, ocr_text = annotation.caption, annotation.ocr_text
 
     if do_embedding:
         await job_ops.record_stage(env.db, input.item_id, IngestStage.EMBEDDING)
-        text = rule.compose_embedding_text(caption, ocr_text)
+        text = rule.compose_search_text(context, caption, ocr_text)
+        text_hash = rule.text_sha256(text)
         embedding = await _embed(env, image_id, media_key, text, sha256, input.dataset)
         if embedding is not None:
             await job_ops.save_embedding(
@@ -239,12 +289,16 @@ async def _annotate_and_embed(
                 dimension=embedding.dimension,
                 image_embedding_key=embedding.image_embedding_key,
                 text_embedding_key=embedding.text_embedding_key,
+                text_sha256=text_hash,
+                recipe_version=rule.EMBED_RECIPE_VERSION,
             )
 
 
-async def _annotate(env: Deps, image_id: int, media_key: str) -> inference.Annotation:
+async def _annotate(env: Deps, image_id: int, media_key: str, context) -> inference.Annotation:
     try:
-        return await env.inference.annotate(inference.Input(image_id=image_id, media_key=media_key))
+        return await env.inference.annotate(
+            inference.Input(image_id=image_id, media_key=media_key, context=context)
+        )
     except (inference.Unavailable, inference.Timeout) as exc:
         raise Retryable(f"annotate unavailable: {exc}") from exc
     except inference.Invalid as exc:

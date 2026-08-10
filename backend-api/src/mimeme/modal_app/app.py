@@ -114,7 +114,9 @@ class VisionService:
         )
 
     @modal.method()
-    async def annotate_image(self, media_key: str, length: str = "normal") -> dict:
+    async def annotate_image(
+        self, media_key: str, length: str = "normal", context: dict | None = None
+    ) -> dict:
         from PIL import Image
 
         from mimeme import storage
@@ -128,7 +130,16 @@ class VisionService:
         pil = _prepare_rgb(Image.open(io.BytesIO(data)))
         model = cast(Any, self._model)
         encoded = model.encode_image(pil)
-        caption = model.caption(encoded, length=length)["caption"]
+        if context is None:
+            caption = model.caption(encoded, length=length)["caption"]
+        else:
+            from mimeme.inference.model import Context, caption_prompt
+
+            caption = model.query(
+                encoded,
+                caption_prompt(Context.model_validate(context)),
+                reasoning=False,
+            )["answer"]
         ocr_text = model.query(
             encoded, "Transcribe the text in natural reading order.", reasoning=False
         )["answer"]

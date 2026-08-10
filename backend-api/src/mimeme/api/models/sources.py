@@ -13,16 +13,24 @@ from mimeme.source import SourceItemIngestState
 class MemeApiAdapterConfig(TypedDict):
     subreddits: Annotated[list[str], Field(min_length=1)]
     min_score: NotRequired[Annotated[int, Field(ge=0)]]
-    max_items_per_run: NotRequired[Annotated[int | None, Field(ge=0)]]
 
 
 class TumblrAdapterConfig(TypedDict):
     tags: NotRequired[Annotated[list[str], Field(min_length=1)]]
     min_note_count: NotRequired[Annotated[int, Field(ge=0)]]
-    max_items_per_run: NotRequired[Annotated[int | None, Field(ge=0)]]
 
 
-AdapterConfig = MemeApiAdapterConfig | TumblrAdapterConfig
+class KymAdapterConfig(TypedDict):
+    start_page: NotRequired[Annotated[int, Field(ge=1)]]
+    max_entries_per_run: NotRequired[Annotated[int, Field(ge=1)]]
+    max_photo_pages_per_entry: NotRequired[Annotated[int, Field(ge=1, le=500)]]
+    delay_seconds: NotRequired[Annotated[float, Field(ge=0)]]
+    timeout_seconds: NotRequired[Annotated[float, Field(gt=0)]]
+    retries: NotRequired[Annotated[int, Field(ge=0, le=10)]]
+    impersonate: NotRequired[str]
+
+
+AdapterConfig = MemeApiAdapterConfig | TumblrAdapterConfig | KymAdapterConfig
 
 
 class MemeApiRawMetadata(TypedDict, total=False):
@@ -36,7 +44,9 @@ class MemeApiRawMetadata(TypedDict, total=False):
 
 class CreateSourceRequest(BaseModel):
     name: str = Field(description="Unique (among live Sources) display name")
-    adapter_key: str = Field(description="Adapter the system supports, e.g. 'meme_api' or 'tumblr_tagged'")
+    adapter_key: str = Field(
+        description="Adapter the system supports: 'meme_api', 'tumblr_tagged', or 'kym'"
+    )
     adapter_config: AdapterConfig
     dataset: str | None = None
     schedule_cron: str | None = None

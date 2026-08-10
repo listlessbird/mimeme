@@ -20,9 +20,12 @@ from tests.factories import (
     create_annotation,
     create_image,
     create_ingest_url,
+    create_ingestion_source,
     create_job,
     create_processing,
     create_search_index_state,
+    create_source_item,
+    create_source_media,
 )
 from tests.ingest.conftest import FakeEnv, FakeImages, FakeInference, facts_for, image_http
 from tests.job.conftest import SavepointDb
@@ -215,3 +218,41 @@ class TestDuplicates:
         async with db.read_session() as session:
             # no new canonical image inserted for the near-duplicate sha
             assert await session.scalar(select(Image).where(Image.sha256 == facts.sha256)) is None
+
+    async def test_kym_phash_match_is_kept_and_linked(
+        self, db: SavepointDb, run_sync_seed, png_bytes: bytes
+    ) -> None:
+        facts = facts_for(png_bytes, phash="000000000000000f")
+
+        def seed(s: Session) -> tuple[str, int, int]:
+            create_search_index_state(session=s, desired_generation=0, active_generation=0)
+            source = create_ingestion_source(session=s, adapter_key="kym", adapter_config={})
+            item = create_source_item(session=s, source=source)
+            media = create_source_media(session=s, source_item=item)
+            job = create_job(session=s)
+            url = create_ingest_url(
+                session=s,
+                job=job,
+                source_id=source.id,
+                source_item_id=item.id,
+                source_media_id=media.id,
+            )
+            similar = create_image(session=s, sha256="8" * 64, phash="0000000000000000")
+            s.flush()
+            return job.id, url.id, similar.id
+
+        job_id, item_id, similar_id = await run_sync_seed(seed)
+        env = _remote_env(db, png_bytes, {rule.staging_key(item_id): facts})
+
+        result = await run(
+            env, Input(job_id=job_id, item_id=item_id, source=RemoteUrl(url=REMOTE_URL))
+        )
+
+        assert result.outcome == "processed"
+        async with db.read_session() as session:
+            image = await session.scalar(select(Image).where(Image.sha256 == facts.sha256))
+            assert image is not None
+            url = await session.get(IngestURL, item_id)
+            assert url.duplicate_reason is None
+            assert url.similar_image_id == similar_id
+            assert url.phash_distance == 4

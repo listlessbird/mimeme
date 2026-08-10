@@ -9,10 +9,44 @@ class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
+class Context(_Frozen):
+    title: str | None = None
+    description: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    categories: list[str] = Field(default_factory=list)
+    types: list[str] = Field(default_factory=list)
+    origin: str | None = None
+    year: str | None = None
+
+
+CAPTION_PROMPT_VERSION = "known-facts-v1"
+
+
+def caption_prompt(context: Context) -> str:
+    facts: list[str] = []
+    if context.title:
+        facts.append(f"Known meme: {context.title}")
+    labels = [*context.types, *context.categories, *context.tags][:10]
+    if labels:
+        facts.append(f"Known labels: {', '.join(labels)}")
+    if context.origin:
+        facts.append(f"Known origin: {context.origin}")
+    if context.year:
+        facts.append(f"Known year: {context.year}")
+    if context.description:
+        facts.append(f"Background: {context.description[:400]}")
+    return (
+        "\n".join(facts)
+        + "\nDescribe only what is visible in this image. Use the known facts only to "
+        "identify the meme or disambiguate context. Do not invent visible details."
+    )
+
+
 class Input(_Frozen):
     image_id: int
     media_key: str
     length: str = "normal"
+    context: Context | None = None
 
 
 class Annotation(_Frozen):

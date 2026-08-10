@@ -75,7 +75,7 @@ class TestParse:
         }
         items = MemeApiAdapter().parse(raw, {"subreddits": ["memes"], "min_score": 0})
         assert [i.external_item_id for i in items] == ["abc"]
-        assert items[0].media_url == "https://i.redd.it/abc.jpg"
+        assert items[0].media[0].media_url == "https://i.redd.it/abc.jpg"
 
     def test_single_meme_shape(self) -> None:
         raw = {
@@ -120,14 +120,9 @@ class TestParse:
 
 class TestTumblrBuildRequests:
     def test_uses_curated_default_tags(self) -> None:
-        requests = TumblrTaggedAdapter().build_requests(
-            {"api_key": "tumblr-key"}, rng=Random(0)
-        )
+        requests = TumblrTaggedAdapter().build_requests({"api_key": "tumblr-key"}, rng=Random(0))
 
-        tags = {
-            parse_qs(urlsplit(request.url).query)["tag"][0]
-            for request in requests
-        }
+        tags = {parse_qs(urlsplit(request.url).query)["tag"][0] for request in requests}
 
         assert tags == set(DEFAULT_TUMBLR_TAGS)
 
@@ -205,7 +200,7 @@ class TestTumblrParse:
 
         assert len(items) == 1
         assert items[0].external_item_id == "1234567890123457"
-        assert items[0].media_url.endswith("s1280.jpg")
+        assert items[0].media[0].media_url.endswith("s1280.jpg")
         assert items[0].canonical_item_url == raw["response"][1]["post_url"]
         assert items[0].title == "a reaction image"
         assert items[0].raw_metadata["note_count"] == 100
@@ -230,7 +225,7 @@ class TestTumblrParse:
 
         items = TumblrTaggedAdapter().parse(raw, {"tags": ["meme"], "api_key": "key"})
 
-        assert [(item.external_item_id, item.media_url) for item in items] == [
+        assert [(item.external_item_id, item.media[0].media_url) for item in items] == [
             ("42", "https://64.media.tumblr.com/image.png")
         ]
 

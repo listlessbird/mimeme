@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from mimeme.inference.client import Client, Progress
 from mimeme.inference.model import (
+    CAPTION_PROMPT_VERSION,
     Annotation,
     Batch,
     BatchResult,
@@ -51,6 +52,7 @@ def create(settings: Settings, http: httpx.AsyncClient) -> Client:
 
 __all__ = [
     "Annotation",
+    "CAPTION_PROMPT_VERSION",
     "Batch",
     "BatchResult",
     "Client",

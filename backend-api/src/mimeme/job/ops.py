@@ -194,10 +194,17 @@ async def mark_item_done(
     *,
     duplicate_reason=None,
     duplicate_of_image_id: int | None = None,
+    similar_image_id: int | None = None,
+    phash_distance: int | None = None,
 ) -> ItemDone:
     async with db.write_session() as session:
         return await Store(session).mark_item_done(
-            ingest_url_id, image_id, duplicate_reason, duplicate_of_image_id
+            ingest_url_id,
+            image_id,
+            duplicate_reason,
+            duplicate_of_image_id,
+            similar_image_id,
+            phash_distance,
         )
 
 
@@ -209,6 +216,8 @@ async def save_annotations(
     caption_model: str,
     ocr_text: str,
     ocr_model: str,
+    caption_context_sha256: str | None = None,
+    caption_prompt_version: str | None = None,
 ) -> bool:
     async with db.write_session() as session:
         return await Store(session).save_annotations(
@@ -217,6 +226,8 @@ async def save_annotations(
             caption_model=caption_model,
             ocr_text=ocr_text,
             ocr_model=ocr_model,
+            caption_context_sha256=caption_context_sha256,
+            caption_prompt_version=caption_prompt_version,
         )
 
 
@@ -228,6 +239,8 @@ async def save_embedding(
     dimension: int,
     image_embedding_key: str,
     text_embedding_key: str | None,
+    text_sha256: str | None = None,
+    recipe_version: str | None = None,
 ) -> EmbeddingSaved:
     async with db.write_session() as session:
         return await Store(session).save_embedding(
@@ -236,6 +249,8 @@ async def save_embedding(
             dimension=dimension,
             image_embedding_key=image_embedding_key,
             text_embedding_key=text_embedding_key,
+            text_sha256=text_sha256,
+            recipe_version=recipe_version,
         )
 
 

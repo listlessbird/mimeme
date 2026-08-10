@@ -3,6 +3,7 @@ from __future__ import annotations
 from mimeme.db.schema import DuplicateReason, ProcessingStatus, SourceRunStatus
 from mimeme.source.model import (
     DiscoveredItem,
+    DiscoveredMedia,
     UrlOutcome,
     dedup_source_items,
     derive_run_accounting,
@@ -10,7 +11,10 @@ from mimeme.source.model import (
 
 
 def _item(ext: str) -> DiscoveredItem:
-    return DiscoveredItem(external_item_id=ext, media_url=f"https://a/{ext}.jpg")
+    return DiscoveredItem(
+        external_item_id=ext,
+        media=[DiscoveredMedia(external_media_id="primary", media_url=f"https://a/{ext}.jpg")],
+    )
 
 
 class TestDedup:

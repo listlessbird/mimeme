@@ -25,7 +25,7 @@ from mimeme.db.schema.base import Base
 
 class SourceType(StrEnum):
     API = "api"
-    # `html` (scraping) is reserved for a future Adapter and intentionally not wired.
+    # Kept as a legacy broad category; transport details belong to adapter_key.
 
 
 class SourceRunTrigger(StrEnum):
@@ -107,6 +107,8 @@ class SourceRun(Base):
     __tablename__ = "source_runs"
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    discovery_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    discovered_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     source_id: Mapped[int] = mapped_column(ForeignKey("ingestion_sources.id"), nullable=False)
     trigger_mode: Mapped[SourceRunTrigger] = mapped_column(SAEnum(SourceRunTrigger), nullable=False)
     status: Mapped[SourceRunStatus] = mapped_column(
@@ -135,6 +137,12 @@ class SourceRun(Base):
             text("created_at DESC"),
         ),
         Index("ix_source_runs_status", "status"),
+        Index(
+            "uq_source_runs_discovery_key",
+            "discovery_key",
+            unique=True,
+            postgresql_where=text("discovery_key IS NOT NULL"),
+        ),
     )
 
 
@@ -152,8 +160,9 @@ class SourceItem(Base):
     )
     external_item_id: Mapped[str] = mapped_column(Text, nullable=False)
     canonical_item_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    canonical_image_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    known_facts: Mapped[dict[str, Any]] = mapped_column(JSONB, default=dict, nullable=False)
+    known_facts_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     raw_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     first_seen_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
@@ -163,8 +172,41 @@ class SourceItem(Base):
     )
 
     source: Mapped[IngestionSource] = relationship(back_populates="items")
+    media: Mapped[list[SourceMedia]] = relationship(
+        back_populates="source_item", cascade="all, delete-orphan"
+    )
 
     __table_args__ = (
         UniqueConstraint("source_id", "external_item_id", name="uq_source_items_source_external"),
         Index("ix_source_items_source_id", "source_id"),
+    )
+
+
+class SourceMedia(Base):
+    """One image exposed by a provider item such as a KYM entry or Tumblr post."""
+
+    __tablename__ = "source_media"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source_item_id: Mapped[int] = mapped_column(
+        ForeignKey("source_items.id", ondelete="CASCADE"), nullable=False
+    )
+    external_media_id: Mapped[str] = mapped_column(Text, nullable=False)
+    media_url: Mapped[str] = mapped_column(Text, nullable=False)
+    canonical_media_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    raw_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    first_seen_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    last_seen_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    source_item: Mapped[SourceItem] = relationship(back_populates="media")
+
+    __table_args__ = (
+        UniqueConstraint(
+            "source_item_id", "external_media_id", name="uq_source_media_item_external"
+        ),
+        Index("ix_source_media_source_item_id", "source_item_id"),
     )

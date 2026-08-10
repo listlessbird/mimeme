@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import re
+from collections.abc import AsyncIterator
 from random import Random
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 from urllib.parse import urlencode, urlparse
 
 from pydantic import BaseModel, Field
 
-from mimeme.source.model import DiscoveredItem, FetchRequest
+from mimeme.source.model import DiscoveredItem, DiscoveredMedia, FetchRequest, KnownFacts
 
 MEME_API_URL = "https://meme-api.com/gimme"
 MAX_PER_CALL = 50
@@ -52,9 +53,33 @@ class UnknownAdapterKey(Exception):
 class Adapter(Protocol):
     key: str
 
-    def build_requests(self, config: dict[str, Any], *, rng: Random) -> list[FetchRequest]: ...
+    def discover(
+        self, config: dict[str, Any], *, fetcher: Fetcher, rng: Random
+    ) -> AsyncIterator[DiscoveredItem]: ...
 
-    def parse(self, raw: dict[str, Any], config: dict[str, Any]) -> list[DiscoveredItem]: ...
+
+class Fetcher(Protocol):
+    async def json(self, request: FetchRequest) -> dict[str, Any] | None: ...
+
+    async def html(self, url: str) -> bytes: ...
+
+
+class JsonAdapter:
+    def build_requests(self, config: dict[str, Any], *, rng: Random) -> list[FetchRequest]:
+        raise NotImplementedError
+
+    def parse(self, raw: dict[str, Any], config: dict[str, Any]) -> list[DiscoveredItem]:
+        raise NotImplementedError
+
+    async def discover(
+        self, config: dict[str, Any], *, fetcher: Fetcher, rng: Random
+    ) -> AsyncIterator[DiscoveredItem]:
+        for request in self.build_requests(config, rng=rng):
+            raw = await fetcher.json(request)
+            if raw is None:
+                continue
+            for item in self.parse(raw, config):
+                yield item
 
 
 class MemeApiConfig(BaseModel):
@@ -89,7 +114,7 @@ def is_still_image_url(url: str | None) -> bool:
     return not any(path.endswith(ext) for ext in _BLOCKED_MEDIA_EXT)
 
 
-class MemeApiAdapter:
+class MemeApiAdapter(JsonAdapter):
     key = "meme_api"
 
     def build_requests(self, config: dict[str, Any], *, rng: Random) -> list[FetchRequest]:
@@ -145,10 +170,17 @@ class MemeApiAdapter:
             items.append(
                 DiscoveredItem(
                     external_item_id=external_item_id,
-                    media_url=media_url,
                     canonical_item_url=meme.get("postLink"),
                     title=meme.get("title"),
+                    known_facts=KnownFacts(title=meme.get("title")),
                     raw_metadata={key: meme.get(key) for key in _RAW_METADATA_KEYS},
+                    media=[
+                        DiscoveredMedia(
+                            external_media_id="primary",
+                            media_url=media_url,
+                            canonical_media_url=media_url,
+                        )
+                    ],
                 )
             )
 
@@ -194,7 +226,7 @@ def _tumblr_media_urls(post: dict[str, Any]) -> list[tuple[int, str]]:
     return candidates
 
 
-class TumblrTaggedAdapter:
+class TumblrTaggedAdapter(JsonAdapter):
     key = "tumblr_tagged"
 
     def build_requests(self, config: dict[str, Any], *, rng: Random) -> list[FetchRequest]:
@@ -262,12 +294,22 @@ class TumblrTaggedAdapter:
             items.append(
                 DiscoveredItem(
                     external_item_id=post_id,
-                    media_url=media_url,
                     canonical_item_url=post.get("post_url"),
                     title=title,
+                    known_facts=KnownFacts(
+                        title=title,
+                        tags=[tag for tag in post.get("tags", []) if isinstance(tag, str)],
+                    ),
                     raw_metadata={
                         key: post.get(key) for key in _TUMBLR_RAW_METADATA_KEYS if key in post
                     },
+                    media=[
+                        DiscoveredMedia(
+                            external_media_id="primary",
+                            media_url=media_url,
+                            canonical_media_url=media_url,
+                        )
+                    ],
                 )
             )
 
@@ -275,13 +317,21 @@ class TumblrTaggedAdapter:
 
 
 ADAPTERS: dict[str, Adapter] = {
-    adapter.key: adapter for adapter in (MemeApiAdapter(), TumblrTaggedAdapter())
+    adapter.key: adapter
+    for adapter in (
+        cast(Adapter, MemeApiAdapter()),
+        cast(Adapter, TumblrTaggedAdapter()),
+    )
 }
 
-KNOWN_ADAPTER_KEYS = frozenset(ADAPTERS)
+KNOWN_ADAPTER_KEYS = frozenset({*ADAPTERS, "kym"})
 
 
 def get_adapter(key: str) -> Adapter:
+    if key == "kym":
+        from mimeme.source.kym import KymAdapter
+
+        return cast(Adapter, KymAdapter())
     try:
         return ADAPTERS[key]
     except KeyError:

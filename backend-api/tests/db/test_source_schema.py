@@ -20,6 +20,7 @@ from tests.factories import (
     create_ingestion_source,
     create_job,
     create_source_item,
+    create_source_media,
     create_source_run,
 )
 
@@ -103,6 +104,17 @@ def test_source_item_unique_per_source_and_external_id(db_session: Session) -> N
     db_session.rollback()
 
 
+def test_source_item_owns_many_unique_media(db_session: Session) -> None:
+    source = create_ingestion_source(session=db_session)
+    item = create_source_item(session=db_session, source=source)
+    first = create_source_media(session=db_session, source_item=item, external_media_id="photo-1")
+    second = create_source_media(session=db_session, source_item=item, external_media_id="photo-2")
+    db_session.flush()
+    db_session.refresh(item)
+
+    assert [media.id for media in item.media] == [first.id, second.id]
+
+
 def test_same_external_id_allowed_across_sources(db_session: Session) -> None:
     source_a = create_ingestion_source(session=db_session)
     source_b = create_ingestion_source(session=db_session)
@@ -131,6 +143,7 @@ def test_ingest_url_carries_source_provenance(db_session: Session) -> None:
     assert url.source_id == source.id
     assert url.source_run_id == run.id
     assert url.source_item_id == item.id
+    assert url.source_media_id is None
 
 
 def test_manual_upload_leaves_source_provenance_null(db_session: Session) -> None:

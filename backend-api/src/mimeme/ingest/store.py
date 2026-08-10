@@ -7,10 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mimeme.db.schema import (
     Annotation,
     Image,
+    IngestionSource,
     IngestURL,
     Processing,
     ProcessingStatus,
+    SourceItem,
 )
+from mimeme.inference.model import Context
 from mimeme.ingest.facts import Facts
 from mimeme.ingest.rule import DEDUP_LOCK_KEY
 
@@ -30,6 +33,17 @@ class ExistingImage(BaseModel):
     needs_embedding: bool
     existing_caption: str | None
     existing_ocr_text: str | None
+    embed_text_sha256: str | None
+    embed_recipe_version: str | None
+    caption_context_sha256: str | None
+    caption_prompt_version: str | None
+
+
+class PHashMatch(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    image_id: int
+    distance: int
 
 
 def _phash_to_uint64(hex_str: str | None) -> int | None:
@@ -41,7 +55,7 @@ def _phash_to_uint64(hex_str: str | None) -> int | None:
         return None
 
 
-def _nearest(new_phash: int, candidates: list[tuple[int, int]]) -> int | None:
+def _nearest(new_phash: int, candidates: list[tuple[int, int]]) -> PHashMatch | None:
     nearest_id: int | None = None
     nearest_distance = _PHASH_THRESHOLD + 1
     for image_id, stored_phash in candidates:
@@ -49,7 +63,9 @@ def _nearest(new_phash: int, candidates: list[tuple[int, int]]) -> int | None:
         if distance < nearest_distance:
             nearest_id = image_id
             nearest_distance = distance
-    return nearest_id if nearest_distance <= _PHASH_THRESHOLD else None
+    if nearest_id is None or nearest_distance > _PHASH_THRESHOLD:
+        return None
+    return PHashMatch(image_id=nearest_id, distance=nearest_distance)
 
 
 class Store:
@@ -59,10 +75,33 @@ class Store:
     async def acquire_dedup_lock(self) -> None:
         await self._session.execute(select(func.pg_advisory_xact_lock(DEDUP_LOCK_KEY)))
 
+    async def inference_context(self, ingest_url_id: int) -> Context | None:
+        raw = await self._session.scalar(
+            select(SourceItem.known_facts)
+            .join(IngestURL, IngestURL.source_item_id == SourceItem.id)
+            .where(IngestURL.id == ingest_url_id)
+        )
+        if not raw:
+            return None
+        context = Context.model_validate(raw)
+        return context if any(context.model_dump().values()) else None
+
+    async def phash_dedup_allowed(self, ingest_url_id: int) -> bool:
+        adapter_key = await self._session.scalar(
+            select(IngestionSource.adapter_key)
+            .join(IngestURL, IngestURL.source_id == IngestionSource.id)
+            .where(IngestURL.id == ingest_url_id)
+        )
+        return adapter_key != "kym"
+
     async def find_by_sha(self, sha256: str) -> int | None:
         return await self._session.scalar(select(Image.id).where(Image.sha256 == sha256))
 
     async def find_by_phash(self, phash: str | None) -> int | None:
+        match = await self.find_phash_match(phash)
+        return match.image_id if match is not None else None
+
+    async def find_phash_match(self, phash: str | None) -> PHashMatch | None:
         value = _phash_to_uint64(phash)
         if value is None:
             return None
@@ -138,6 +177,10 @@ class Store:
             needs_embedding=needs_embedding,
             existing_caption=annotation.caption_text if annotation else None,
             existing_ocr_text=annotation.ocr_text if annotation else None,
+            embed_text_sha256=proc.embed_text_sha256,
+            embed_recipe_version=proc.embed_recipe_version,
+            caption_context_sha256=(annotation.caption_context_sha256 if annotation else None),
+            caption_prompt_version=(annotation.caption_prompt_version if annotation else None),
         )
 
     async def sweep_and_count(self, job_id: str, straggler_error: str) -> tuple[int, int, int]:

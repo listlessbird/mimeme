@@ -3,7 +3,13 @@ from __future__ import annotations
 from temporalio import activity
 
 from mimeme.source import rule, sync
-from mimeme.source.model import DiscoverInput, DiscoverResult, FinishInput, FinishResult
+from mimeme.source.model import (
+    CleanupInput,
+    DiscoverInput,
+    DiscoverResult,
+    FinishInput,
+    FinishResult,
+)
 
 
 class SourceActivities:
@@ -18,6 +24,10 @@ class SourceActivities:
             heartbeat=lambda message: activity.heartbeat(message),
             cancelled=activity.is_cancelled,
         )
+
+    @activity.defn(name=rule.CHECKPOINT_CLEANUP_ACTIVITY)
+    async def cleanup_checkpoint(self, input: CleanupInput) -> None:
+        await sync.cleanup_checkpoint(self._env, input)
 
     @activity.defn(name=rule.FINISH_ACTIVITY)
     async def finish(self, input: FinishInput) -> FinishResult:

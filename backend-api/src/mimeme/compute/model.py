@@ -5,6 +5,7 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from mimeme.index.model import BuildSpec, SealSpec
+from mimeme.inference.model import Context
 
 Role = Literal["image", "inference", "search", "index"]
 
@@ -36,6 +37,7 @@ class AnnotateCall(_Frozen):
     op: Literal["annotate"] = "annotate"
     path: str
     length: str = "normal"
+    context: Context | None = None
 
 
 class AnnotateReply(_Frozen):
@@ -92,6 +94,7 @@ class AnnotateSpec(_Frozen):
     op: Literal["annotate"] = "annotate"
     media_key: str
     length: str = "normal"
+    context: Context | None = None
 
 
 class EmbedSpecItem(_Frozen):

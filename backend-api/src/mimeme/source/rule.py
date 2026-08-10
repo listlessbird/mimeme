@@ -5,6 +5,7 @@ TASK_QUEUE = "mimeme-v2"
 SYNC_WORKFLOW = "mimeme.source.sync.v2"
 RETRY_WORKFLOW = "mimeme.source.retry.v2"
 DISCOVER_ACTIVITY = "mimeme.source.discover.v2"
+CHECKPOINT_CLEANUP_ACTIVITY = "mimeme.source.checkpoint-cleanup.v2"
 FINISH_ACTIVITY = "mimeme.source.finish.v2"
 
 SCHEDULE_PREFIX = "source-sync-v2-"

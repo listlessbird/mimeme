@@ -17,6 +17,7 @@ from mimeme.ingest.model import WorkflowInput as IngestWorkflowInput
 from mimeme.job.model import IngestResult
 from mimeme.source import rule
 from mimeme.source.model import (
+    CleanupInput,
     DiscoverInput,
     DiscoverResult,
     FinishInput,
@@ -29,6 +30,11 @@ from mimeme.source.workflow import SourceRetryWorkflow, SourceSyncWorkflow
 # Mutated by an *activity* (runs in the worker process, not the workflow
 # sandbox), so the test can observe which child workflow ids actually ran.
 _CHILD_IDS: list[str] = []
+
+
+@activity.defn(name=rule.CHECKPOINT_CLEANUP_ACTIVITY)
+async def cleanup_checkpoint(input: CleanupInput) -> None:
+    del input
 
 
 @activity.defn(name="test.record_child")
@@ -95,7 +101,7 @@ async def _run(workflows, activities, run_call):
             env.client,
             task_queue=rule.TASK_QUEUE,
             workflows=workflows,
-            activities=activities,
+            activities=[*activities, cleanup_checkpoint],
         ):
             return await run_call(env)
 

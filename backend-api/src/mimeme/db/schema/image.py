@@ -83,6 +83,8 @@ class Processing(Base):
     embed_updated_at: Mapped[datetime.datetime | None] = mapped_column(DateTime(), nullable=True)
     embed_s3_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     embed_text_present: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    embed_text_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    embed_recipe_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
     embed_shard: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     embed_row: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
@@ -98,6 +100,8 @@ class Annotation(Base):
     ocr_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     caption_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     tags: Mapped[str | None] = mapped_column(Text, nullable=True)
+    caption_context_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    caption_prompt_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     image: Mapped[Image] = relationship(back_populates="annotation")
 

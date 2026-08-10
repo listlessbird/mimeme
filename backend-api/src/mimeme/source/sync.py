@@ -10,14 +10,16 @@ from mimeme.db import Db
 from mimeme.db.schema import SourceRunStatus
 from mimeme.source import rule
 from mimeme.source.adapter import get_adapter
+from mimeme.source.fetch import Fetcher
+from mimeme.source.fetch import cleanup_checkpoint as cleanup_fetch_checkpoint
 from mimeme.source.http import Http
 from mimeme.source.model import (
+    CleanupInput,
     DiscoveredItem,
     DiscoverInput,
     DiscoverResult,
     FinishInput,
     FinishResult,
-    dedup_source_items,
     derive_run_accounting,
 )
 from mimeme.source.store import Store
@@ -45,6 +47,24 @@ async def discover(
 
     async with env.db.read_session() as session:
         config = await Store(session).live_source_config(input.source_id)
+        replay = (
+            await Store(session).replay_discovery(
+                source_id=input.source_id, discovery_key=input.checkpoint_id
+            )
+            if input.checkpoint_id is not None
+            else None
+        )
+
+    if replay is not None:
+        run_id, ingest_job_id, items, discovered_count = replay
+        return DiscoverResult(
+            source_run_id=run_id,
+            ingest_job_id=ingest_job_id,
+            dataset=config.dataset,
+            items=items,
+            discovered=discovered_count,
+            queued=len(items),
+        )
 
     adapter = get_adapter(config.adapter_key)
     adapter_config = {**config.adapter_config, "max_items_per_run": config.max_items_per_run}
@@ -53,44 +73,51 @@ async def discover(
         if api_key is None or not api_key.get_secret_value():
             raise RuntimeError("TUMBLR_API_KEY is required for tumblr_tagged sources")
         adapter_config["api_key"] = api_key.get_secret_value()
-    requests = adapter.build_requests(adapter_config, rng=Random())
-
-    raws = []
-    for index, request in enumerate(requests):
-        if cancelled is not None and cancelled():
-            raise asyncio.CancelledError
-        response = await env.source_http.fetch(request)
-        if response.success and response.raw is not None:
-            raws.append(response.raw)
-        if heartbeat is not None:
-            heartbeat(f"fetched:{index + 1}/{len(requests)}")
-
     discovered_items: list[DiscoveredItem] = []
-    for raw in raws:
-        discovered_items.extend(adapter.parse(raw, adapter_config))
+    fetcher_options = {}
+    if config.adapter_key == "kym":
+        fetcher_options = {
+            key: adapter_config[key]
+            for key in ("delay_seconds", "timeout_seconds", "retries", "impersonate")
+            if key in adapter_config
+        }
+    fetcher = Fetcher(
+        env.source_http,
+        artifacts=getattr(env, "artifacts", None),
+        checkpoint_id=input.checkpoint_id,
+        **fetcher_options,
+    )
+    async with fetcher:
+        async for item in adapter.discover(adapter_config, fetcher=fetcher, rng=Random()):
+            if cancelled is not None and cancelled():
+                raise asyncio.CancelledError
+            discovered_items.append(item)
+            if heartbeat is not None:
+                heartbeat(f"discovered:{len(discovered_items)}")
 
     if heartbeat is not None:
         heartbeat("persisting")
 
     async with env.db.write_session() as session:
         store = Store(session)
-        run_id = await store.create_run(source_id=input.source_id, trigger=input.trigger)
-        seen = await store.seen_external_ids(input.source_id)
-        dedup = dedup_source_items(discovered_items, seen_ids=seen)
-        await store.touch_seen(
+        run_id = await store.create_run(
+            source_id=input.source_id,
+            trigger=input.trigger,
+            discovery_key=input.checkpoint_id,
+        )
+        media = await store.reconcile_discovery(
             source_id=input.source_id,
             source_run_id=run_id,
-            external_ids=[item.external_item_id for item in dedup.already_seen],
-        )
-        pairs = await store.insert_source_items(
-            source_id=input.source_id, source_run_id=run_id, items=dedup.new
+            items=discovered_items,
         )
 
         ingest_job_id: str | None = None
         items = []
-        if pairs:
+        if media:
             ingest_job_id, items = await store.create_ingest_job(
-                source_id=input.source_id, source_run_id=run_id, pairs=pairs
+                source_id=input.source_id,
+                source_run_id=run_id,
+                media=media,
             )
             await store.link_run_ingest_job(source_run_id=run_id, ingest_job_id=ingest_job_id)
 
@@ -99,9 +126,15 @@ async def discover(
         ingest_job_id=ingest_job_id,
         dataset=config.dataset,
         items=items,
-        discovered=len(dedup.new) + len(dedup.already_seen),
-        queued=len(dedup.new),
+        discovered=len(discovered_items),
+        queued=len(media),
     )
+
+
+async def cleanup_checkpoint(env: Deps, input: CleanupInput) -> None:
+    artifacts = getattr(env, "artifacts", None)
+    if artifacts is not None:
+        await cleanup_fetch_checkpoint(artifacts, input.checkpoint_id)
 
 
 async def finish(env: Deps, input: FinishInput) -> FinishResult:

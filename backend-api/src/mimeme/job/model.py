@@ -236,6 +236,8 @@ class CompleteItemCommand(BaseModel, frozen=True, extra="forbid"):
     image_id: int
     duplicate_reason: DuplicateReason | None = None
     duplicate_of_image_id: int | None = None
+    similar_image_id: int | None = None
+    phash_distance: int | None = None
 
 
 class SaveInferenceCommand(BaseModel, frozen=True, extra="forbid"):

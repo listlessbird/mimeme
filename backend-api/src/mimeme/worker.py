@@ -34,6 +34,7 @@ def registrations(
             ingest.item,
             ingest.finish,
             source.discover,
+            source.cleanup_checkpoint,
             source.finish,
             index.prepare,
             index.seal,

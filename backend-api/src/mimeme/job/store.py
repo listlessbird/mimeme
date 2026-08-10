@@ -280,6 +280,8 @@ class Store:
         image_id: int,
         duplicate_reason: DuplicateReason | None,
         duplicate_of_image_id: int | None,
+        similar_image_id: int | None = None,
+        phash_distance: int | None = None,
     ) -> ItemDone:
         url = await self._session.get(IngestURL, ingest_url_id)
         if url is None:
@@ -292,6 +294,8 @@ class Store:
             url.image_id = image_id
             url.duplicate_reason = duplicate_reason
             url.duplicate_of_image_id = duplicate_of_image_id
+            url.similar_image_id = similar_image_id
+            url.phash_distance = phash_distance
         else:
             url.status = ProcessingStatus.FAILED
             url.error_message = f"Image {image_id} not found while marking ingest URL done"
@@ -306,6 +310,8 @@ class Store:
         caption_model: str,
         ocr_text: str,
         ocr_model: str,
+        caption_context_sha256: str | None = None,
+        caption_prompt_version: str | None = None,
     ) -> bool:
         ann = (
             await self._session.scalars(select(Annotation).where(Annotation.image_id == image_id))
@@ -318,6 +324,8 @@ class Store:
             self._session.add(ann)
         ann.caption_text = caption
         ann.ocr_text = ocr_text
+        ann.caption_context_sha256 = caption_context_sha256
+        ann.caption_prompt_version = caption_prompt_version
         if proc is not None:
             proc.caption_status = ProcessingStatus.DONE
             proc.caption_model = caption_model
@@ -334,6 +342,8 @@ class Store:
         dimension: int,
         image_embedding_key: str,
         text_embedding_key: str | None,
+        text_sha256: str | None = None,
+        recipe_version: str | None = None,
     ) -> EmbeddingSaved:
         proc = (
             await self._session.scalars(select(Processing).where(Processing.image_id == image_id))
@@ -346,13 +356,22 @@ class Store:
             proc.embed_dim,
             proc.embed_s3_key,
             proc.embed_text_present,
+            proc.embed_text_sha256,
+            proc.embed_recipe_version,
         )
-        superseded = proc.embed_model != model or proc.embed_s3_key != image_embedding_key
+        superseded = (
+            proc.embed_model != model
+            or proc.embed_s3_key != image_embedding_key
+            or proc.embed_text_sha256 != text_sha256
+            or proc.embed_recipe_version != recipe_version
+        )
         proc.embed_status = ProcessingStatus.DONE
         proc.embed_model = model
         proc.embed_dim = dimension
         proc.embed_s3_key = image_embedding_key
         proc.embed_text_present = bool(text_embedding_key)
+        proc.embed_text_sha256 = text_sha256
+        proc.embed_recipe_version = recipe_version
         if superseded:
             proc.embed_shard = None
             proc.embed_row = None
@@ -362,6 +381,8 @@ class Store:
             proc.embed_dim,
             proc.embed_s3_key,
             proc.embed_text_present,
+            proc.embed_text_sha256,
+            proc.embed_recipe_version,
         )
         if after == before:
             await self._session.flush()

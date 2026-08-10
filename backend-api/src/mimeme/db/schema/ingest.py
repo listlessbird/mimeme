@@ -14,6 +14,7 @@ from mimeme.db.schema.image import ProcessingStatus
 if TYPE_CHECKING:
     from mimeme.db.schema.image import Image
     from mimeme.db.schema.job import Job
+    from mimeme.db.schema.source import SourceMedia
 
 
 class DuplicateReason(StrEnum):
@@ -91,6 +92,10 @@ class IngestURL(Base):
     duplicate_of_image_id: Mapped[int | None] = mapped_column(
         ForeignKey("images.id", ondelete="SET NULL"), nullable=True, index=True
     )
+    similar_image_id: Mapped[int | None] = mapped_column(
+        ForeignKey("images.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    phash_distance: Mapped[int | None] = mapped_column(nullable=True)
 
     # Provenance: which Source / run / item produced this URL. Manual uploads
     # leave all three null.
@@ -103,3 +108,8 @@ class IngestURL(Base):
     source_item_id: Mapped[int | None] = mapped_column(
         ForeignKey("source_items.id", ondelete="SET NULL"), nullable=True
     )
+    source_media_id: Mapped[int | None] = mapped_column(
+        ForeignKey("source_media.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+
+    source_media: Mapped[SourceMedia | None] = relationship()

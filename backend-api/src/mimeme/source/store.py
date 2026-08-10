@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
+import json
 from collections.abc import Sequence
 from typing import Any
 
@@ -16,6 +18,7 @@ from mimeme.db.schema import (
     JobType,
     ProcessingStatus,
     SourceItem,
+    SourceMedia,
     SourceRun,
     SourceRunStatus,
     SourceRunTrigger,
@@ -25,6 +28,7 @@ from mimeme.job import rule as job_rule
 from mimeme.media import Urls
 from mimeme.source.model import (
     DiscoveredItem,
+    DiscoveredMedia,
     DuplicateSourceName,
     RunItemsPage,
     RunItemView,
@@ -171,9 +175,16 @@ class Store:
             for source in sources
         ]
 
-    async def create_run(self, *, source_id: int, trigger: SourceRunTrigger) -> int:
+    async def create_run(
+        self,
+        *,
+        source_id: int,
+        trigger: SourceRunTrigger,
+        discovery_key: str | None = None,
+    ) -> int:
         run = SourceRun(
             source_id=source_id,
+            discovery_key=discovery_key,
             trigger_mode=trigger,
             status=SourceRunStatus.RUNNING,
             started_at=datetime.datetime.now(datetime.UTC),
@@ -181,6 +192,41 @@ class Store:
         self._session.add(run)
         await self._session.flush()
         return run.id
+
+    async def replay_discovery(
+        self, *, source_id: int, discovery_key: str
+    ) -> tuple[int, str | None, list[ItemRef], int] | None:
+        run = await self._session.scalar(
+            select(SourceRun).where(
+                SourceRun.source_id == source_id,
+                SourceRun.discovery_key == discovery_key,
+            )
+        )
+        if run is None:
+            return None
+        urls = (
+            (
+                await self._session.execute(
+                    select(IngestURL)
+                    .where(IngestURL.source_run_id == run.id)
+                    .order_by(IngestURL.id.asc())
+                )
+            )
+            .scalars()
+            .all()
+        )
+        refs = [
+            ItemRef(
+                item_id=url.id,
+                source=restore(
+                    kind=url.input_kind,
+                    url=url.url,
+                    artifact_key=url.artifact_key,
+                ),
+            )
+            for url in urls
+        ]
+        return run.id, run.ingest_job_id, refs, run.discovered_count
 
     async def get_run(self, source_run_id: int) -> SourceRun | None:
         return await self._session.get(SourceRun, source_run_id)
@@ -212,36 +258,85 @@ class Store:
             )
         )
 
-    async def insert_source_items(
+    async def reconcile_discovery(
         self, *, source_id: int, source_run_id: int, items: list[DiscoveredItem]
-    ) -> list[tuple[DiscoveredItem, int]]:
+    ) -> list[tuple[DiscoveredMedia, int, int]]:
         now = datetime.datetime.now(datetime.UTC)
-        pairs: list[tuple[DiscoveredItem, int]] = []
+        queued: list[tuple[DiscoveredMedia, int, int]] = []
         for item in items:
-            row = SourceItem(
-                source_id=source_id,
-                last_source_run_id=source_run_id,
-                external_item_id=item.external_item_id,
-                canonical_item_url=item.canonical_item_url,
-                canonical_image_url=item.canonical_image_url,
-                title=item.title,
-                raw_metadata=item.raw_metadata,
-                first_seen_at=now,
-                last_seen_at=now,
-            )
-            self._session.add(row)
+            row = (
+                await self._session.scalars(
+                    select(SourceItem).where(
+                        SourceItem.source_id == source_id,
+                        SourceItem.external_item_id == item.external_item_id,
+                    )
+                )
+            ).one_or_none()
+            facts = item.known_facts.model_dump(mode="json")
+            facts_hash = hashlib.sha256(
+                json.dumps(facts, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
+            facts_changed = row is not None and row.known_facts_sha256 != facts_hash
+            if row is None:
+                row = SourceItem(
+                    source_id=source_id,
+                    external_item_id=item.external_item_id,
+                    first_seen_at=now,
+                )
+                self._session.add(row)
+            row.last_source_run_id = source_run_id
+            row.canonical_item_url = item.canonical_item_url
+            row.title = item.title
+            row.known_facts = facts
+            row.known_facts_sha256 = facts_hash
+            row.raw_metadata = item.raw_metadata
+            row.last_seen_at = now
             await self._session.flush()
-            pairs.append((item, row.id))
-        return pairs
+
+            existing = {
+                media.external_media_id: media
+                for media in (
+                    await self._session.scalars(
+                        select(SourceMedia).where(SourceMedia.source_item_id == row.id)
+                    )
+                ).all()
+            }
+            for discovered_media in item.media:
+                media = existing.get(discovered_media.external_media_id)
+                is_new = media is None
+                if media is None:
+                    media = SourceMedia(
+                        source_item_id=row.id,
+                        external_media_id=discovered_media.external_media_id,
+                        media_url=discovered_media.media_url,
+                        first_seen_at=now,
+                    )
+                    self._session.add(media)
+                media.media_url = discovered_media.media_url
+                media.canonical_media_url = discovered_media.canonical_media_url
+                media.raw_metadata = discovered_media.raw_metadata
+                media.last_seen_at = now
+                await self._session.flush()
+                if is_new or facts_changed:
+                    queued.append((discovered_media, row.id, media.id))
+        run = await self._session.get(SourceRun, source_run_id)
+        if run is not None:
+            run.discovered_count = len(items)
+            await self._session.flush()
+        return queued
 
     async def create_ingest_job(
-        self, *, source_id: int, source_run_id: int, pairs: list[tuple[DiscoveredItem, int]]
+        self,
+        *,
+        source_id: int,
+        source_run_id: int,
+        media: list[tuple[DiscoveredMedia, int, int]],
     ) -> tuple[str, list[ItemRef]]:
         job_id, _ = job_rule.mint_ingest()
         self._session.add(Job(id=job_id, type=JobType.INGEST))
         await self._session.flush()
         refs: list[ItemRef] = []
-        for item, source_item_id in pairs:
+        for item, source_item_id, source_media_id in media:
             url = IngestURL(
                 job_id=job_id,
                 input_kind="remote_image_url",
@@ -249,6 +344,7 @@ class Store:
                 source_id=source_id,
                 source_run_id=source_run_id,
                 source_item_id=source_item_id,
+                source_media_id=source_media_id,
             )
             self._session.add(url)
             await self._session.flush()
@@ -264,9 +360,7 @@ class Store:
     async def discovered_count(self, source_run_id: int) -> int:
         return (
             await self._session.scalar(
-                select(func.count(SourceItem.id)).where(
-                    SourceItem.last_source_run_id == source_run_id
-                )
+                select(SourceRun.discovered_count).where(SourceRun.id == source_run_id)
             )
             or 0
         )
@@ -379,6 +473,8 @@ class Store:
             url.image_id = None
             url.duplicate_reason = None
             url.duplicate_of_image_id = None
+            url.similar_image_id = None
+            url.phash_distance = None
             if url.source_run_id is not None and url.source_run_id not in run_ids:
                 run_ids.append(url.source_run_id)
             refs.append(
@@ -406,20 +502,26 @@ class Store:
     ) -> SourceItemsPage:
         await self.live_source_or_raise(source_id)
 
+        latest_attempt_id = (
+            select(func.max(IngestURL.id))
+            .where(IngestURL.source_item_id == SourceItem.id)
+            .correlate(SourceItem)
+            .scalar_subquery()
+        )
         predicates = [SourceItem.source_id == source_id]
         if status is not None:
             predicates.append(_ingest_state_predicate(status))
 
         total = await self._session.scalar(
             select(func.count(SourceItem.id))
-            .outerjoin(IngestURL, IngestURL.source_item_id == SourceItem.id)
+            .outerjoin(IngestURL, IngestURL.id == latest_attempt_id)
             .where(*predicates)
         )
 
         rows = (
             await self._session.execute(
                 select(SourceItem, IngestURL, Image.s3_key)
-                .outerjoin(IngestURL, IngestURL.source_item_id == SourceItem.id)
+                .outerjoin(IngestURL, IngestURL.id == latest_attempt_id)
                 .outerjoin(
                     Image,
                     Image.id == func.coalesce(IngestURL.duplicate_of_image_id, IngestURL.image_id),
@@ -600,17 +702,6 @@ class Store:
         if not run_ids:
             return []
 
-        discovered_rows = (
-            await self._session.execute(
-                select(SourceItem.last_source_run_id, func.count(SourceItem.id))
-                .where(SourceItem.last_source_run_id.in_(run_ids))
-                .group_by(SourceItem.last_source_run_id)
-            )
-        ).all()
-        discovered_by_run = {
-            run_id: count for run_id, count in discovered_rows if run_id is not None
-        }
-
         outcome_rows = (
             await self._session.execute(
                 select(IngestURL.source_run_id, IngestURL.status, IngestURL.duplicate_reason).where(
@@ -628,7 +719,7 @@ class Store:
         views: list[SourceRunView] = []
         for run in runs:
             accounting = derive_run_accounting(
-                discovered_items=discovered_by_run.get(run.id, 0),
+                discovered_items=run.discovered_count,
                 url_outcomes=outcomes_by_run.get(run.id, []),
             )
             views.append(
@@ -650,11 +741,17 @@ class Store:
         return views
 
     async def _state_counts(self, source_id: int) -> dict[str, int]:
+        latest_attempt_id = (
+            select(func.max(IngestURL.id))
+            .where(IngestURL.source_item_id == SourceItem.id)
+            .correlate(SourceItem)
+            .scalar_subquery()
+        )
         state = _state_case()
         rows = (
             await self._session.execute(
                 select(state, func.count(SourceItem.id))
-                .outerjoin(IngestURL, IngestURL.source_item_id == SourceItem.id)
+                .outerjoin(IngestURL, IngestURL.id == latest_attempt_id)
                 .where(SourceItem.source_id == source_id)
                 .group_by(state)
             )

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+
 import pytest
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -16,6 +19,7 @@ from mimeme.source import sync
 from mimeme.source.model import (
     DiscoverInput,
     FinishInput,
+    KnownFacts,
     RawResponse,
     Retryable,
 )
@@ -52,12 +56,14 @@ async def _source(db: SavepointDb, run_sync_seed, **kwargs) -> int:
 class TestDiscover:
     async def test_tumblr_uses_application_api_key(self, db: SavepointDb, run_sync_seed) -> None:
         source_id = await run_sync_seed(
-            lambda s: create_ingestion_source(
-                session=s,
-                adapter_key="tumblr_tagged",
-                adapter_config={"tags": ["meme"]},
-                max_items_per_run=20,
-            ).id
+            lambda s: (
+                create_ingestion_source(
+                    session=s,
+                    adapter_key="tumblr_tagged",
+                    adapter_config={"tags": ["meme"]},
+                    max_items_per_run=20,
+                ).id
+            )
         )
         http = FakeHttp()
         http.set(
@@ -130,9 +136,25 @@ class TestDiscover:
             source = create_ingestion_source(
                 session=s, adapter_config={"subreddits": ["memes"]}, max_items_per_run=50
             )
-            from tests.factories import create_source_item
+            from tests.factories import create_source_item, create_source_media
 
-            create_source_item(session=s, source=source, external_item_id="aaa")
+            facts = KnownFacts(title="meme aaa").model_dump(mode="json")
+            facts_hash = hashlib.sha256(
+                json.dumps(facts, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
+            item = create_source_item(
+                session=s,
+                source=source,
+                external_item_id="aaa",
+                known_facts=facts,
+                known_facts_sha256=facts_hash,
+            )
+            create_source_media(
+                session=s,
+                source_item=item,
+                external_media_id="primary",
+                media_url="https://i.redd.it/aaa.jpg",
+            )
             return source.id
 
         source_id = await run_sync_seed(seed)
@@ -143,6 +165,23 @@ class TestDiscover:
         result = await sync.discover(env, DiscoverInput(source_id=source_id))
         assert result.queued == 0 and result.ingest_job_id is None
         assert result.discovered == 1  # seen, but still discovered
+
+    async def test_committed_discovery_replays_without_refetching(
+        self, db: SavepointDb, run_sync_seed
+    ) -> None:
+        source_id = await _source(db, run_sync_seed)
+        http = FakeHttp()
+        http.set(MEME_URL, meme_response("aaa"))
+        env = _env(db, http)
+        input = DiscoverInput(source_id=source_id, checkpoint_id="temporal-run-1")
+
+        first = await sync.discover(env, input)
+        second = await sync.discover(env, input)
+
+        assert second == first
+        assert len(http.calls) == 1
+        async with db.read_session() as session:
+            assert await session.scalar(select(func.count(SourceRun.id))) == 1
 
     async def test_terminal_fetch_failure_yields_empty_run(
         self, db: SavepointDb, run_sync_seed
@@ -185,7 +224,7 @@ class TestDiscover:
             heartbeat=beats.append,
             cancelled=lambda: False,
         )
-        assert any(b.startswith("fetched:") for b in beats)
+        assert any(b.startswith("discovered:") for b in beats)
 
     async def test_cancellation_raises(self, db: SavepointDb, run_sync_seed) -> None:
         import asyncio

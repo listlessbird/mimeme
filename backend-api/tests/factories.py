@@ -31,6 +31,7 @@ from mimeme.db.schema import (
     ProcessingStatus,
     SearchIndexState,
     SourceItem,
+    SourceMedia,
     SourceRun,
     SourceRunTrigger,
 )
@@ -268,8 +269,8 @@ class SourceItemFactory(factory.alchemy.SQLAlchemyModelFactory):
 
     external_item_id = factory.Sequence(lambda n: f"ext-{n}")
     canonical_item_url = factory.Sequence(lambda n: f"https://example.com/post/{n}")
-    canonical_image_url = factory.Sequence(lambda n: f"https://example.com/img/{n}.jpg")
     title = factory.Sequence(lambda n: f"Meme #{n}")
+    known_facts = factory.LazyFunction(dict)
     source = factory.SubFactory(IngestionSourceFactory)
     source_id = factory.LazyAttribute(lambda o: o.source.id)
 
@@ -292,3 +293,25 @@ def create_source_run(*, session: Session, **kwargs: object) -> SourceRun:
 
 def create_source_item(*, session: Session, **kwargs: object) -> SourceItem:
     return cast(SourceItem, SourceItemFactory(session=session, **kwargs))
+
+
+class SourceMediaFactory(factory.alchemy.SQLAlchemyModelFactory):
+    class Meta(_BaseMeta):
+        model = SourceMedia
+
+    external_media_id = factory.Sequence(lambda n: f"media-{n}")
+    media_url = factory.Sequence(lambda n: f"https://example.com/img/{n}.jpg")
+    source_item = factory.SubFactory(SourceItemFactory)
+    source_item_id = factory.LazyAttribute(lambda o: o.source_item.id)
+
+    @classmethod
+    def _create(
+        cls, model_class: Any, *args: object, session: Session | None = None, **kwargs: object
+    ) -> SourceMedia:
+        if session is not None:
+            setattr(cls._meta, "sqlalchemy_session", session)
+        return super()._create(model_class, *args, **kwargs)
+
+
+def create_source_media(*, session: Session, **kwargs: object) -> SourceMedia:
+    return cast(SourceMedia, SourceMediaFactory(session=session, **kwargs))
