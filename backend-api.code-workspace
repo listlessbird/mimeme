@@ -1,0 +1,17 @@
+{
+	"folders": [
+		{
+			"path": "backend-api"
+		},
+		{
+			"path": "webui"
+		}
+	],
+	"settings": {
+		"workbench.colorCustomizations": {
+			"statusBar.background": "#335c99",
+			"statusBar.foreground": "#ffffff",
+			"sash.hoverBorder": "#335c99"
+		}
+	}
+}

@@ -104,11 +104,9 @@ export function ImageIngestDialog() {
 
 	return (
 		<Dialog open={open} onOpenChange={setOpen}>
-			<DialogTrigger asChild>
-				<Button>
-					<Plus data-icon="inline-start" />
-					ingest
-				</Button>
+			<DialogTrigger render={<Button aria-label="ingest images" />}>
+				<Plus data-icon="inline-start" />
+				ingest
 			</DialogTrigger>
 			<DialogContent className="max-w-lg gap-4">
 				<DialogHeader>

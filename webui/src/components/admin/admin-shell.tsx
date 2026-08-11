@@ -39,35 +39,30 @@ export function AdminShell({ children }: { children: ReactNode }) {
 						<SidebarGroupContent>
 							<SidebarMenu>
 								<SidebarMenuItem>
-									<SidebarMenuButton asChild isActive={onSources}>
-										<Link to="/admin/sources">
-											<Boxes />
-											<span>sources</span>
-										</Link>
+									<SidebarMenuButton render={<Link to="/admin/sources" />} isActive={onSources}>
+										<Boxes />
+										<span>sources</span>
 									</SidebarMenuButton>
 								</SidebarMenuItem>
 								<SidebarMenuItem>
-									<SidebarMenuButton asChild isActive={onImages}>
-										<Link to="/admin/images">
-											<ImageIcon />
-											<span>images</span>
-										</Link>
+									<SidebarMenuButton render={<Link to="/admin/images" />} isActive={onImages}>
+										<ImageIcon />
+										<span>images</span>
 									</SidebarMenuButton>
 								</SidebarMenuItem>
 								<SidebarMenuItem>
-									<SidebarMenuButton asChild isActive={onGifAnnotation}>
-										<Link to="/admin/gif-annotation">
-											<Captions />
-											<span>gif annotation</span>
-										</Link>
+									<SidebarMenuButton
+										render={<Link to="/admin/gif-annotation" />}
+										isActive={onGifAnnotation}
+									>
+										<Captions />
+										<span>gif annotation</span>
 									</SidebarMenuButton>
 								</SidebarMenuItem>
 								<SidebarMenuItem>
-									<SidebarMenuButton asChild isActive={onIngestion}>
-										<Link to="/admin/ingestion">
-											<Activity />
-											<span>ingestion</span>
-										</Link>
+									<SidebarMenuButton render={<Link to="/admin/ingestion" />} isActive={onIngestion}>
+										<Activity />
+										<span>ingestion</span>
 									</SidebarMenuButton>
 								</SidebarMenuItem>
 							</SidebarMenu>

@@ -36,7 +36,7 @@ export function FilterSelect({
 	return (
 		<Select
 			value={value === "" ? ANY : value}
-			onValueChange={(next) => onValueChange(next === ANY ? "" : next)}
+			onValueChange={(next) => onValueChange(next === null || next === ANY ? "" : next)}
 		>
 			<SelectTrigger className={className}>
 				<SelectValue placeholder={placeholder} />

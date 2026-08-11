@@ -133,13 +133,7 @@ export function SourceActions({ source }: { source: SourceDetail }) {
 					</AlertDialogHeader>
 					<AlertDialogFooter>
 						<AlertDialogCancel>cancel</AlertDialogCancel>
-						<AlertDialogAction
-							onClick={(event) => {
-								event.preventDefault();
-								remove.mutate();
-							}}
-							disabled={remove.isPending}
-						>
+						<AlertDialogAction onClick={() => remove.mutate()} disabled={remove.isPending}>
 							{remove.isPending ? <Spinner data-icon="inline-start" /> : null}
 							delete
 						</AlertDialogAction>

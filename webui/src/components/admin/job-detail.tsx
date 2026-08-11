@@ -31,14 +31,17 @@ export function JobIdChip({ jobId, label = "job_id" }: { jobId: string; label?: 
 				title={`${label}: ${jobId}`}
 			>
 				<span className="text-muted-foreground">{label}</span>
-				<SheetTrigger asChild>
-					<button
-						type="button"
-						className="inline-flex items-center gap-0.5 font-mono hover:underline"
-					>
-						<span className="max-w-[16ch] truncate">{jobId}</span>
-						<ArrowUpRight className="size-3 shrink-0" />
-					</button>
+				<SheetTrigger
+					render={
+						<button
+							type="button"
+							aria-label={`view details for ${label}`}
+							className="inline-flex items-center gap-0.5 font-mono hover:underline"
+						/>
+					}
+				>
+					<span className="max-w-[16ch] truncate">{jobId}</span>
+					<ArrowUpRight className="size-3 shrink-0" />
 				</SheetTrigger>
 				<CopyButton value={jobId} label={label} className="size-5 text-muted-foreground" />
 			</Badge>

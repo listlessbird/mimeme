@@ -254,11 +254,10 @@ export function SourceFormSheet({ mode, source, open, onOpenChange }: SourceForm
 									<FormItem>
 										<FormLabel>schedule (cron)</FormLabel>
 										<ToggleGroup
-											type="single"
 											variant="outline"
 											size="sm"
-											value={field.value}
-											onValueChange={(value) => {
+											value={field.value ? [field.value] : []}
+											onValueChange={([value]) => {
 												if (value) field.onChange(value);
 											}}
 											className="justify-start"
