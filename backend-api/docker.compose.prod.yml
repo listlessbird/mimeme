@@ -14,7 +14,7 @@ services:
     restart: unless-stopped
 
   api:
-    image: ghcr.io/listlessbird/mimeme-api:${IMAGE_TAG:-latest}
+    image: ghcr.io/listlessbird/mimeme-api:${IMAGE_TAG:?set IMAGE_TAG to the release SHA tag}
     env_file: .env
     environment:
       - TEMPORAL_HOST=temporal:7233
@@ -55,7 +55,7 @@ services:
     restart: unless-stopped
 
   worker:
-    image: ghcr.io/listlessbird/mimeme-worker:${IMAGE_TAG:-latest}
+    image: ghcr.io/listlessbird/mimeme-worker:${IMAGE_TAG:?set IMAGE_TAG to the release SHA tag}
     env_file: .env
     environment:
       - TEMPORAL_HOST=temporal:7233
@@ -75,7 +75,7 @@ services:
     stop_grace_period: 30s
 
   compute:
-    image: ghcr.io/listlessbird/mimeme-compute:${IMAGE_TAG:-latest}
+    image: ghcr.io/listlessbird/mimeme-compute:${IMAGE_TAG:?set IMAGE_TAG to the release SHA tag}
     env_file: .env
     environment:
       - APP_ENV=production

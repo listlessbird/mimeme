@@ -51,6 +51,7 @@ jobs:
           tags: |
             type=raw,value=latest
             type=sha
+            type=raw,value=${{ github.sha }}
 
       - uses: docker/build-push-action@v7
         with:
@@ -60,5 +61,6 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: RELEASE_ID=${{ github.sha }}
           cache-from: type=gha,scope=${{ matrix.target }}
           cache-to: type=gha,mode=max,scope=${{ matrix.target }}

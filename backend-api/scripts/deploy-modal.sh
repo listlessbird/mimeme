@@ -5,6 +5,12 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd -- "${script_dir}/../.." && pwd)"
 backend_dir="${repo_root}/backend-api"
 terraform_dir="${repo_root}/terraform/infra"
+release_id="${RELEASE_ID:-$(git -C "${repo_root}" rev-parse HEAD)}"
+
+if [[ "$(git -C "${repo_root}" rev-parse HEAD)" != "${release_id}" ]]; then
+  echo "refusing to deploy Modal from a checkout that does not match RELEASE_ID=${release_id}" >&2
+  exit 1
+fi
 
 tf_output() {
   terraform -chdir="${terraform_dir}" output -raw "$1"
@@ -47,5 +53,6 @@ uv run modal secret create --force "${modal_secret_name}" \
   COMPUTE_MODAL_APP_NAME="${modal_app_name}" \
   COMPUTE_MODAL_HF_CACHE_VOLUME_NAME="${modal_volume_name}" \
   COMPUTE_MODAL_S3_SECRET_NAME="${modal_secret_name}" \
+  MIMEME_RELEASE_ID="${release_id}" \
     uv run modal deploy -m mimeme.modal_app.app --name "${modal_app_name}"
 )

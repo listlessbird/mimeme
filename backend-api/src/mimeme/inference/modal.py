@@ -6,8 +6,10 @@ from typing import Any
 
 import modal
 
+from mimeme import release
 from mimeme.inference.client import Progress
 from mimeme.inference.model import (
+    ANNOTATION_CONTRACT_VERSION,
     Annotation,
     Batch,
     BatchResult,
@@ -29,6 +31,7 @@ class Modal:
         self._poll = poll_interval_s
         self._vision: Any = None
         self._embedding: Any = None
+        self._release_info: Any = None
 
     def _vision_cls(self) -> Any:
         if self._vision is None:
@@ -44,9 +47,15 @@ class Modal:
         try:
             self._vision_cls()
             self._embedding_cls()
+            if self._release_info is None:
+                self._release_info = modal.Function.from_name(self._app_name, "release_info")
+            info = await self._release_info.remote.aio()
         except Exception:
             return False
-        return True
+        return info == {
+            "release_id": release.ID,
+            "annotation_contract_version": ANNOTATION_CONTRACT_VERSION,
+        }
 
     async def annotate(self, input: Input, *, progress: Progress | None = None) -> Annotation:
         instance = self._vision_cls()()

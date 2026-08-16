@@ -5,7 +5,9 @@ from typing import Any, Literal, cast
 
 import modal
 
+from mimeme import release
 from mimeme.config import ArtifactConfig, MediaConfig, Settings
+from mimeme.inference.model import ANNOTATION_CONTRACT_VERSION
 
 settings = Settings()
 app = modal.App(settings.compute.modal_app_name)
@@ -36,6 +38,14 @@ hf_cache = modal.Volume.from_name(
 )
 HF_CACHE_DIR = "/root/.cache/huggingface"
 s3_secret = modal.Secret.from_name(settings.compute.modal_s3_secret_name)
+
+
+@app.function()
+def release_info() -> dict[str, str | int]:
+    return {
+        "release_id": release.ID,
+        "annotation_contract_version": ANNOTATION_CONTRACT_VERSION,
+    }
 
 
 def _prepare_rgb(image: Any) -> Any:

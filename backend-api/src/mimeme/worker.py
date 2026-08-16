@@ -50,6 +50,10 @@ async def main() -> None:
     log = structlog.get_logger()
     env = await Env.create(settings)
 
+    if not await env.inference.ready():
+        await env.aclose()
+        raise RuntimeError("inference release or contract mismatch")
+
     workflows, activities = registrations(env, poll_interval_s=settings.compute.poll_interval_s)
 
     try:

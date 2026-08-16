@@ -9,6 +9,9 @@ class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
+ANNOTATION_CONTRACT_VERSION = 2
+
+
 class Context(_Frozen):
     title: str | None = None
     description: str | None = None

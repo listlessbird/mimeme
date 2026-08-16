@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 from types import SimpleNamespace
 
 import pytest
 
+from mimeme import release
 from mimeme.inference.modal import Modal
-from mimeme.inference.model import Batch, Input, Item
+from mimeme.inference.model import ANNOTATION_CONTRACT_VERSION, Batch, Context, Input, Item
+from mimeme.modal_app.app import VisionService
 
 
 class FakeCall:
@@ -38,6 +41,15 @@ class FakeMethod:
         return self._call
 
 
+class FakeRemoteFunction:
+    def __init__(self, result: dict[str, str | int]) -> None:
+        self._result = result
+        self.remote = SimpleNamespace(aio=self._call)
+
+    async def _call(self) -> dict[str, str | int]:
+        return self._result
+
+
 def _vision(call: FakeCall):  # noqa: ANN202
     method = FakeMethod(call)
     return lambda: SimpleNamespace(annotate_image=method)
@@ -61,6 +73,52 @@ async def test_annotate_maps_remote_dict() -> None:
     result = await adapter.annotate(Input(image_id=3, media_key="k"))
     assert result.image_id == 3 and result.caption == "c"
     assert call.kwargs == {"media_key": "k", "length": "normal"}
+
+
+async def test_context_matches_the_deployed_annotation_contract() -> None:
+    call = FakeCall(
+        result={"caption": "c", "caption_model": "m", "ocr_text": "o", "ocr_model": "m"}
+    )
+    adapter = _adapter()
+    adapter._vision = _vision(call)  # type: ignore[assignment]
+
+    await adapter.annotate(
+        Input(image_id=3, media_key="k", context=Context(title="Distracted Boyfriend"))
+    )
+
+    assert call.kwargs["context"] == {
+        "title": "Distracted Boyfriend",
+        "description": None,
+        "tags": [],
+        "categories": [],
+        "types": [],
+        "origin": None,
+        "year": None,
+    }
+    method = VisionService._get_partial_functions()["annotate_image"]
+    inspect.signature(method._get_raw_f()).bind(None, **call.kwargs)
+
+
+async def test_ready_requires_the_matching_release_and_contract() -> None:
+    adapter = _adapter()
+    adapter._vision = lambda: None
+    adapter._embedding = lambda: None
+    adapter._release_info = FakeRemoteFunction(
+        {
+            "release_id": release.ID,
+            "annotation_contract_version": ANNOTATION_CONTRACT_VERSION,
+        }
+    )
+
+    assert await adapter.ready() is True
+
+    adapter._release_info = FakeRemoteFunction(
+        {
+            "release_id": "stale-release",
+            "annotation_contract_version": ANNOTATION_CONTRACT_VERSION,
+        }
+    )
+    assert await adapter.ready() is False
 
 
 async def test_embed_builds_keys_and_maps() -> None:
