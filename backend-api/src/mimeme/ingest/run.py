@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import AsyncIterator
 from contextlib import suppress
 from pathlib import Path
+from time import perf_counter
 from typing import Protocol
 
 import httpx
@@ -35,20 +36,26 @@ class Deps(Protocol):
 
 
 async def run(env: Deps, input: Input) -> Result:
+    started = perf_counter()
+    timings: dict[str, float] = {}
     staging: str | None = None
     try:
         await job_ops.record_stage(env.db, input.item_id, IngestStage.DOWNLOADING)
+        acquire_started = perf_counter()
         data, staging = await _acquire(env, input)
+        timings["download_ms"] = round((perf_counter() - acquire_started) * 1000, 2)
         await job_ops.record_stage(env.db, input.item_id, IngestStage.PROCESSING)
         facts = await env.image_facts.inspect(staging, role="artifacts")
         async with env.db.read_session() as session:
             context = await Store(session).inference_context(input.item_id)
-        result = await _resolve(env, input, data, staging, facts, context)
+        result = await _resolve(env, input, data, staging, facts, context, timings=timings)
     except InvalidImage as exc:
         result = await _fail(env, input, exc)
     if staging is not None:
         await _cleanup_staging(env, staging)
-    return result
+    return result.model_copy(
+        update={**timings, "total_ms": round((perf_counter() - started) * 1000, 2)}
+    )
 
 
 async def finish(env: Deps, job_id: str) -> tuple[int, int, int]:
@@ -108,7 +115,14 @@ async def _download(http: httpx.AsyncClient, url: str) -> bytes:
 
 
 async def _resolve(
-    env: Deps, input: Input, data: bytes | None, staging: str, facts, context
+    env: Deps,
+    input: Input,
+    data: bytes | None,
+    staging: str,
+    facts,
+    context,
+    *,
+    timings: dict[str, float],
 ) -> Result:
     async with env.db.read_session() as session:
         store = Store(session)
@@ -116,9 +130,13 @@ async def _resolve(
         sha_id = await store.find_by_sha(facts.sha256)
         phash_match = None if sha_id is not None else await store.find_phash_match(facts.phash)
     if sha_id is not None:
-        return await _duplicate(env, input, sha_id, DuplicateReason.SHA256, context)
+        return await _duplicate(
+            env, input, sha_id, DuplicateReason.SHA256, context, timings=timings
+        )
     if phash_match is not None and phash_dedup_allowed:
-        return await _duplicate(env, input, phash_match.image_id, DuplicateReason.PHASH, context)
+        return await _duplicate(
+            env, input, phash_match.image_id, DuplicateReason.PHASH, context, timings=timings
+        )
 
     payload = data if data is not None else await _read_staged(env, staging)
     media_key = rule.canonical_media_key(
@@ -157,7 +175,9 @@ async def _resolve(
                 resolved = None
 
     if resolved is not None:
-        return await _duplicate(env, input, resolved[0], resolved[1], context)
+        return await _duplicate(
+            env, input, resolved[0], resolved[1], context, timings=timings
+        )
     return await _complete_new(
         env,
         input,
@@ -165,6 +185,7 @@ async def _resolve(
         media_key,
         facts.sha256,
         context,
+        timings=timings,
         similar_image_id=(phash_match.image_id if phash_match is not None else None),
         phash_distance=(phash_match.distance if phash_match is not None else None),
     )
@@ -177,6 +198,7 @@ async def _complete_new(
     media_key: str,
     sha256: str,
     context,
+    timings: dict[str, float],
     *,
     similar_image_id: int | None,
     phash_distance: int | None,
@@ -192,6 +214,7 @@ async def _complete_new(
         caption=None,
         ocr_text=None,
         context=context,
+        timings=timings,
     )
     await job_ops.mark_item_done(
         env.db,
@@ -205,7 +228,13 @@ async def _complete_new(
 
 
 async def _duplicate(
-    env: Deps, input: Input, image_id: int, reason: DuplicateReason, context
+    env: Deps,
+    input: Input,
+    image_id: int,
+    reason: DuplicateReason,
+    context,
+    *,
+    timings: dict[str, float],
 ) -> Result:
     async with env.db.write_session() as session:
         view: ExistingImage = await Store(session).duplicate_view(image_id)
@@ -230,6 +259,7 @@ async def _duplicate(
         caption=view.existing_caption,
         ocr_text=view.existing_ocr_text,
         context=context,
+        timings=timings,
     )
     await job_ops.record_stage(env.db, input.item_id, IngestStage.DEDUPED)
     await job_ops.mark_item_done(
@@ -256,10 +286,13 @@ async def _annotate_and_embed(
     caption: str | None,
     ocr_text: str | None,
     context,
+    timings: dict[str, float],
 ) -> None:
     if do_annotation:
         await job_ops.record_stage(env.db, input.item_id, IngestStage.ANNOTATING)
+        annotation_started = perf_counter()
         annotation = await _annotate(env, image_id, media_key, context)
+        timings["annotation_ms"] = round((perf_counter() - annotation_started) * 1000, 2)
         await job_ops.save_annotations(
             env.db,
             image_id=image_id,
@@ -280,7 +313,9 @@ async def _annotate_and_embed(
         await job_ops.record_stage(env.db, input.item_id, IngestStage.EMBEDDING)
         text = rule.compose_search_text(context, caption, ocr_text)
         text_hash = rule.text_sha256(text)
+        embedding_started = perf_counter()
         embedding = await _embed(env, image_id, media_key, text, sha256, input.dataset)
+        timings["embedding_ms"] = round((perf_counter() - embedding_started) * 1000, 2)
         if embedding is not None:
             await job_ops.save_embedding(
                 env.db,

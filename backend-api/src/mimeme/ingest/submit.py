@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import time
 from collections.abc import AsyncIterator
 from typing import Protocol
 
+import structlog
 from temporalio.client import Client
 
 from mimeme import storage
@@ -22,6 +24,7 @@ class Deps(Protocol):
 
 
 async def submit(env: Deps, submission: Submission) -> IngestCreation:
+    started = time.monotonic()
     creation = await job_ops.create_ingest(
         env.db,
         inputs=list(submission.urls),
@@ -41,6 +44,16 @@ async def submit(env: Deps, submission: Submission) -> IngestCreation:
     )
     await job_ops.record_workflow_id(env.db, creation.job_id, wf_id)
     await job_ops.start(env.db, creation.job_id)
+    structlog.get_logger().info(
+        "ingest_job_submitted",
+        job_id=creation.job_id,
+        workflow_id=wf_id,
+        total=len(submission.urls),
+        queued=creation.queued,
+        duplicate_inputs=creation.duplicates,
+        dataset=creation.dataset,
+        duration_ms=round((time.monotonic() - started) * 1000, 2),
+    )
     return creation.model_copy(update={"workflow_id": wf_id})
 
 

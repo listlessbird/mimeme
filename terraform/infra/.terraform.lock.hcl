@@ -3,7 +3,7 @@
 
 provider "registry.terraform.io/axiomhq/axiom" {
   version     = "1.6.2"
-  constraints = "~> 1.4"
+  constraints = "1.6.2"
   hashes = [
     "h1:niAHcVZ1m5Pi5zBU8BuAFYpCNgTxPyr7lILzT115PYk=",
     "h1:yEVhjvgPna/txb4rc9yPQshnV78nISOXvYe5P6KHx+0=",

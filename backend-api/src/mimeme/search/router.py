@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import time
 from typing import Annotated, Literal
 
+import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi import Query as HttpQuery
 
@@ -51,10 +53,14 @@ async def search_text(
         limit=limit,
         offset=offset,
     )
+    started = time.monotonic()
     try:
-        return await search.run(query, client=client, rows=rows, media_urls=media_urls)
+        result = await search.run(query, client=client, rows=rows, media_urls=media_urls)
     except search.Error as exc:
+        _log_search_failure(query, started, exc)
         raise _http(exc) from exc
+    _log_search_completed(query, started, result)
+    return result
 
 
 @router.get("/similar/{image_id}", response_model=search.Page, responses=error_responses(404, 503))
@@ -68,15 +74,46 @@ async def search_similar(
     image_id: int,
     limit: Annotated[int, HttpQuery(ge=1, le=100)] = 20,
 ) -> search.Page:
+    query = search.Query(similar_image_id=image_id, limit=limit)
+    started = time.monotonic()
     try:
-        return await search.run(
-            search.Query(similar_image_id=image_id, limit=limit),
-            client=client,
-            rows=rows,
-            media_urls=media_urls,
-        )
+        result = await search.run(query, client=client, rows=rows, media_urls=media_urls)
     except search.Error as exc:
+        _log_search_failure(query, started, exc)
         raise _http(exc) from exc
+    _log_search_completed(query, started, result)
+    return result
+
+
+def _log_search_completed(query: search.Query, started: float, result: search.Page) -> None:
+    structlog.get_logger().info(
+        "search_completed",
+        mode=query.mode,
+        query_length=len(query.text) if query.text is not None else None,
+        result_count=len(result.results),
+        matched_count=result.total,
+        zero_results=result.total == 0,
+        limit=query.limit,
+        offset=query.offset,
+        duration_ms=round((time.monotonic() - started) * 1000, 2),
+        search_time_ms=result.search_time_ms,
+        index_version=result.index_version,
+    )
+
+
+def _log_search_failure(query: search.Query, started: float, exc: search.Error) -> None:
+    status_code = _http(exc).status_code
+    structlog.get_logger().warning(
+        "search_failed",
+        mode=query.mode,
+        query_length=len(query.text) if query.text is not None else None,
+        limit=query.limit,
+        offset=query.offset,
+        status_code=status_code,
+        error_type=type(exc).__name__,
+        duration_ms=round((time.monotonic() - started) * 1000, 2),
+        error=str(exc),
+    )
 
 
 def _http(exc: search.Error) -> HTTPException:

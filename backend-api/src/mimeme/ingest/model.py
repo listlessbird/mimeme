@@ -66,6 +66,10 @@ class Result(_Frozen):
     image_id: int | None = None
     duplicate_reason: DuplicateReason | None = None
     error: str | None = None
+    download_ms: float | None = Field(default=None, ge=0)
+    annotation_ms: float | None = Field(default=None, ge=0)
+    embedding_ms: float | None = Field(default=None, ge=0)
+    total_ms: float | None = Field(default=None, ge=0)
 
 
 class WorkflowInput(_Frozen):

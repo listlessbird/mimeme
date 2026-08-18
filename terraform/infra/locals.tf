@@ -9,6 +9,7 @@ locals {
   media_hostname         = var.media_hostname
   axiom_dataset_name     = var.axiom_dataset_name
   axiom_token_name       = var.axiom_token_name
+  axiom_query_token_name = var.axiom_query_token_name
   database_name          = var.database_name
   database_role_name     = var.database_role_name
   modal_app_name         = var.modal_app_name

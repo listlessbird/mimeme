@@ -13,3 +13,14 @@ resource "axiom_token" "api_ingest" {
     }
   }
 }
+
+resource "axiom_token" "api_query" {
+  name        = local.axiom_query_token_name
+  description = "Read-only token for Mimeme admin log diagnostics"
+
+  dataset_capabilities = {
+    (axiom_dataset.api_logs.name) = {
+      query = ["read"]
+    }
+  }
+}

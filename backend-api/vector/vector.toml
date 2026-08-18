@@ -1,0 +1,20 @@
+[sources.docker_logs]
+type = "docker_logs"
+docker_host = "unix:///var/run/docker.sock"
+
+[transforms.parse_application_json]
+type = "remap"
+inputs = ["docker_logs"]
+source = '''
+parsed, err = parse_json(.message)
+if err == null && is_object(parsed) {
+  . = merge(., parsed)
+}
+'''
+
+[sinks.axiom]
+type = "axiom"
+inputs = ["parse_application_json"]
+token = "${LOG_AXIOM_API_TOKEN}"
+dataset = "${LOG_AXIOM_DATASET}"
+region = "${LOG_AXIOM_REGION}"

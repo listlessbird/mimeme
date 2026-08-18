@@ -39,6 +39,8 @@ ARTIFACT_S3_FORCE_PATH_STYLE=$(tf_output artifact_s3_force_path_style)
 
 LOG_AXIOM_DATASET=$(tf_output axiom_dataset_name)
 LOG_AXIOM_API_TOKEN=$(tf_output axiom_ingest_token)
+LOG_AXIOM_QUERY_TOKEN=$(tf_output axiom_query_token)
+LOG_AXIOM_REGION=$(tf_output axiom_region)
 
 API_BASE_URL=$(tf_output api_url)
 EOF

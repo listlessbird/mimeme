@@ -38,3 +38,8 @@ terraform -chdir=terraform/infra apply
 cd backend-api
 just prod-env > .env
 ```
+
+The generated production environment includes separate Axiom ingest and query
+tokens. The production Compose file runs Vector to parse Docker JSON logs and
+ship them to the managed dataset; apply `terraform/infra` first so the
+dashboard, monitors, and both tokens exist before regenerating `.env`.

@@ -1,7 +1,7 @@
 variable "axiom_api_token" {
   type        = string
   sensitive   = true
-  description = "Axiom token allowed to create datasets and API tokens."
+  description = "Axiom management token allowed to create datasets, tokens, dashboards, and monitors."
 }
 
 variable "cloudflare_api_token" {
@@ -75,6 +75,18 @@ variable "axiom_dataset_name" {
 variable "axiom_token_name" {
   type        = string
   description = "Axiom ingest token name for production API logs."
+}
+
+variable "axiom_query_token_name" {
+  type        = string
+  description = "Axiom read-only query token name for production log diagnostics."
+  default     = "mimeme-prod-api-query"
+}
+
+variable "axiom_region" {
+  type        = string
+  description = "Axiom edge deployment base domain used by the Vector sink."
+  default     = "us-east-1.aws.edge.axiom.co"
 }
 
 variable "database_name" {

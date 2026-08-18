@@ -47,10 +47,13 @@ class IngestionLogEntry:
         self.level = _str(data.get("level"))
         self.event = _str(data.get("event"))
         self.activity_name = _str(data.get("activity_name"))
-        self.step = _str(data.get("step") or data.get("last_step"))
+        self.step = _str(data.get("step") or data.get("last_step") or data.get("activity_name"))
         self.outcome = _str(data.get("outcome"))
+        duration_ms = data.get("duration_ms")
         self.duration_ms = (
-            data.get("duration_ms") if isinstance(data.get("duration_ms"), int) else None
+            round(float(duration_ms))
+            if isinstance(duration_ms, (int, float)) and not isinstance(duration_ms, bool)
+            else None
         )
         self.error = _str(data.get("error"))
         self.attempt = data.get("attempt") if isinstance(data.get("attempt"), int) else None
@@ -64,7 +67,7 @@ def _str(value: Any) -> str | None:
 
 class AxiomLogReader:
     def __init__(self, settings: Settings, http: httpx.AsyncClient) -> None:
-        self._token = settings.logging.axiom_api_token.get_secret_value()
+        self._token = settings.logging.axiom_query_token.get_secret_value()
         self._dataset = settings.logging.axiom_dataset
         self._http = http
 

@@ -6,8 +6,21 @@ output "axiom_dataset_name" {
   value = axiom_dataset.api_logs.name
 }
 
+output "axiom_region" {
+  value = var.axiom_region
+}
+
+output "axiom_dashboard_uid" {
+  value = axiom_dashboard.production_overview.uid
+}
+
 output "axiom_ingest_token" {
   value     = axiom_token.api_ingest.token
+  sensitive = true
+}
+
+output "axiom_query_token" {
+  value     = axiom_token.api_query.token
   sensitive = true
 }
 

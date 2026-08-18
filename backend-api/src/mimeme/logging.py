@@ -51,6 +51,7 @@ def activity_context() -> dict[str, object]:
         "workflow_id": info.workflow_id,
         "run_id": info.workflow_run_id,
         "workflow_type": info.workflow_type,
+        "workflow_name": info.workflow_type,
         "activity_id": info.activity_id,
         "activity_type": info.activity_type,
         "attempt": info.attempt,
@@ -62,20 +63,24 @@ def activity_context() -> dict[str, object]:
 def emit_activity_event(
     *,
     log: structlog.BoundLogger,
+    event_name: str,
     activity_name: str,
     started_at: float,
     outcome: str,
     error: str | None = None,
     **fields: object,
 ) -> None:
+    """Emit one canonical, context-rich event for a Temporal activity attempt."""
     event: dict[str, object] = {
-        "event_type": "activity_wide_event",
         "activity_name": activity_name,
         "outcome": outcome,
         "duration_ms": int((time.monotonic() - started_at) * 1000),
         **activity_context(),
     }
     event.update(fields)
+    if event["duration_ms"] is None:
+        event["duration_ms"] = int((time.monotonic() - started_at) * 1000)
     if error:
         event["error"] = error
-    log.info("activity_wide_event", **event)
+    writer = log.error if outcome in {"failed", "error"} else log.info
+    writer(event_name, **event)

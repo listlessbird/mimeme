@@ -191,6 +191,7 @@ class LogConfig(BaseSettings):
 
     level: str = "INFO"
     axiom_api_token: SecretStr = SecretStr("")
+    axiom_query_token: SecretStr = SecretStr("")
     axiom_dataset: str = ""
 
 

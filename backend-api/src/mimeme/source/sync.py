@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import Callable
+from datetime import UTC, datetime
 from random import Random
 from typing import Protocol
 
@@ -142,17 +143,25 @@ async def finish(env: Deps, input: FinishInput) -> FinishResult:
         store = Store(session)
 
         if input.error is not None:
+            run = await store.get_run(input.source_run_id)
             await store.mark_run_failed(
                 source_run_id=input.source_run_id, error=rule.truncate_error(input.error)
             )
             return FinishResult(
                 status=SourceRunStatus.FAILED,
-                discovered=await store.discovered_count(input.source_run_id),
+                discovered=run.discovered_count if run is not None else 0,
                 queued=0,
                 duplicate=0,
                 failed=0,
+                source_id=run.source_id if run is not None else None,
+                duration_ms=(
+                    round((datetime.now(UTC) - run.started_at).total_seconds() * 1000, 2)
+                    if run is not None and run.started_at is not None
+                    else None
+                ),
             )
 
+        run = await store.get_run(input.source_run_id)
         discovered = await store.discovered_count(input.source_run_id)
         outcomes = await store.url_outcomes(input.source_run_id)
         accounting = derive_run_accounting(discovered_items=discovered, url_outcomes=outcomes)
@@ -163,4 +172,10 @@ async def finish(env: Deps, input: FinishInput) -> FinishResult:
             queued=accounting.queued,
             duplicate=accounting.duplicate,
             failed=accounting.failed,
+            source_id=run.source_id if run is not None else None,
+            duration_ms=(
+                round((datetime.now(UTC) - run.started_at).total_seconds() * 1000, 2)
+                if run is not None and run.started_at is not None
+                else None
+            ),
         )

@@ -286,6 +286,8 @@ class FinishResult(_Frozen):
     queued: int
     duplicate: int
     failed: int
+    source_id: int | None = None
+    duration_ms: float | None = Field(default=None, ge=0)
 
 
 class SyncInput(_Frozen):
