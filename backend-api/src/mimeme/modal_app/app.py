@@ -244,39 +244,62 @@ class EmbeddingService:
         media = await _open_media()
         artifacts = await _open_artifacts()
         try:
-            results: list[dict] = []
-            for item in items:
+            results: list[dict | None] = [None] * len(items)
+            prepared: list[tuple[int, dict, Any]] = []
+            for index, item in enumerate(items):
                 try:
                     data = await media.read_bytes(
                         storage.Object(item["media_key"]), max_bytes=64 * 1024 * 1024
                     )
                     pil = _prepare_rgb(Image.open(io.BytesIO(data)))
-                    img_feats = self._encode_images([pil])
-                    txt_feats = self._encode_texts([item["text"]])
-
-                    await artifacts.put_bytes(
-                        storage.Object(item["image_key"]),
-                        _npy_bytes(np, img_feats[0]),
-                        content_type="application/octet-stream",
-                    )
-                    await artifacts.put_bytes(
-                        storage.Object(item["text_key"]),
-                        _npy_bytes(np, txt_feats[0]),
-                        content_type="application/octet-stream",
-                    )
-                    results.append(
-                        {
-                            "image_id": item["image_id"],
-                            "ok": True,
-                            "image_key": item["image_key"],
-                            "text_key": item["text_key"],
-                            "model": model,
-                            "dimension": int(img_feats.shape[-1]),
-                        }
-                    )
+                    prepared.append((index, item, pil))
                 except Exception as exc:
-                    results.append({"image_id": item["image_id"], "ok": False, "error": str(exc)})
-            return {"items": results}
+                    results[index] = {
+                        "image_id": item["image_id"],
+                        "ok": False,
+                        "error": str(exc),
+                    }
+
+            if prepared:
+                try:
+                    img_feats = self._encode_images([pil for _, _, pil in prepared])
+                    txt_feats = self._encode_texts([item["text"] for _, item, _ in prepared])
+                except Exception as exc:
+                    for index, item, _ in prepared:
+                        results[index] = {
+                            "image_id": item["image_id"],
+                            "ok": False,
+                            "error": str(exc),
+                        }
+                else:
+                    for row, (index, item, _) in enumerate(prepared):
+                        try:
+                            await artifacts.put_bytes(
+                                storage.Object(item["image_key"]),
+                                _npy_bytes(np, img_feats[row]),
+                                content_type="application/octet-stream",
+                            )
+                            await artifacts.put_bytes(
+                                storage.Object(item["text_key"]),
+                                _npy_bytes(np, txt_feats[row]),
+                                content_type="application/octet-stream",
+                            )
+                            results[index] = {
+                                "image_id": item["image_id"],
+                                "ok": True,
+                                "image_key": item["image_key"],
+                                "text_key": item["text_key"],
+                                "model": model,
+                                "dimension": int(img_feats.shape[-1]),
+                            }
+                        except Exception as exc:
+                            results[index] = {
+                                "image_id": item["image_id"],
+                                "ok": False,
+                                "error": str(exc),
+                            }
+            assert all(result is not None for result in results)
+            return {"items": [result for result in results if result is not None]}
         finally:
             await artifacts.close()
             await media.close()

@@ -12,6 +12,7 @@ from mimeme.compute.model import (
     AnnotateCall,
     AnnotateReply,
     EmbedCall,
+    EmbedCallItem,
     EmbedReply,
     EmbedReplyItem,
 )
@@ -187,25 +188,46 @@ class Models:
     def embed(self, call: EmbedCall) -> EmbedReply:
         self._load_embed()
         model_name = self._config.embed_model
-        items: list[EmbedReplyItem] = []
-        for item in call.items:
+        items: list[EmbedReplyItem | None] = [None] * len(call.items)
+        prepared: list[tuple[int, EmbedCallItem, Image.Image]] = []
+        for index, item in enumerate(call.items):
             try:
                 image = prepare_rgb(Image.open(item.path))
-                image_feats = self._encode(images=[image], texts=None)
-                text_feats = self._encode(images=None, texts=[item.text])
-                _save_npy(Path(item.image_out), image_feats[0])
-                _save_npy(Path(item.text_out), text_feats[0])
-                items.append(
-                    EmbedReplyItem(
-                        image_id=item.image_id,
-                        ok=True,
-                        model=model_name,
-                        dimension=int(image_feats.shape[-1]),
-                    )
+                prepared.append((index, item, image))
+            except Exception as exc:
+                items[index] = EmbedReplyItem(image_id=item.image_id, ok=False, error=str(exc))
+
+        if prepared:
+            try:
+                image_feats = self._encode(
+                    images=[image for _, _, image in prepared], texts=None
+                )
+                text_feats = self._encode(
+                    images=None, texts=[item.text for _, item, _ in prepared]
                 )
             except Exception as exc:
-                items.append(EmbedReplyItem(image_id=item.image_id, ok=False, error=str(exc)))
-        return EmbedReply(items=items)
+                for index, item, _ in prepared:
+                    items[index] = EmbedReplyItem(
+                        image_id=item.image_id, ok=False, error=str(exc)
+                    )
+            else:
+                for row, (index, item, _) in enumerate(prepared):
+                    try:
+                        _save_npy(Path(item.image_out), image_feats[row])
+                        _save_npy(Path(item.text_out), text_feats[row])
+                        items[index] = EmbedReplyItem(
+                            image_id=item.image_id,
+                            ok=True,
+                            model=model_name,
+                            dimension=int(image_feats.shape[-1]),
+                        )
+                    except Exception as exc:
+                        items[index] = EmbedReplyItem(
+                            image_id=item.image_id, ok=False, error=str(exc)
+                        )
+
+        assert all(item is not None for item in items)
+        return EmbedReply(items=[item for item in items if item is not None])
 
 
 def _save_npy(path: Path, array: np.ndarray) -> None:

@@ -15,6 +15,7 @@ from mimeme.db.schema import (
 )
 from mimeme.inference.model import Context
 from mimeme.ingest.facts import Facts
+from mimeme.ingest.model import Result
 from mimeme.ingest.rule import DEDUP_LOCK_KEY
 
 _PHASH_THRESHOLD = 8
@@ -74,6 +75,19 @@ class Store:
 
     async def acquire_dedup_lock(self) -> None:
         await self._session.execute(select(func.pg_advisory_xact_lock(DEDUP_LOCK_KEY)))
+
+    async def terminal_result(self, ingest_url_id: int) -> Result | None:
+        item = await self._session.get(IngestURL, ingest_url_id)
+        if item is None or item.status not in (ProcessingStatus.DONE, ProcessingStatus.FAILED):
+            return None
+        if item.status == ProcessingStatus.FAILED:
+            return Result(item_id=item.id, outcome="failed", error=item.error_message)
+        return Result(
+            item_id=item.id,
+            outcome="duplicate" if item.duplicate_reason is not None else "processed",
+            image_id=item.image_id,
+            duplicate_reason=item.duplicate_reason,
+        )
 
     async def inference_context(self, ingest_url_id: int) -> Context | None:
         raw = await self._session.scalar(

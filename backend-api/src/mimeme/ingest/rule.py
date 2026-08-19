@@ -7,12 +7,14 @@ import uuid
 TASK_QUEUE = "mimeme-v2"
 WORKFLOW = "mimeme.ingest.v2"
 ITEM_ACTIVITY = "mimeme.ingest.item.v2"
+BATCH_ACTIVITY = "mimeme.ingest.batch.v2"
 FINISH_ACTIVITY = "mimeme.ingest.finish.v2"
 
 # One inference child and one image child serve the whole compute container, and
-# the pHash duplicate decision serializes on a single advisory lock. High fan-out
-# would only queue behind those, so item concurrency is deliberately small.
+# the pHash duplicate decision serializes on a single advisory lock. Keep only a
+# few ingestion batches in flight so downloads overlap without flooding either.
 FANOUT = 4
+EMBED_BATCH_SIZE = 16
 
 MAX_IMAGE_BYTES = 64 * 1024 * 1024
 INGEST_STAGING_PREFIX = "uploads/ingest-staging"

@@ -45,6 +45,10 @@ class Input(_Frozen):
     dataset: str | None = None
 
 
+class BatchInput(_Frozen):
+    items: list[Input] = Field(min_length=1)
+
+
 class ItemRef(_Frozen):
     item_id: int
     source: Source

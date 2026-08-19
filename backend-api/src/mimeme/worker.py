@@ -32,6 +32,7 @@ def registrations(
         [IngestWorkflow, SourceSyncWorkflow, SourceRetryWorkflow, RebuildWorkflow],
         [
             ingest.item,
+            ingest.batch,
             ingest.finish,
             source.discover,
             source.cleanup_checkpoint,
