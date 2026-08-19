@@ -71,8 +71,16 @@ class Result(_Frozen):
     duplicate_reason: DuplicateReason | None = None
     error: str | None = None
     download_ms: float | None = Field(default=None, ge=0)
-    annotation_ms: float | None = Field(default=None, ge=0)
-    embedding_ms: float | None = Field(default=None, ge=0)
+    annotation_ms: float | None = Field(
+        default=None,
+        ge=0,
+        description="Client-observed annotation latency, including remote queueing and I/O.",
+    )
+    embedding_ms: float | None = Field(
+        default=None,
+        ge=0,
+        description="Client-observed embedding latency, including remote queueing and I/O.",
+    )
     total_ms: float | None = Field(default=None, ge=0)
 
 

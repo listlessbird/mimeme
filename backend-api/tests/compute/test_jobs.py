@@ -195,6 +195,22 @@ async def test_idempotent_resubmit(tmp_path: Path) -> None:
     await _wait(jobs, "dup")
 
 
+async def test_wait_returns_as_soon_as_job_finishes(tmp_path: Path) -> None:
+    supervisor = FakeSupervisor()
+    supervisor.block.clear()
+    jobs, media, _ = _make_jobs(tmp_path, supervisor)
+    media.objects["images/a.jpg"] = b"bytes"
+    jobs.submit("wait", AnnotateSpec(media_key="images/a.jpg"))
+
+    waiter = asyncio.create_task(jobs.wait("wait", timeout_s=5))
+    await asyncio.sleep(0.02)
+    assert not waiter.done()
+
+    supervisor.block.set()
+    state = await asyncio.wait_for(waiter, timeout=0.5)
+    assert state is not None and state.status == "succeeded"
+
+
 async def test_failed_stable_job_can_retry_the_same_request(tmp_path: Path) -> None:
     supervisor = FakeSupervisor()
     supervisor.dead = True

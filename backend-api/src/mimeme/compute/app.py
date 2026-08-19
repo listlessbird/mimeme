@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from typing import Annotated
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from pydantic import BaseModel
 
 from mimeme import search, storage
@@ -185,9 +186,11 @@ def create_app(settings: Settings) -> FastAPI:
         return jobs.submit(job_id, spec)
 
     @app.get("/v1/jobs/{job_id}", response_model=JobState)
-    async def get_job(job_id: str) -> JobState:
+    async def get_job(
+        job_id: str, wait_s: Annotated[float, Query(ge=0, le=30)] = 0
+    ) -> JobState:
         jobs: Jobs = app.state.jobs
-        state = jobs.get(job_id)
+        state = await jobs.wait(job_id, wait_s) if wait_s > 0 else jobs.get(job_id)
         if state is None:
             raise HTTPException(status_code=404, detail="job not found")
         return state

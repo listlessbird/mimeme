@@ -112,10 +112,16 @@ class Local:
         try:
             state = await self._put(url, spec)
             while state.status in ("queued", "running"):
-                await asyncio.sleep(self._poll)
                 if progress is not None:
                     await progress(state.phase or state.status, state.progress)
-                state = await self._get(url)
+                wait_started = asyncio.get_running_loop().time()
+                state = await self._get(url, wait_s=self._poll)
+                # Older gateways ignore wait_s and answer immediately. Yield briefly
+                # when that happens so rolling deployments cannot create a hot loop.
+                elapsed = asyncio.get_running_loop().time() - wait_started
+                fallback_delay = min(self._poll, 0.05)
+                if state.status in ("queued", "running") and elapsed < fallback_delay:
+                    await asyncio.sleep(fallback_delay - elapsed)
         except asyncio.CancelledError:
             await self._delete(url)
             raise
@@ -128,8 +134,8 @@ class Local:
     async def _put(self, url: str, spec: dict) -> JobState:
         return _state(await self._request("PUT", url, json=spec))
 
-    async def _get(self, url: str) -> JobState:
-        return _state(await self._request("GET", url))
+    async def _get(self, url: str, *, wait_s: float) -> JobState:
+        return _state(await self._request("GET", url, params={"wait_s": wait_s}))
 
     async def _delete(self, url: str) -> None:
         try:
@@ -137,9 +143,16 @@ class Local:
         except (Unavailable, Timeout):
             pass
 
-    async def _request(self, method: str, url: str, *, json: dict | None = None) -> httpx.Response:
+    async def _request(
+        self,
+        method: str,
+        url: str,
+        *,
+        json: dict | None = None,
+        params: dict[str, float] | None = None,
+    ) -> httpx.Response:
         try:
-            resp = await self._http.request(method, url, json=json)
+            resp = await self._http.request(method, url, json=json, params=params)
         except httpx.TimeoutException as exc:
             raise Timeout(str(exc)) from exc
         except httpx.HTTPError as exc:

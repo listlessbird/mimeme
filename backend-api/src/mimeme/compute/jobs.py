@@ -64,6 +64,15 @@ class Jobs:
         job = self._jobs.get(job_id)
         return job.state.model_copy(deep=True) if job else None
 
+    async def wait(self, job_id: str, timeout_s: float) -> JobState | None:
+        """Wait for a job to finish, or return its latest state after the timeout."""
+        job = self._jobs.get(job_id)
+        if job is None:
+            return None
+        if job.task is not None and job.state.status in ("queued", "running"):
+            await asyncio.wait({job.task}, timeout=timeout_s)
+        return job.state.model_copy(deep=True)
+
     def submit(self, job_id: str, spec: JobSpec) -> JobState:
         existing = self._jobs.get(job_id)
         if existing is not None:

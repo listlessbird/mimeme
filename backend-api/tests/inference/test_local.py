@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from time import perf_counter
 
 import httpx
 import pytest
@@ -51,6 +52,36 @@ async def test_annotate_drives_and_maps() -> None:
     assert result.image_id == 5
     assert result.caption == "a dog"
     assert result.ocr_text == "hello"
+
+
+async def test_completion_does_not_wait_for_the_poll_interval() -> None:
+    async def handler(request: httpx.Request) -> httpx.Response:
+        job_id = request.url.path.rsplit("/", 1)[-1]
+        if request.method == "PUT":
+            return httpx.Response(200, json={"job_id": job_id, "status": "running"})
+        assert request.url.params["wait_s"] == "5.0"
+        await asyncio.sleep(0.03)
+        return httpx.Response(
+            200,
+            json={
+                "job_id": job_id,
+                "status": "succeeded",
+                "result": {
+                    "caption": "done",
+                    "caption_model": "m",
+                    "ocr_text": "",
+                    "ocr_model": "m",
+                },
+            },
+        )
+
+    adapter = Local(
+        _client(handler), base_url=BASE, embed_model="google/siglip2", poll_interval_s=5.0
+    )
+    started = perf_counter()
+    await adapter.annotate(Input(image_id=1, media_key="images/a.jpg"))
+
+    assert perf_counter() - started < 0.5
 
 
 async def test_embed_builds_keys_and_maps() -> None:
