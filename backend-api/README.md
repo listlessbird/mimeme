@@ -60,7 +60,7 @@ the compute gateway has no public authentication.
 
 ```bash
 cp .env.gpu.example .env.gpu
-# Fill in IMAGE_TAG, GPU_GATEWAY_BIND_IP, storage credentials, and HF_TOKEN.
+# Fill in IMAGE_TAG, GPU_GATEWAY_BIND_IP, storage/Axiom credentials, and HF_TOKEN.
 docker compose --env-file .env.gpu -f docker.compose.gpu.yml config --quiet
 docker compose --env-file .env.gpu -f docker.compose.gpu.yml pull
 docker compose --env-file .env.gpu -f docker.compose.gpu.yml up -d

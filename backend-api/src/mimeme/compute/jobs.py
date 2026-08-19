@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from pathlib import Path
+from typing import Literal
+
+import structlog
 
 from mimeme import storage
 from mimeme.compute.model import (
     AnnotateCall,
+    AnnotateReply,
     AnnotateResult,
     AnnotateSpec,
     ChildErr,
@@ -40,6 +45,7 @@ class _Job:
         self.spec = spec
         self.task: asyncio.Task[None] | None = None
         self.running = False
+        self.telemetry: dict[str, object] = {}
 
 
 class Jobs:
@@ -51,12 +57,14 @@ class Jobs:
         artifacts: storage.Store,
         workspace_dir: Path,
         io_concurrency: int = 4,
+        residency_mode: Literal["both", "swap"] = "swap",
     ) -> None:
         self._supervisor = supervisor
         self._media = media
         self._artifacts = artifacts
         self._workspace_dir = workspace_dir
         self._io_slots = asyncio.Semaphore(io_concurrency)
+        self._residency_mode = residency_mode
         self._jobs: dict[str, _Job] = {}
         self._index = IndexGateway(
             supervisor,
@@ -107,11 +115,20 @@ class Jobs:
         return job.state.model_copy(deep=True)
 
     async def _run(self, job: _Job) -> None:
+        started = time.perf_counter()
         workspace = Workspace.create(self._workspace_dir, job.state.job_id)
+        spec = job.spec
+        if isinstance(spec, (AnnotateSpec, EmbedSpec)):
+            job.telemetry = {
+                "inference_operation": spec.op,
+                "inference_provider": "gateway",
+                "residency_mode": self._residency_mode,
+            }
+            if isinstance(spec, EmbedSpec):
+                job.telemetry["embed_item_count"] = len(spec.items)
         try:
             job.state.status = "running"
             job.running = True
-            spec = job.spec
             if isinstance(spec, AnnotateSpec):
                 result = await self._run_annotate(job, spec, workspace)
             elif isinstance(spec, EmbedSpec):
@@ -139,20 +156,34 @@ class Jobs:
         finally:
             job.running = False
             workspace.close()
+            if isinstance(spec, (AnnotateSpec, EmbedSpec)):
+                self._emit_inference_event(job, started)
 
     async def _run_annotate(self, job: _Job, spec: AnnotateSpec, workspace: Workspace) -> dict:
         job.state.phase = "download"
+        download_started = time.perf_counter()
         data = await self._read_media(spec.media_key)
+        job.telemetry["media_download_ms"] = _elapsed_ms(download_started)
         path = workspace.write_atomic("input", data)
         job.state.phase = "annotate"
         job.state.progress = 0.5
         call = AnnotateCall(path=str(path), length=spec.length, context=spec.context)
-        reply = await self._call_inference(call.model_dump_json().encode("utf-8"))
-        result = AnnotateResult.model_validate(reply.result)
+        reply = await self._call_inference(job, call.model_dump_json().encode("utf-8"))
+        annotation = AnnotateReply.model_validate(reply.result)
+        if annotation.telemetry is not None:
+            job.telemetry.update(annotation.telemetry.model_dump(exclude_none=True))
+        job.telemetry["model_identity"] = annotation.caption_model
+        result = AnnotateResult(
+            caption=annotation.caption,
+            caption_model=annotation.caption_model,
+            ocr_text=annotation.ocr_text,
+            ocr_model=annotation.ocr_model,
+        )
         return result.model_dump()
 
     async def _run_embed(self, job: _Job, spec: EmbedSpec, workspace: Workspace) -> dict:
         job.state.phase = "download"
+        download_started = time.perf_counter()
 
         async def prepare(index: int, item: EmbedSpecItem) -> EmbedCallItem:
             data = await self._read_media(item.media_key)
@@ -168,12 +199,16 @@ class Jobs:
         call_items = await asyncio.gather(
             *(prepare(index, item) for index, item in enumerate(spec.items))
         )
+        job.telemetry["media_download_ms"] = _elapsed_ms(download_started)
 
         job.state.phase = "embed"
         job.state.progress = 0.5
         call = EmbedCall(items=call_items)
-        reply = await self._call_inference(call.model_dump_json().encode("utf-8"))
+        reply = await self._call_inference(job, call.model_dump_json().encode("utf-8"))
         embed_reply = EmbedReply.model_validate(reply.result)
+        if embed_reply.telemetry is not None:
+            job.telemetry.update(embed_reply.telemetry.model_dump(exclude_none=True))
+        job.telemetry["model_identity"] = spec.model
 
         job.state.phase = "upload"
         job.state.progress = 0.8
@@ -202,7 +237,9 @@ class Jobs:
                 dimension=reply_item.dimension,
             )
 
+        upload_started = time.perf_counter()
         results = await asyncio.gather(*(upload(item) for item in embed_reply.items))
+        job.telemetry["artifact_upload_ms"] = _elapsed_ms(upload_started)
         return EmbedResult(items=results).model_dump()
 
     async def _read_media(self, key: str) -> bytes:
@@ -233,12 +270,28 @@ class Jobs:
         )
         return result.model_dump()
 
-    async def _call_inference(self, request: bytes) -> ChildOk:
-        raw = await self._supervisor.call("inference", request)
+    async def _call_inference(self, job: _Job, request: bytes) -> ChildOk:
+        raw, queue_wait_ms = await self._supervisor.call_with_queue_wait("inference", request)
+        job.telemetry["gpu_queue_wait_ms"] = queue_wait_ms
         response = _parse_child(raw)
         if isinstance(response, ChildErr):
             raise ComputeError(response.error)
         return response
+
+    def _emit_inference_event(self, job: _Job, started: float) -> None:
+        outcome = job.state.status
+        fields: dict[str, object] = {
+            "job_id": job.state.job_id,
+            "outcome": outcome,
+            "duration_ms": _elapsed_ms(started),
+            "phase": job.state.phase,
+            **job.telemetry,
+        }
+        if job.state.error:
+            fields["error"] = job.state.error
+        log = structlog.get_logger()
+        writer = log.error if outcome == "failed" else log.info
+        writer("compute_inference_job_completed", **fields)
 
 
 def _parse_child(raw: bytes) -> ChildOk | ChildErr:
@@ -248,3 +301,7 @@ def _parse_child(raw: bytes) -> ChildOk | ChildErr:
     if payload.get("ok"):
         return ChildOk.model_validate(payload)
     return ChildErr.model_validate(payload)
+
+
+def _elapsed_ms(started: float) -> float:
+    return round((time.perf_counter() - started) * 1000, 2)

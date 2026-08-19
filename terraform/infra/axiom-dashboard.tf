@@ -4,7 +4,7 @@ locals {
   axiom_dashboard_document = {
     name            = "Mimeme Production Overview"
     owner           = "X-AXIOM-EVERYONE"
-    description     = "Operational and ingestion health for the Mimeme production API and worker."
+    description     = "Operational, ingestion, and GPU inference health for Mimeme production."
     refreshTime     = 60
     schemaVersion   = 2
     timeWindowStart = "qr-now-24h"
@@ -196,6 +196,61 @@ locals {
         }
       },
       {
+        id   = "gpu-job-latency"
+        type = "TimeSeries"
+        name = "GPU inference latency"
+        query = {
+          apl          = <<-APL
+            ${local.axiom_dataset_ref}
+            | where event == "compute_inference_job_completed" and outcome == "succeeded"
+            | summarize p50_ms = percentile(duration_ms, 50), p95_ms = percentile(duration_ms, 95), p95_queue_wait_ms = percentile(gpu_queue_wait_ms, 95) by inference_operation, bin_auto(_time)
+          APL
+          queryOptions = { displayNull = "auto", timeSeriesVariant = "line" }
+        }
+      },
+      {
+        id   = "gpu-phase-breakdown"
+        type = "Table"
+        name = "GPU phase breakdown"
+        query = {
+          apl          = <<-APL
+            ${local.axiom_dataset_ref}
+            | where event == "compute_inference_job_completed" and outcome == "succeeded"
+            | summarize jobs = count(), cold_starts = countif(gpu_model_load_ms > 0), avg_total_ms = avg(duration_ms), avg_model_load_ms = avg(gpu_model_load_ms), avg_queue_wait_ms = avg(gpu_queue_wait_ms), avg_download_ms = avg(media_download_ms), avg_decode_ms = avg(image_decode_ms), avg_vision_encode_ms = avg(vision_encode_ms), avg_caption_ms = avg(caption_ms), avg_ocr_ms = avg(ocr_ms), avg_siglip_preprocess_ms = avg(siglip_preprocess_ms), avg_siglip_image_ms = avg(siglip_image_ms), avg_siglip_text_ms = avg(siglip_text_ms), avg_upload_ms = avg(artifact_upload_ms) by inference_operation, gpu_device_name, residency_mode, embed_batch_size
+            | sort by avg_total_ms desc
+          APL
+          queryOptions = { displayNull = "auto" }
+        }
+      },
+      {
+        id   = "gpu-memory"
+        type = "TimeSeries"
+        name = "GPU peak memory"
+        query = {
+          apl          = <<-APL
+            ${local.axiom_dataset_ref}
+            | where event == "compute_inference_job_completed" and outcome == "succeeded"
+            | summarize peak_allocated_mb = max(gpu_peak_allocated_mb), peak_reserved_mb = max(gpu_peak_reserved_mb) by bin_auto(_time)
+          APL
+          queryOptions = { displayNull = "auto", timeSeriesVariant = "line" }
+        }
+      },
+      {
+        id   = "gpu-recent-jobs"
+        type = "LogStream"
+        name = "Recent GPU inference jobs"
+        query = {
+          apl          = <<-APL
+            ${local.axiom_dataset_ref}
+            | where event == "compute_inference_job_completed"
+            | project _time, release_id, job_id, inference_operation, outcome, duration_ms, gpu_model_load_ms, gpu_queue_wait_ms, media_download_ms, image_decode_ms, vision_encode_ms, caption_ms, ocr_ms, siglip_preprocess_ms, siglip_image_ms, siglip_text_ms, artifact_upload_ms, embed_item_count, embed_batch_size, gpu_peak_allocated_mb, gpu_peak_reserved_mb, gpu_device_name, residency_mode, model_identity, error
+            | sort by _time desc
+            | limit 100
+          APL
+          queryOptions = { displayNull = "auto" }
+        }
+      },
+      {
         id   = "recent-errors"
         type = "LogStream"
         name = "Recent warnings and errors"
@@ -227,7 +282,11 @@ locals {
       { i = "source-health", x = 0, y = 44, w = 6, h = 12 },
       { i = "dependency-health", x = 6, y = 44, w = 6, h = 12 },
       { i = "worker-health", x = 0, y = 56, w = 6, h = 10 },
-      { i = "recent-errors", x = 0, y = 66, w = 12, h = 16 },
+      { i = "gpu-job-latency", x = 6, y = 56, w = 6, h = 10 },
+      { i = "gpu-phase-breakdown", x = 0, y = 66, w = 12, h = 12 },
+      { i = "gpu-memory", x = 0, y = 78, w = 6, h = 10 },
+      { i = "gpu-recent-jobs", x = 6, y = 78, w = 6, h = 14 },
+      { i = "recent-errors", x = 0, y = 92, w = 12, h = 16 },
     ]
   }
 }

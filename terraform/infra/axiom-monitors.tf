@@ -76,3 +76,17 @@ resource "axiom_monitor" "index_activity_failures" {
   range_minutes       = 1
   trigger_from_n_runs = 1
 }
+
+resource "axiom_monitor" "compute_inference_failures" {
+  depends_on          = [axiom_dataset.api_logs]
+  name                = "Mimeme GPU inference failure"
+  description         = "Alert when the compute gateway reports a failed annotation or embedding job."
+  type                = "MatchEvent"
+  apl_query           = <<-APL
+    ${local.axiom_dataset_ref}
+    | where event == "compute_inference_job_completed" and outcome == "failed"
+  APL
+  interval_minutes    = 1
+  range_minutes       = 1
+  trigger_from_n_runs = 1
+}

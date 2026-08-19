@@ -23,6 +23,7 @@ from mimeme.compute.model import (
 from mimeme.compute.supervisor import ChildDead, Supervisor
 from mimeme.compute.workspace import Workspace
 from mimeme.config import ArtifactConfig, MediaConfig, Settings
+from mimeme.logging import setup_logging
 from mimeme.search.gateway import Gateway as SearchGateway
 
 _MAX_IMAGE_BYTES = 64 * 1024 * 1024
@@ -63,6 +64,7 @@ def create_app(settings: Settings) -> FastAPI:
             artifacts=artifacts,
             workspace_dir=workspace_dir,
             io_concurrency=settings.compute.job_io_concurrency,
+            residency_mode=settings.inference.residency,
         )
         app.state.media = media
         app.state.artifacts = artifacts
@@ -242,6 +244,7 @@ def run() -> None:
     import uvicorn
 
     settings = Settings()
+    setup_logging(settings, "compute")
     host, port = _bind(settings)
     uvicorn.run(create_app(settings), host=host, port=port)
 

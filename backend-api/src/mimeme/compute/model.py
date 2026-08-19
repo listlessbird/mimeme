@@ -40,11 +40,28 @@ class AnnotateCall(_Frozen):
     context: Context | None = None
 
 
+class InferenceTelemetry(_Frozen):
+    gpu_model_load_ms: float = 0
+    image_decode_ms: float = 0
+    vision_encode_ms: float | None = None
+    caption_ms: float | None = None
+    ocr_ms: float | None = None
+    siglip_preprocess_ms: float | None = None
+    siglip_image_ms: float | None = None
+    siglip_text_ms: float | None = None
+    embed_batch_size: int | None = None
+    gpu_peak_allocated_mb: float | None = None
+    gpu_peak_reserved_mb: float | None = None
+    gpu_device_name: str | None = None
+    residency_mode: Literal["both", "swap"]
+
+
 class AnnotateReply(_Frozen):
     caption: str
     caption_model: str
     ocr_text: str
     ocr_model: str
+    telemetry: InferenceTelemetry | None = None
 
 
 class EmbedCallItem(_Frozen):
@@ -70,6 +87,7 @@ class EmbedReplyItem(_Frozen):
 
 class EmbedReply(_Frozen):
     items: list[EmbedReplyItem]
+    telemetry: InferenceTelemetry | None = None
 
 
 ImageCall = InspectCall

@@ -4,6 +4,7 @@ import asyncio
 from pathlib import Path
 
 import pytest
+from structlog.testing import capture_logs
 
 from mimeme import storage
 from mimeme.compute.jobs import ComputeError, Jobs
@@ -16,6 +17,7 @@ from mimeme.compute.model import (
     EmbedReplyItem,
     EmbedSpec,
     EmbedSpecItem,
+    InferenceTelemetry,
 )
 from mimeme.compute.supervisor import ChildDead
 
@@ -78,7 +80,20 @@ class FakeSupervisor:
             raise ChildDead("inference child is not running")
         await self.block.wait()
         if b'"op":"annotate"' in request or b'"annotate"' in request:
-            reply = AnnotateReply(caption="a cat", caption_model="m", ocr_text="hi", ocr_model="m")
+            reply = AnnotateReply(
+                caption="a cat",
+                caption_model="m",
+                ocr_text="hi",
+                ocr_model="m",
+                telemetry=InferenceTelemetry(
+                    gpu_model_load_ms=10,
+                    image_decode_ms=2,
+                    vision_encode_ms=3,
+                    caption_ms=4,
+                    ocr_ms=5,
+                    residency_mode="both",
+                ),
+            )
             return ChildOk(result=reply.model_dump()).model_dump_json().encode()
         call = EmbedCall.model_validate_json(request)
         items = []
@@ -91,7 +106,25 @@ class FakeSupervisor:
             items.append(
                 EmbedReplyItem(image_id=item.image_id, ok=True, model="siglip", dimension=768)
             )
-        return ChildOk(result=EmbedReply(items=items).model_dump()).model_dump_json().encode()
+        telemetry = InferenceTelemetry(
+            gpu_model_load_ms=10,
+            image_decode_ms=2,
+            siglip_preprocess_ms=3,
+            siglip_image_ms=4,
+            siglip_text_ms=5,
+            embed_batch_size=len(call.items),
+            gpu_peak_allocated_mb=100,
+            gpu_peak_reserved_mb=120,
+            residency_mode="both",
+        )
+        return (
+            ChildOk(result=EmbedReply(items=items, telemetry=telemetry).model_dump())
+            .model_dump_json()
+            .encode()
+        )
+
+    async def call_with_queue_wait(self, role: str, request: bytes) -> tuple[bytes, float]:
+        return await self.call(role, request), 12.5
 
     async def restart(self, role: str) -> None:
         self.restarted.append(role)
@@ -172,6 +205,42 @@ async def test_embed_job_uploads_and_preserves_order(tmp_path: Path) -> None:
     assert ids == [1, 2]
     assert artifacts.objects["e/1.npy"] == b"IMG"
     assert artifacts.objects["e/2_text.npy"] == b"TXT"
+
+
+async def test_embed_emits_one_wide_gpu_timing_event(tmp_path: Path) -> None:
+    supervisor = FakeSupervisor()
+    jobs, media, _ = _make_jobs(tmp_path, supervisor)
+    media.objects["images/1.jpg"] = b"1"
+    spec = EmbedSpec(
+        model="siglip",
+        items=[
+            EmbedSpecItem(
+                image_id=1,
+                media_key="images/1.jpg",
+                text="t1",
+                sha256="s1",
+                image_key="e/1.npy",
+                text_key="e/1_text.npy",
+            )
+        ],
+    )
+
+    with capture_logs() as logs:
+        jobs.submit("timed", spec)
+        await _wait(jobs, "timed")
+
+    events = [event for event in logs if event.get("event") == "compute_inference_job_completed"]
+    assert len(events) == 1
+    event = events[0]
+    assert event["outcome"] == "succeeded"
+    assert event["gpu_queue_wait_ms"] == 12.5
+    assert event["gpu_model_load_ms"] == 10
+    assert event["siglip_image_ms"] == 4
+    assert event["embed_batch_size"] == 1
+    assert event["gpu_peak_reserved_mb"] == 120
+    assert event["residency_mode"] == "both"
+    assert event["media_download_ms"] >= 0
+    assert event["artifact_upload_ms"] >= 0
 
 
 async def test_embed_s3_io_is_concurrent_and_globally_bounded(tmp_path: Path) -> None:

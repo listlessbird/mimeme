@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import multiprocessing as mp
+import time
 from multiprocessing.process import BaseProcess
 from pathlib import Path
 
@@ -72,10 +73,16 @@ class Supervisor:
         raise TimeoutError(child.role)
 
     async def call(self, role: Role, request: bytes) -> bytes:
+        response, _ = await self.call_with_queue_wait(role, request)
+        return response
+
+    async def call_with_queue_wait(self, role: Role, request: bytes) -> tuple[bytes, float]:
         child = self._children.get(role)
         if child is None:
             raise ChildDead(f"role {role} is not enabled")
+        queued_at = time.perf_counter()
         async with child.lock:
+            queue_wait_ms = round((time.perf_counter() - queued_at) * 1000, 2)
             if child.process is None or not child.process.is_alive():
                 raise ChildDead(f"{role} child is not running")
             try:
@@ -83,7 +90,7 @@ class Supervisor:
                     reader, writer = await asyncio.open_unix_connection(str(child.socket_path))
                     try:
                         await write_frame(writer, request)
-                        return await read_frame(reader)
+                        return await read_frame(reader), queue_wait_ms
                     finally:
                         writer.close()
                         try:

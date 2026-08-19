@@ -6,6 +6,7 @@ import time
 import structlog
 from temporalio import activity
 
+from mimeme import release
 from mimeme.config import Settings
 
 
@@ -39,6 +40,7 @@ def setup_logging(settings: Settings, service: str = "api") -> None:
     structlog.contextvars.bind_contextvars(
         service=service,
         app_env=settings.app_env,
+        release_id=release.ID,
     )
 
 

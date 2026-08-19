@@ -8,7 +8,7 @@ import numpy as np
 from PIL import Image
 
 from mimeme.compute.inference import Models
-from mimeme.compute.model import EmbedCall, EmbedCallItem
+from mimeme.compute.model import AnnotateCall, EmbedCall, EmbedCallItem
 from mimeme.config import InferenceConfig
 
 
@@ -16,6 +16,17 @@ class _VisionLoader:
     @staticmethod
     def from_pretrained(*args, **kwargs) -> object:  # noqa: ANN002, ANN003
         return object()
+
+
+class _VisionModel:
+    def encode_image(self, image: Image.Image) -> object:
+        return object()
+
+    def caption(self, encoded: object, *, length: str) -> dict[str, str]:
+        return {"caption": "a square"}
+
+    def query(self, encoded: object, prompt: str, *, reasoning: bool) -> dict[str, str]:
+        return {"answer": "text"}
 
 
 def test_both_residency_keeps_embed_model_when_loading_vision(monkeypatch) -> None:
@@ -47,6 +58,23 @@ def test_swap_residency_releases_embed_model_when_loading_vision(monkeypatch) ->
     assert models._siglip_model is None
 
 
+def test_annotate_reports_phase_timings(tmp_path: Path) -> None:
+    path = tmp_path / "image.png"
+    Image.new("RGB", (8, 8)).save(path)
+    models = Models(InferenceConfig(embed_device="cpu", residency="both"))
+    models._moondream = _VisionModel()
+
+    reply = models.annotate(AnnotateCall(path=str(path)))
+
+    assert reply.telemetry is not None
+    assert reply.telemetry.gpu_model_load_ms == 0
+    assert reply.telemetry.image_decode_ms >= 0
+    assert reply.telemetry.vision_encode_ms is not None
+    assert reply.telemetry.caption_ms is not None
+    assert reply.telemetry.ocr_ms is not None
+    assert reply.telemetry.residency_mode == "both"
+
+
 def test_embed_encodes_all_items_in_two_model_batches(tmp_path: Path) -> None:
     paths: list[Path] = []
     for index in range(3):
@@ -58,7 +86,7 @@ def test_embed_encodes_all_items_in_two_model_batches(tmp_path: Path) -> None:
     models._load_embed = lambda: None  # type: ignore[method-assign]
     calls: list[tuple[int, int]] = []
 
-    def encode(*, images, texts):  # noqa: ANN001, ANN202
+    def encode(*, images, texts, telemetry):  # noqa: ANN001, ANN202
         calls.append((len(images or []), len(texts or [])))
         size = len(images) if images is not None else len(texts)
         return np.arange(size * 4, dtype=np.float32).reshape(size, 4)
@@ -81,6 +109,9 @@ def test_embed_encodes_all_items_in_two_model_batches(tmp_path: Path) -> None:
 
     assert calls == [(3, 0), (0, 3)]
     assert all(item.ok for item in reply.items)
+    assert reply.telemetry is not None
+    assert reply.telemetry.embed_batch_size == 3
+    assert reply.telemetry.residency_mode == "swap"
     assert np.load(tmp_path / "image-2.npy").tolist() == [8.0, 9.0, 10.0, 11.0]
 
 
@@ -94,7 +125,7 @@ def test_embed_excludes_invalid_images_from_the_model_batch(tmp_path: Path) -> N
     models._load_embed = lambda: None  # type: ignore[method-assign]
     calls: list[int] = []
 
-    def encode(*, images, texts):  # noqa: ANN001, ANN202
+    def encode(*, images, texts, telemetry):  # noqa: ANN001, ANN202
         size = len(images) if images is not None else len(texts)
         calls.append(size)
         return np.ones((size, 4), dtype=np.float32)
@@ -136,7 +167,7 @@ def test_embed_chunks_model_batches_at_the_configured_limit(tmp_path: Path) -> N
     models._load_embed = lambda: None  # type: ignore[method-assign]
     calls: list[tuple[int, int]] = []
 
-    def encode(*, images, texts):  # noqa: ANN001, ANN202
+    def encode(*, images, texts, telemetry):  # noqa: ANN001, ANN202
         calls.append((len(images or []), len(texts or [])))
         size = len(images) if images is not None else len(texts)
         return np.ones((size, 4), dtype=np.float32)
