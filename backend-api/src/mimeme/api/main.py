@@ -13,7 +13,7 @@ from starlette.types import ExceptionHandler
 from mimeme.api.lifespan import lifespan
 from mimeme.api.middleware import register_middleware
 from mimeme.api.rate_limit import limiter, rate_limit_exceeded_handler
-from mimeme.api.routers import health, images, ingestion, jobs, sources
+from mimeme.api.routers import atlas, health, images, ingestion, jobs, sources
 from mimeme.config import Settings
 from mimeme.search import router as search
 
@@ -62,6 +62,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     app.include_router(health.router)
     app.include_router(search.router)
+    app.include_router(atlas.router)
     app.include_router(images.router)
     app.include_router(jobs.router)
     app.include_router(sources.router)

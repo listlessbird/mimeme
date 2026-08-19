@@ -18,6 +18,7 @@ import { Route as AdminSourcesIndexRouteImport } from './routes/admin/sources/in
 import { Route as AdminIngestionIndexRouteImport } from './routes/admin/ingestion/index'
 import { Route as AdminImagesIndexRouteImport } from './routes/admin/images/index'
 import { Route as AdminGifAnnotationIndexRouteImport } from './routes/admin/gif-annotation/index'
+import { Route as AdminAtlasIndexRouteImport } from './routes/admin/atlas/index'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as AdminIngestionIngestUrlIdRouteImport } from './routes/admin/ingestion/$ingestUrlId'
 import { Route as AdminImagesImageIdRouteImport } from './routes/admin/images/$imageId'
@@ -69,6 +70,11 @@ const AdminGifAnnotationIndexRoute = AdminGifAnnotationIndexRouteImport.update({
   path: '/gif-annotation/',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminAtlasIndexRoute = AdminAtlasIndexRouteImport.update({
+  id: '/atlas/',
+  path: '/atlas/',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -105,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/admin/images/$imageId': typeof AdminImagesImageIdRoute
   '/admin/ingestion/$ingestUrlId': typeof AdminIngestionIngestUrlIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/admin/atlas/': typeof AdminAtlasIndexRoute
   '/admin/gif-annotation/': typeof AdminGifAnnotationIndexRoute
   '/admin/images/': typeof AdminImagesIndexRoute
   '/admin/ingestion/': typeof AdminIngestionIndexRoute
@@ -120,6 +127,7 @@ export interface FileRoutesByTo {
   '/admin/images/$imageId': typeof AdminImagesImageIdRoute
   '/admin/ingestion/$ingestUrlId': typeof AdminIngestionIngestUrlIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/admin/atlas': typeof AdminAtlasIndexRoute
   '/admin/gif-annotation': typeof AdminGifAnnotationIndexRoute
   '/admin/images': typeof AdminImagesIndexRoute
   '/admin/ingestion': typeof AdminIngestionIndexRoute
@@ -137,6 +145,7 @@ export interface FileRoutesById {
   '/admin/images/$imageId': typeof AdminImagesImageIdRoute
   '/admin/ingestion/$ingestUrlId': typeof AdminIngestionIngestUrlIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/admin/atlas/': typeof AdminAtlasIndexRoute
   '/admin/gif-annotation/': typeof AdminGifAnnotationIndexRoute
   '/admin/images/': typeof AdminImagesIndexRoute
   '/admin/ingestion/': typeof AdminIngestionIndexRoute
@@ -155,6 +164,7 @@ export interface FileRouteTypes {
     | '/admin/images/$imageId'
     | '/admin/ingestion/$ingestUrlId'
     | '/api/auth/$'
+    | '/admin/atlas/'
     | '/admin/gif-annotation/'
     | '/admin/images/'
     | '/admin/ingestion/'
@@ -170,6 +180,7 @@ export interface FileRouteTypes {
     | '/admin/images/$imageId'
     | '/admin/ingestion/$ingestUrlId'
     | '/api/auth/$'
+    | '/admin/atlas'
     | '/admin/gif-annotation'
     | '/admin/images'
     | '/admin/ingestion'
@@ -186,6 +197,7 @@ export interface FileRouteTypes {
     | '/admin/images/$imageId'
     | '/admin/ingestion/$ingestUrlId'
     | '/api/auth/$'
+    | '/admin/atlas/'
     | '/admin/gif-annotation/'
     | '/admin/images/'
     | '/admin/ingestion/'
@@ -267,6 +279,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminGifAnnotationIndexRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/admin/atlas/': {
+      id: '/admin/atlas/'
+      path: '/atlas'
+      fullPath: '/admin/atlas/'
+      preLoaderRoute: typeof AdminAtlasIndexRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -309,6 +328,7 @@ interface AdminRouteRouteChildren {
   AdminIndexRoute: typeof AdminIndexRoute
   AdminImagesImageIdRoute: typeof AdminImagesImageIdRoute
   AdminIngestionIngestUrlIdRoute: typeof AdminIngestionIngestUrlIdRoute
+  AdminAtlasIndexRoute: typeof AdminAtlasIndexRoute
   AdminGifAnnotationIndexRoute: typeof AdminGifAnnotationIndexRoute
   AdminImagesIndexRoute: typeof AdminImagesIndexRoute
   AdminIngestionIndexRoute: typeof AdminIngestionIndexRoute
@@ -321,6 +341,7 @@ const AdminRouteRouteChildren: AdminRouteRouteChildren = {
   AdminIndexRoute: AdminIndexRoute,
   AdminImagesImageIdRoute: AdminImagesImageIdRoute,
   AdminIngestionIngestUrlIdRoute: AdminIngestionIngestUrlIdRoute,
+  AdminAtlasIndexRoute: AdminAtlasIndexRoute,
   AdminGifAnnotationIndexRoute: AdminGifAnnotationIndexRoute,
   AdminImagesIndexRoute: AdminImagesIndexRoute,
   AdminIngestionIndexRoute: AdminIngestionIndexRoute,

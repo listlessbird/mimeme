@@ -62,6 +62,9 @@ export type IngestOutcome = Schemas["IngestOutcome"];
 export type IngestionLogs = Schemas["IngestionLogsResponse"];
 export type IngestionLogEntry = Schemas["IngestionLogEntryResponse"];
 export type ImageIngestInput = Schemas["RemoteImageUrlInput"] | Schemas["StagedUploadInput"];
+export type TemplateAtlas = Schemas["TemplateAtlas"];
+export type TemplateAtlasRunRequest = Schemas["TemplateAtlasRunRequest"];
+export type TemplateCluster = Schemas["TemplateCluster"];
 
 export function describeImageIngestInput(input: ImageIngestInput): string {
 	switch (input.kind) {
@@ -429,6 +432,23 @@ export const getImage = createServerFn({ method: "GET" })
 		),
 	);
 
+export const getTemplateAtlas = createServerFn({ method: "GET" }).handler(async () => {
+	try {
+		return await callAdmin<TemplateAtlas>("get_template_atlas", (c) => c.GET("/atlas/template"));
+	} catch (error) {
+		if (error instanceof AdminApiError && error.statusCode === 404) return null;
+		throw error;
+	}
+});
+
+export const runTemplateAtlas = createServerFn({ method: "POST" })
+	.inputValidator((input: TemplateAtlasRunRequest) => input)
+	.handler(({ data }) =>
+		callAdmin<TemplateAtlas>("run_template_atlas", (c) =>
+			c.POST("/atlas/template/run", { body: data }),
+		),
+	);
+
 export const getJob = createServerFn({ method: "GET" })
 	.middleware([adminGuard])
 	.inputValidator((input: { id: string }) => input)
@@ -461,6 +481,7 @@ export const adminQueryKeys = {
 		["admin", "source", id, "runs", runId, "items"] as const,
 	images: (params: ImageListParams) => ["admin", "images", params] as const,
 	image: (id: number) => ["admin", "image", id] as const,
+	templateAtlas: ["admin", "template-atlas"] as const,
 	job: (id: string) => ["admin", "job", id] as const,
 	ingestion: (params: IngestionListParams) => ["admin", "ingestion", params] as const,
 	ingestionAttempt: (id: number) => ["admin", "ingestion", "attempt", id] as const,
@@ -508,6 +529,13 @@ export const imageQueryOptions = (id: number) =>
 	queryOptions({
 		queryKey: adminQueryKeys.image(id),
 		queryFn: () => getImage({ data: { id } }),
+	});
+
+export const templateAtlasQueryOptions = () =>
+	queryOptions({
+		queryKey: adminQueryKeys.templateAtlas,
+		queryFn: () => getTemplateAtlas(),
+		retry: false,
 	});
 
 export const jobQueryOptions = (id: string) =>

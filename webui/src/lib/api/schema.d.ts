@@ -28,8 +28,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Search */
-        get: operations["search_search_get"];
+        /** Search Text */
+        get: operations["search_text_search_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -45,10 +45,44 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Find Similar */
-        get: operations["find_similar_search_similar__image_id__get"];
+        /** Search Similar */
+        get: operations["search_similar_search_similar__image_id__get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/atlas/template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Template Atlas */
+        get: operations["get_template_atlas_atlas_template_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/atlas/template/run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Run Template Atlas */
+        post: operations["run_template_atlas_atlas_template_run_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -152,6 +186,23 @@ export interface paths {
         };
         /** List Jobs */
         get: operations["list_jobs_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/indexes/freshness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Index Freshness */
+        get: operations["get_index_freshness_jobs_indexes_freshness_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -397,10 +448,11 @@ export interface components {
             name: string;
             /**
              * Adapter Key
-             * @description Adapter the system supports, e.g. 'meme_api'
+             * @description Adapter the system supports: 'meme_api', 'tumblr_tagged', or 'kym'
              */
             adapter_key: string;
-            adapter_config: components["schemas"]["MemeApiAdapterConfig"];
+            /** Adapter Config */
+            adapter_config: components["schemas"]["MemeApiAdapterConfig"] | components["schemas"]["TumblrAdapterConfig"] | components["schemas"]["KymAdapterConfig"];
             /** Dataset */
             dataset?: string | null;
             /** Schedule Cron */
@@ -562,6 +614,29 @@ export interface components {
          * @enum {string}
          */
         ImageStatus: "pending" | "downloading" | "scanning" | "annotating" | "embedding" | "done" | "failed";
+        /** IndexFreshnessResponse */
+        IndexFreshnessResponse: {
+            /** Desired Generation */
+            desired_generation: number;
+            /** Active Generation */
+            active_generation: number;
+            /** Is Stale */
+            is_stale: boolean;
+            /** Active Version */
+            active_version: string | null;
+            /** Rebuild Job Id */
+            rebuild_job_id: string | null;
+            /** Rebuild Target Generation */
+            rebuild_target_generation: number | null;
+            /** Rebuild Claimed At */
+            rebuild_claimed_at: string | null;
+            /** Last Dirty At */
+            last_dirty_at: string | null;
+            /** Last Dirty Reason */
+            last_dirty_reason: string | null;
+            /** Last Reconciled At */
+            last_reconciled_at: string | null;
+        };
         /** IndexVersionResponse */
         IndexVersionResponse: {
             /** Version */
@@ -584,8 +659,8 @@ export interface components {
             /** Versions */
             versions: components["schemas"]["IndexVersionResponse"][];
         };
-        /** IngestJobResultPayload */
-        IngestJobResultPayload: {
+        /** IngestResult */
+        IngestResult: {
             /** Processed */
             processed: number;
             /** Failed */
@@ -593,11 +668,6 @@ export interface components {
             /** Duplicates */
             duplicates: number;
         };
-        /**
-         * IngestOutcome
-         * @enum {string}
-         */
-        IngestOutcome: "ingested" | "deduped" | "failed" | "in_flight";
         /**
          * IngestStage
          * @enum {string}
@@ -608,7 +678,7 @@ export interface components {
             /** Ingest Url Id */
             ingest_url_id: number;
             /** Input */
-            input: components["schemas"]["RemoteImageUrlInput"] | components["schemas"]["StagedUploadInput"];
+            input: components["schemas"]["RemoteUrl"] | components["schemas"]["Staged"];
             /** Job Id */
             job_id: string;
             /** Source Run Id */
@@ -620,7 +690,7 @@ export interface components {
             trigger: components["schemas"]["SourceRunTrigger"];
             stage: components["schemas"]["IngestStage"];
             status: components["schemas"]["ProcessingStatus"];
-            outcome: components["schemas"]["IngestOutcome"];
+            outcome: components["schemas"]["Outcome"];
             duplicate_reason: components["schemas"]["DuplicateReason"] | null;
             /** Duplicate Of Image Id */
             duplicate_of_image_id: number | null;
@@ -690,7 +760,7 @@ export interface components {
             /** Ingest Url Id */
             ingest_url_id: number;
             /** Input */
-            input: components["schemas"]["RemoteImageUrlInput"] | components["schemas"]["StagedUploadInput"];
+            input: components["schemas"]["RemoteUrl"] | components["schemas"]["Staged"];
             /** Job Id */
             job_id: string;
             /** Source Run Id */
@@ -702,7 +772,7 @@ export interface components {
             trigger: components["schemas"]["SourceRunTrigger"];
             stage: components["schemas"]["IngestStage"];
             status: components["schemas"]["ProcessingStatus"];
-            outcome: components["schemas"]["IngestOutcome"];
+            outcome: components["schemas"]["Outcome"];
             duplicate_reason: components["schemas"]["DuplicateReason"] | null;
             /** Duplicate Of Image Id */
             duplicate_of_image_id: number | null;
@@ -722,11 +792,6 @@ export interface components {
             /** Stage Updated At */
             stage_updated_at: string | null;
         };
-        /**
-         * IngestionView
-         * @enum {string}
-         */
-        IngestionView: "live" | "completed" | "failed" | "all";
         /** JobListResponse */
         JobListResponse: {
             /** Jobs */
@@ -766,9 +831,8 @@ export interface components {
             /** Completed At */
             completed_at?: string | null;
             /** @description Job result data */
-            result?: components["schemas"]["JobResultPayload"] | null;
+            result?: components["schemas"]["mimeme__job__model__Result"] | null;
         };
-        JobResultPayload: components["schemas"]["IngestJobResultPayload"] | components["schemas"]["RebuildJobResultPayload"] | components["schemas"]["RawJobResultPayload"];
         /**
          * JobStatus
          * @enum {string}
@@ -779,29 +843,53 @@ export interface components {
          * @enum {string}
          */
         JobType: "ingest" | "rebuild_index";
+        /** KymAdapterConfig */
+        KymAdapterConfig: {
+            /** Start Page */
+            start_page?: number;
+            /** Max Entries Per Run */
+            max_entries_per_run?: number;
+            /** Max Photo Pages Per Entry */
+            max_photo_pages_per_entry?: number;
+            /** Delay Seconds */
+            delay_seconds?: number;
+            /** Timeout Seconds */
+            timeout_seconds?: number;
+            /** Retries */
+            retries?: number;
+            /** Impersonate */
+            impersonate?: string;
+        };
         /** MemeApiAdapterConfig */
         MemeApiAdapterConfig: {
             /** Subreddits */
             subreddits: string[];
             /** Min Score */
             min_score?: number;
-            /** Max Items Per Run */
-            max_items_per_run?: number | null;
         };
-        /** MemeApiRawMetadata */
-        MemeApiRawMetadata: {
-            /** Author */
-            author?: string | null;
-            /** Title */
-            title?: string | null;
-            /** Ups */
-            ups?: number | null;
-            /** Subreddit */
-            subreddit?: string | null;
-            /** Preview */
-            preview?: string | string[] | null;
-            /** Postlink */
-            postLink?: string | null;
+        /**
+         * Outcome
+         * @enum {string}
+         */
+        Outcome: "ingested" | "deduped" | "failed" | "in_flight";
+        /** Page */
+        Page: {
+            /** Query */
+            query: string;
+            /** Results */
+            results: components["schemas"]["mimeme__search__model__Result"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Has More */
+            has_more: boolean;
+            /** Search Time Ms */
+            search_time_ms: number;
+            /** Index Version */
+            index_version: string | null;
         };
         /**
          * ProcessingStatus
@@ -821,8 +909,8 @@ export interface components {
              */
             retry_after: string;
         };
-        /** RawJobResultPayload */
-        RawJobResultPayload: {
+        /** RawResult */
+        RawResult: {
             /** Raw */
             raw: string;
         };
@@ -840,8 +928,8 @@ export interface components {
              */
             model_name?: string | null;
         };
-        /** RebuildJobResultPayload */
-        RebuildJobResultPayload: {
+        /** RebuildResult */
+        RebuildResult: {
             /** Version */
             version: string;
             /** Num Vectors */
@@ -852,9 +940,16 @@ export interface components {
             removed_versions: string[];
             /** Text Num Vectors */
             text_num_vectors?: number | null;
+            /**
+             * Skipped
+             * @default false
+             */
+            skipped: boolean;
+            /** Skip Reason */
+            skip_reason?: string | null;
         };
-        /** RemoteImageUrlInput */
-        RemoteImageUrlInput: {
+        /** RemoteUrl */
+        RemoteUrl: {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -890,7 +985,7 @@ export interface components {
             /** Id */
             id: number;
             /** Input */
-            input: components["schemas"]["RemoteImageUrlInput"] | components["schemas"]["StagedUploadInput"];
+            input: components["schemas"]["RemoteUrl"] | components["schemas"]["Staged"];
             /** Source Item Id */
             source_item_id: number | null;
             /** External Item Id */
@@ -906,81 +1001,6 @@ export interface components {
             /** Thumbnail Url */
             thumbnail_url: string | null;
         };
-        /** SearchResponse */
-        SearchResponse: {
-            /**
-             * Query
-             * @description Original query
-             */
-            query: string;
-            /**
-             * Results
-             * @description Search results
-             */
-            results?: components["schemas"]["SearchResult"][];
-            /**
-             * Total
-             * @description Total matching results
-             */
-            total: number;
-            /** Limit */
-            limit: number;
-            /** Offset */
-            offset: number;
-            /**
-             * Search Time Ms
-             * @description Search time in milliseconds
-             */
-            search_time_ms: number;
-            /**
-             * Index Version
-             * @description Active index version
-             */
-            index_version?: string | null;
-        };
-        /** SearchResult */
-        SearchResult: {
-            /**
-             * Id
-             * @description Image ID
-             */
-            id: number;
-            /**
-             * Sha256
-             * @description Image hash
-             */
-            sha256: string;
-            /**
-             * Score
-             * @description Similarity score
-             */
-            score: number;
-            /**
-             * Url
-             * @description Image URL
-             */
-            url?: string | null;
-            /**
-             * Caption
-             * @description Generated caption
-             */
-            caption?: string | null;
-            /**
-             * Ocr Text
-             * @description Extracted text from image
-             */
-            ocr_text?: string | null;
-            /**
-             * Width
-             * @description Image width
-             */
-            width?: number | null;
-            /**
-             * Height
-             * @description Image height
-             */
-            height?: number | null;
-        };
         /** SourceDetailResponse */
         SourceDetailResponse: {
             /** Id */
@@ -989,7 +1009,8 @@ export interface components {
             name: string;
             /** Adapter Key */
             adapter_key: string;
-            adapter_config: components["schemas"]["MemeApiAdapterConfig"];
+            /** Adapter Config */
+            adapter_config: components["schemas"]["MemeApiAdapterConfig"] | components["schemas"]["TumblrAdapterConfig"] | components["schemas"]["KymAdapterConfig"];
             /** Dataset */
             dataset: string | null;
             /** Schedule Cron */
@@ -1042,7 +1063,10 @@ export interface components {
             external_item_id: string;
             /** Title */
             title: string | null;
-            raw_metadata: components["schemas"]["MemeApiRawMetadata"] | null;
+            /** Raw Metadata */
+            raw_metadata: {
+                [key: string]: unknown;
+            } | null;
             /** Thumbnail Url */
             thumbnail_url: string | null;
             /**
@@ -1077,7 +1101,8 @@ export interface components {
             name: string;
             /** Adapter Key */
             adapter_key: string;
-            adapter_config: components["schemas"]["MemeApiAdapterConfig"];
+            /** Adapter Config */
+            adapter_config: components["schemas"]["MemeApiAdapterConfig"] | components["schemas"]["TumblrAdapterConfig"] | components["schemas"]["KymAdapterConfig"];
             /** Dataset */
             dataset: string | null;
             /** Schedule Cron */
@@ -1115,7 +1140,8 @@ export interface components {
             name: string;
             /** Adapter Key */
             adapter_key: string;
-            adapter_config: components["schemas"]["MemeApiAdapterConfig"];
+            /** Adapter Config */
+            adapter_config: components["schemas"]["MemeApiAdapterConfig"] | components["schemas"]["TumblrAdapterConfig"] | components["schemas"]["KymAdapterConfig"];
             /** Dataset */
             dataset: string | null;
             /** Schedule Cron */
@@ -1188,8 +1214,8 @@ export interface components {
             /** Failed Count */
             failed_count: number;
         };
-        /** StagedUploadInput */
-        StagedUploadInput: {
+        /** Staged */
+        Staged: {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1198,6 +1224,98 @@ export interface components {
             /** Artifact Key */
             artifact_key: string;
         };
+        /** TemplateAnchor */
+        TemplateAnchor: {
+            /** Label */
+            label: string;
+            /** Source */
+            source?: string | null;
+            /** Source Item Id */
+            source_item_id?: number | null;
+            /** Image Count */
+            image_count: number;
+        };
+        /** TemplateAtlas */
+        TemplateAtlas: {
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Model */
+            model: string;
+            /** Neighbors */
+            neighbors: number;
+            /** Similarity Threshold */
+            similarity_threshold: number;
+            /** Min Cluster Size */
+            min_cluster_size: number;
+            /** Embedding Count */
+            embedding_count: number;
+            /** Clustered Image Count */
+            clustered_image_count: number;
+            /** Noise Image Count */
+            noise_image_count: number;
+            /** Cluster Count */
+            cluster_count: number;
+            /** Graph Edge Count */
+            graph_edge_count: number;
+            /** Anchor Count */
+            anchor_count: number;
+            /** Clusters */
+            clusters?: components["schemas"]["TemplateCluster"][];
+        };
+        /** TemplateAtlasImage */
+        TemplateAtlasImage: {
+            /** Id */
+            id: number;
+            /** Url */
+            url?: string | null;
+            /** Width */
+            width?: number | null;
+            /** Height */
+            height?: number | null;
+            /** Dataset */
+            dataset?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Source */
+            source?: string | null;
+            /** Similarity To Medoid */
+            similarity_to_medoid?: number | null;
+        };
+        /** TemplateAtlasRunRequest */
+        TemplateAtlasRunRequest: {
+            /**
+             * Neighbors
+             * @default 20
+             */
+            neighbors: number;
+            /**
+             * Similarity Threshold
+             * @default 0.72
+             */
+            similarity_threshold: number;
+            /**
+             * Min Cluster Size
+             * @default 3
+             */
+            min_cluster_size: number;
+        };
+        /** TemplateCluster */
+        TemplateCluster: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Size */
+            size: number;
+            medoid: components["schemas"]["TemplateAtlasImage"];
+            /** Anchors */
+            anchors?: components["schemas"]["TemplateAnchor"][];
+            /** Samples */
+            samples?: components["schemas"]["TemplateAtlasImage"][];
+        };
         /** TriggerRunResponse */
         TriggerRunResponse: {
             /** Workflow Id */
@@ -1205,9 +1323,17 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** TumblrAdapterConfig */
+        TumblrAdapterConfig: {
+            /** Tags */
+            tags?: string[];
+            /** Min Note Count */
+            min_note_count?: number;
+        };
         /** UpdateSourceRequest */
         UpdateSourceRequest: {
-            adapter_config?: components["schemas"]["MemeApiAdapterConfig"] | null;
+            /** Adapter Config */
+            adapter_config?: components["schemas"]["MemeApiAdapterConfig"] | components["schemas"]["TumblrAdapterConfig"] | components["schemas"]["KymAdapterConfig"] | null;
             /** Dataset */
             dataset?: string | null;
             /** Schedule Cron */
@@ -1237,6 +1363,31 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * View
+         * @enum {string}
+         */
+        View: "live" | "completed" | "failed" | "all";
+        mimeme__job__model__Result: components["schemas"]["IngestResult"] | components["schemas"]["RebuildResult"] | components["schemas"]["RawResult"];
+        /** Result */
+        mimeme__search__model__Result: {
+            /** Id */
+            id: number;
+            /** Sha256 */
+            sha256: string;
+            /** Score */
+            score: number;
+            /** Url */
+            url?: string | null;
+            /** Caption */
+            caption?: string | null;
+            /** Ocr Text */
+            ocr_text?: string | null;
+            /** Width */
+            width?: number | null;
+            /** Height */
+            height?: number | null;
         };
     };
     responses: never;
@@ -1294,14 +1445,13 @@ export interface operations {
             };
         };
     };
-    search_search_get: {
+    search_text_search_get: {
         parameters: {
             query: {
                 /** @description Search query */
                 q: string;
                 limit?: number;
                 offset?: number;
-                /** @description Optional mode. Omit for image search; use 'hybrid' to fuse image and text indexes. */
                 mode?: "hybrid" | null;
             };
             header?: never;
@@ -1316,7 +1466,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SearchResponse"];
+                    "application/json": components["schemas"]["Page"];
                 };
             };
             /** @description Bad request */
@@ -1375,7 +1525,7 @@ export interface operations {
             };
         };
     };
-    find_similar_search_similar__image_id__get: {
+    search_similar_search_similar__image_id__get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -1394,7 +1544,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SearchResponse"];
+                    "application/json": components["schemas"]["Page"];
                 };
             };
             /** @description Forbidden */
@@ -1408,6 +1558,140 @@ export interface operations {
             };
             /** @description Not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Service unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    get_template_atlas_atlas_template_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateAtlas"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Not found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    run_template_atlas_atlas_template_run_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TemplateAtlasRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TemplateAtlas"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2006,6 +2290,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    get_index_freshness_jobs_indexes_freshness_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexFreshnessResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
             /** @description Rate limit exceeded */
@@ -2856,12 +3187,12 @@ export interface operations {
     list_ingestion_ingestion_get: {
         parameters: {
             query?: {
-                view?: components["schemas"]["IngestionView"];
+                view?: components["schemas"]["View"];
                 stage?: components["schemas"]["IngestStage"] | null;
                 trigger?: components["schemas"]["SourceRunTrigger"] | null;
                 source_id?: number | null;
                 dataset?: string | null;
-                outcome?: components["schemas"]["IngestOutcome"] | null;
+                outcome?: components["schemas"]["Outcome"] | null;
                 created_from?: string | null;
                 created_to?: string | null;
                 limit?: number;

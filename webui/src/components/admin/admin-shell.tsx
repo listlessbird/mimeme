@@ -14,7 +14,7 @@ import {
 	SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Link, useLocation } from "@tanstack/react-router";
-import { Activity, Boxes, Captions, ImageIcon, ShieldAlert } from "lucide-react";
+import { Activity, Boxes, Captions, ImageIcon, Map, ShieldAlert } from "lucide-react";
 import type { ReactNode } from "react";
 
 export function AdminShell({ children }: { children: ReactNode }) {
@@ -23,6 +23,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
 	const onImages = location.pathname.startsWith("/admin/images");
 	const onIngestion = location.pathname.startsWith("/admin/ingestion");
 	const onGifAnnotation = location.pathname.startsWith("/admin/gif-annotation");
+	const onAtlas = location.pathname.startsWith("/admin/atlas");
 
 	return (
 		<SidebarProvider>
@@ -57,6 +58,12 @@ export function AdminShell({ children }: { children: ReactNode }) {
 									>
 										<Captions />
 										<span>gif annotation</span>
+									</SidebarMenuButton>
+								</SidebarMenuItem>
+								<SidebarMenuItem>
+									<SidebarMenuButton render={<Link to="/admin/atlas" />} isActive={onAtlas}>
+										<Map />
+										<span>template atlas</span>
 									</SidebarMenuButton>
 								</SidebarMenuItem>
 								<SidebarMenuItem>
