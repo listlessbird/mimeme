@@ -1,0 +1,31 @@
+services:
+  inference:
+    image: ghcr.io/listlessbird/mimeme-compute:${IMAGE_TAG:?set IMAGE_TAG to the release SHA tag}
+    env_file: ${GPU_ENV_FILE:-.env.gpu}
+    environment:
+      - APP_ENV=production
+      - INFERENCE_EMBED_DEVICE=cuda
+      - OMP_NUM_THREADS=4
+      - OPENBLAS_NUM_THREADS=1
+    ports:
+      - "${GPU_GATEWAY_BIND_IP:?set GPU_GATEWAY_BIND_IP to the Tailscale IPv4}:8010:8010"
+    volumes:
+      - huggingface_cache:/app/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    restart: unless-stopped
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/v1/roles/inference/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 120s
+
+volumes:
+  huggingface_cache:
