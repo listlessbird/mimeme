@@ -107,7 +107,7 @@ def _config(config: MediaConfig | ArtifactConfig):  # noqa: ANN202
     gpu="T4",
     volumes={HF_CACHE_DIR: hf_cache},
     secrets=[s3_secret],
-    scaledown_window=300,
+    scaledown_window=30,
 )
 class VisionService:
     model_version: str = "vikhyatk/moondream2@2025-06-21"
@@ -166,7 +166,7 @@ class VisionService:
     gpu="T4",
     volumes={HF_CACHE_DIR: hf_cache},
     secrets=[s3_secret],
-    scaledown_window=300,
+    scaledown_window=30,
 )
 class EmbeddingService:
     model_name: str = "google/siglip2-base-patch16-naflex"
