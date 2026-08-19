@@ -138,7 +138,21 @@ async def test_failed_job_raises() -> None:
         )
 
     adapter = _adapter(handler)
-    with pytest.raises(Invalid):
+    with pytest.raises(Unavailable, match="child_dead"):
+        await adapter.annotate(Input(image_id=1, media_key="k"))
+
+
+async def test_invalid_inference_output_remains_terminal() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        job_id = request.url.path.rsplit("/", 1)[-1]
+        if request.method == "PUT":
+            return httpx.Response(200, json={"job_id": job_id, "status": "running"})
+        return httpx.Response(
+            200, json={"job_id": job_id, "status": "failed", "error": "ValueError: bad output"}
+        )
+
+    adapter = _adapter(handler)
+    with pytest.raises(Invalid, match="bad output"):
         await adapter.annotate(Input(image_id=1, media_key="k"))
 
 
@@ -211,8 +225,9 @@ async def test_loop_progresses_during_slow_compute() -> None:
     assert ticks > 5
 
 
-async def test_ready_reports_gateway_health() -> None:
+async def test_ready_uses_inference_role_health() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/v1/roles/inference/ready"
         return httpx.Response(200, json={"ok": True, "roles": []})
 
     adapter = _adapter(handler)

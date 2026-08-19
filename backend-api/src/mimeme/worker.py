@@ -52,8 +52,7 @@ async def main() -> None:
     env = await Env.create(settings)
 
     if not await env.inference.ready():
-        await env.aclose()
-        raise RuntimeError("inference release or contract mismatch")
+        log.warning("inference_unavailable")
 
     workflows, activities = registrations(env, poll_interval_s=settings.compute.poll_interval_s)
 

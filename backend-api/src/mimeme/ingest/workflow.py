@@ -12,9 +12,9 @@ with workflow.unsafe.imports_passed_through():
     from mimeme.job.model import IngestResult
 
 _ITEM_RETRY = RetryPolicy(
-    maximum_attempts=3,
-    initial_interval=timedelta(seconds=2),
-    maximum_interval=timedelta(seconds=30),
+    maximum_attempts=0,
+    initial_interval=timedelta(seconds=5),
+    maximum_interval=timedelta(minutes=5),
 )
 _FINISH_RETRY = RetryPolicy(
     maximum_attempts=5,

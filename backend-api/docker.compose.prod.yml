@@ -73,7 +73,7 @@ services:
     env_file: .env
     environment:
       - TEMPORAL_HOST=temporal:7233
-      - COMPUTE_GPU_BACKEND=modal
+      - COMPUTE_GPU_BACKEND=${COMPUTE_GPU_BACKEND:-modal}
       - COMPUTE_GATEWAY_URL=http://compute:8010
       - APP_ENV=production
     depends_on:
@@ -93,7 +93,7 @@ services:
     env_file: .env
     environment:
       - APP_ENV=production
-      - COMPUTE_GPU_BACKEND=modal
+      - COMPUTE_GPU_BACKEND=${COMPUTE_GPU_BACKEND:-modal}
       - OMP_NUM_THREADS=4
       - OPENBLAS_NUM_THREADS=1
     ports:

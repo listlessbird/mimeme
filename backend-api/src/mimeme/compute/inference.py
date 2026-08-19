@@ -69,7 +69,8 @@ class Models:
 
     def _load_vision(self) -> object:
         if self._moondream is None:
-            self._release_embed()
+            if self._config.residency == "swap":
+                self._release_embed()
             from transformers import AutoModelForCausalLM
 
             self._moondream = AutoModelForCausalLM.from_pretrained(
@@ -83,7 +84,8 @@ class Models:
     def _load_embed(self) -> None:
         if self._siglip_model is not None:
             return
-        self._release_vision()
+        if self._config.residency == "swap":
+            self._release_vision()
         import torch
         from transformers import AutoModel, AutoProcessor
 
@@ -197,21 +199,17 @@ class Models:
             except Exception as exc:
                 items[index] = EmbedReplyItem(image_id=item.image_id, ok=False, error=str(exc))
 
-        if prepared:
+        batch_size = self._config.embed_batch_size
+        for offset in range(0, len(prepared), batch_size):
+            chunk = prepared[offset : offset + batch_size]
             try:
-                image_feats = self._encode(
-                    images=[image for _, _, image in prepared], texts=None
-                )
-                text_feats = self._encode(
-                    images=None, texts=[item.text for _, item, _ in prepared]
-                )
+                image_feats = self._encode(images=[image for _, _, image in chunk], texts=None)
+                text_feats = self._encode(images=None, texts=[item.text for _, item, _ in chunk])
             except Exception as exc:
-                for index, item, _ in prepared:
-                    items[index] = EmbedReplyItem(
-                        image_id=item.image_id, ok=False, error=str(exc)
-                    )
+                for index, item, _ in chunk:
+                    items[index] = EmbedReplyItem(image_id=item.image_id, ok=False, error=str(exc))
             else:
-                for row, (index, item, _) in enumerate(prepared):
+                for row, (index, item, _) in enumerate(chunk):
                     try:
                         _save_npy(Path(item.image_out), image_feats[row])
                         _save_npy(Path(item.text_out), text_feats[row])

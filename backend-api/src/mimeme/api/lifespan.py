@@ -29,6 +29,9 @@ def _startup_env_snapshot(settings: Settings) -> dict[str, object]:
         "search_encoder_threads": settings.search.encoder_threads,
         "search_hnsw_ef_search": settings.search.hnsw_ef_search,
         "compute_gateway_url": settings.compute.gateway_url,
+        "compute_inference_gateway_url": (
+            settings.compute.inference_gateway_url or settings.compute.gateway_url
+        ),
         "temporal_host": settings.temporal.host,
         "temporal_namespace": settings.temporal.namespace,
         "temporal_task_queue": settings.temporal.task_queue,

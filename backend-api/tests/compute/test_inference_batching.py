@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 from PIL import Image
@@ -8,6 +10,41 @@ from PIL import Image
 from mimeme.compute.inference import Models
 from mimeme.compute.model import EmbedCall, EmbedCallItem
 from mimeme.config import InferenceConfig
+
+
+class _VisionLoader:
+    @staticmethod
+    def from_pretrained(*args, **kwargs) -> object:  # noqa: ANN002, ANN003
+        return object()
+
+
+def test_both_residency_keeps_embed_model_when_loading_vision(monkeypatch) -> None:
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        SimpleNamespace(AutoModelForCausalLM=_VisionLoader),
+    )
+    models = Models(InferenceConfig(embed_device="cpu", residency="both"))
+    embed_model = object()
+    models._siglip_model = embed_model
+
+    models._load_vision()
+
+    assert models._siglip_model is embed_model
+
+
+def test_swap_residency_releases_embed_model_when_loading_vision(monkeypatch) -> None:
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        SimpleNamespace(AutoModelForCausalLM=_VisionLoader),
+    )
+    models = Models(InferenceConfig(embed_device="cpu", residency="swap"))
+    models._siglip_model = object()
+
+    models._load_vision()
+
+    assert models._siglip_model is None
 
 
 def test_embed_encodes_all_items_in_two_model_batches(tmp_path: Path) -> None:
@@ -86,3 +123,39 @@ def test_embed_excludes_invalid_images_from_the_model_batch(tmp_path: Path) -> N
 
     assert calls == [1, 1]
     assert [item.ok for item in reply.items] == [True, False]
+
+
+def test_embed_chunks_model_batches_at_the_configured_limit(tmp_path: Path) -> None:
+    paths: list[Path] = []
+    for index in range(5):
+        path = tmp_path / f"{index}.png"
+        Image.new("RGB", (8, 8)).save(path)
+        paths.append(path)
+
+    models = Models(InferenceConfig(embed_device="cpu", embed_batch_size=2))
+    models._load_embed = lambda: None  # type: ignore[method-assign]
+    calls: list[tuple[int, int]] = []
+
+    def encode(*, images, texts):  # noqa: ANN001, ANN202
+        calls.append((len(images or []), len(texts or [])))
+        size = len(images) if images is not None else len(texts)
+        return np.ones((size, 4), dtype=np.float32)
+
+    models._encode = encode  # type: ignore[method-assign]
+    reply = models.embed(
+        EmbedCall(
+            items=[
+                EmbedCallItem(
+                    image_id=index,
+                    path=str(path),
+                    text=f"text {index}",
+                    image_out=str(tmp_path / f"image-{index}.npy"),
+                    text_out=str(tmp_path / f"text-{index}.npy"),
+                )
+                for index, path in enumerate(paths)
+            ]
+        )
+    )
+
+    assert calls == [(2, 0), (0, 2), (2, 0), (0, 2), (1, 0), (0, 1)]
+    assert all(item.ok for item in reply.items)

@@ -6,7 +6,17 @@ from unittest.mock import AsyncMock
 import pytest
 
 from mimeme import env as env_module
-from mimeme.config import Settings
+from mimeme.config import ComputeConfig, Settings
+
+
+def test_compute_inference_gateway_reads_independently(monkeypatch) -> None:
+    monkeypatch.setenv("COMPUTE_GATEWAY_URL", "http://pi:8010")
+    monkeypatch.setenv("COMPUTE_INFERENCE_GATEWAY_URL", "http://gpu:8010")
+
+    config = ComputeConfig(_env_file=None)
+
+    assert config.gateway_url == "http://pi:8010"
+    assert config.inference_gateway_url == "http://gpu:8010"
 
 
 def test_tumblr_api_key_reads_from_environment(monkeypatch) -> None:

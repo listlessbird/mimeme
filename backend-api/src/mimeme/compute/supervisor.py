@@ -125,21 +125,22 @@ class Supervisor:
         child.socket_path.unlink(missing_ok=True)
 
     def readiness(self) -> Readiness:
-        roles: list[RoleStatus] = []
-        ok = True
-        for role in ENABLED_ROLES:
-            child = self._children[role]
-            alive = child.process is not None and child.process.is_alive()
-            if alive and child.socket_path.exists() and child.error is None:
-                roles.append(RoleStatus(role=role, state="ready"))
-            elif alive:
-                roles.append(RoleStatus(role=role, state="starting", detail=child.error))
-            else:
-                ok = False
-                roles.append(RoleStatus(role=role, state="failed", detail=child.error))
+        enabled = [self.role_status(role) for role in ENABLED_ROLES]
+        roles = list(enabled)
         for role in RESERVED_ROLES:
             roles.append(RoleStatus(role=role, state="disabled"))
-        return Readiness(ok=ok, roles=roles)
+        return Readiness(ok=all(role.state == "ready" for role in enabled), roles=roles)
+
+    def role_status(self, role: Role) -> RoleStatus:
+        child = self._children.get(role)
+        if child is None:
+            return RoleStatus(role=role, state="disabled")
+        alive = child.process is not None and child.process.is_alive()
+        if alive and child.socket_path.exists() and child.error is None:
+            return RoleStatus(role=role, state="ready")
+        if alive:
+            return RoleStatus(role=role, state="starting", detail=child.error)
+        return RoleStatus(role=role, state="failed", detail=child.error)
 
     async def close(self) -> None:
         for child in self._children.values():

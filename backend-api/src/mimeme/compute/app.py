@@ -108,6 +108,11 @@ def create_app(settings: Settings) -> FastAPI:
         roles = [search_role if role.role == "search" else role for role in readiness.roles]
         return Readiness(ok=readiness.ok and status is not None and status.ready, roles=roles)
 
+    @app.get("/v1/roles/inference/ready", response_model=Readiness)
+    async def inference_ready() -> Readiness:
+        role = app.state.supervisor.role_status("inference")
+        return Readiness(ok=role.state == "ready", roles=[role])
+
     @app.get("/v1/search/status", response_model=search.Status)
     async def search_status() -> search.Status:
         gateway: SearchGateway = app.state.search

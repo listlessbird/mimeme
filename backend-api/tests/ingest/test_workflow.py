@@ -61,14 +61,14 @@ async def test_workflow_fans_out_then_finishes() -> None:
     assert max_active <= rule.FANOUT
 
 
-async def test_item_failure_is_tolerated_and_retried() -> None:
+async def test_transient_failure_retries_beyond_the_old_attempt_limit() -> None:
     attempts: dict[int, int] = {}
 
     @activity.defn(name=rule.BATCH_ACTIVITY)
     async def batch(inp: BatchInput) -> list[Result]:
         for item in inp.items:
             attempts[item.item_id] = attempts.get(item.item_id, 0) + 1
-        if any(item.item_id == 1 for item in inp.items):
+        if any(item.item_id == 1 for item in inp.items) and attempts[1] < 4:
             raise RuntimeError("infra boom")
         return [
             Result(item_id=item.item_id, outcome="processed", image_id=item.item_id)
@@ -95,7 +95,5 @@ async def test_item_failure_is_tolerated_and_retried() -> None:
                 task_queue=rule.TASK_QUEUE,
             )
 
-    # the failing item exhausts its retry policy (3 attempts) but the workflow
-    # still reaches finish and completes.
-    assert attempts[1] == 3
+    assert attempts[1] == 4
     assert result.failed == 1

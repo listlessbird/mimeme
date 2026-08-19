@@ -42,9 +42,10 @@ def create(settings: Settings, http: httpx.AsyncClient) -> Client:
 
     from mimeme.inference.local import Local
 
+    inference_url = settings.compute.inference_gateway_url or settings.compute.gateway_url
     return Local(
         http,
-        base_url=settings.compute.gateway_url,
+        base_url=inference_url,
         embed_model=settings.inference.embed_model,
         poll_interval_s=settings.compute.poll_interval_s,
     )

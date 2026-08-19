@@ -46,7 +46,7 @@ class Local:
 
     async def ready(self) -> bool:
         try:
-            resp = await self._http.get(f"{self._base}/ready")
+            resp = await self._http.get(f"{self._base}/v1/roles/inference/ready")
         except httpx.HTTPError:
             return False
         if resp.status_code != 200:
@@ -129,6 +129,8 @@ class Local:
             return state
         if state.status == "cancelled":
             raise Invalid(f"job {job_id} cancelled")
+        if state.error and state.error.startswith("child_dead:"):
+            raise Unavailable(state.error)
         raise Invalid(state.error or f"job {job_id} failed")
 
     async def _put(self, url: str, spec: dict) -> JobState:

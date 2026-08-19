@@ -114,6 +114,7 @@ class ComputeConfig(BaseSettings):
     modal_s3_secret_name: str = "findmeme-s3"
 
     gateway_url: str = "http://127.0.0.1:8010"
+    inference_gateway_url: str | None = None
     bind_host: str = "0.0.0.0"
     bind_port: int = 8010
     socket_dir: Path = Path("/tmp/mimeme-compute")
@@ -137,6 +138,8 @@ class InferenceConfig(BaseSettings):
     vision_model_revision: str | None = "2025-06-21"
     embed_model: str = "google/siglip2-base-patch16-naflex"
     embed_device: str = "cuda"
+    residency: Literal["both", "swap"] = "swap"
+    embed_batch_size: int = Field(default=4, ge=1)
 
 
 class SearchConfig(BaseSettings):
