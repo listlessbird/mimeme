@@ -40,7 +40,7 @@ HF_CACHE_DIR = "/root/.cache/huggingface"
 s3_secret = modal.Secret.from_name(settings.compute.modal_s3_secret_name)
 
 
-@app.function()
+@app.function(image=gpu_image)
 def release_info() -> dict[str, str | int]:
     return {
         "release_id": release.ID,
