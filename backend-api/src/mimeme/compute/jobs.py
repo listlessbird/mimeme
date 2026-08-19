@@ -13,9 +13,11 @@ from mimeme.compute.model import (
     EmbedCall,
     EmbedCallItem,
     EmbedReply,
+    EmbedReplyItem,
     EmbedResult,
     EmbedResultItem,
     EmbedSpec,
+    EmbedSpecItem,
     JobSpec,
     JobState,
 )
@@ -48,11 +50,13 @@ class Jobs:
         media: storage.Store,
         artifacts: storage.Store,
         workspace_dir: Path,
+        io_concurrency: int = 4,
     ) -> None:
         self._supervisor = supervisor
         self._media = media
         self._artifacts = artifacts
         self._workspace_dir = workspace_dir
+        self._io_slots = asyncio.Semaphore(io_concurrency)
         self._jobs: dict[str, _Job] = {}
         self._index = IndexGateway(
             supervisor,
@@ -138,9 +142,7 @@ class Jobs:
 
     async def _run_annotate(self, job: _Job, spec: AnnotateSpec, workspace: Workspace) -> dict:
         job.state.phase = "download"
-        data = await self._media.read_bytes(
-            storage.Object(spec.media_key), max_bytes=_MAX_IMAGE_BYTES
-        )
+        data = await self._read_media(spec.media_key)
         path = workspace.write_atomic("input", data)
         job.state.phase = "annotate"
         job.state.progress = 0.5
@@ -151,21 +153,21 @@ class Jobs:
 
     async def _run_embed(self, job: _Job, spec: EmbedSpec, workspace: Workspace) -> dict:
         job.state.phase = "download"
-        call_items: list[EmbedCallItem] = []
-        for index, item in enumerate(spec.items):
-            data = await self._media.read_bytes(
-                storage.Object(item.media_key), max_bytes=_MAX_IMAGE_BYTES
-            )
+
+        async def prepare(index: int, item: EmbedSpecItem) -> EmbedCallItem:
+            data = await self._read_media(item.media_key)
             path = workspace.write_atomic(f"in_{index}", data)
-            call_items.append(
-                EmbedCallItem(
-                    image_id=item.image_id,
-                    path=str(path),
-                    text=item.text,
-                    image_out=str(workspace.path(f"img_{index}.npy")),
-                    text_out=str(workspace.path(f"txt_{index}.npy")),
-                )
+            return EmbedCallItem(
+                image_id=item.image_id,
+                path=str(path),
+                text=item.text,
+                image_out=str(workspace.path(f"img_{index}.npy")),
+                text_out=str(workspace.path(f"txt_{index}.npy")),
             )
+
+        call_items = await asyncio.gather(
+            *(prepare(index, item) for index, item in enumerate(spec.items))
+        )
 
         job.state.phase = "embed"
         job.state.progress = 0.5
@@ -177,38 +179,41 @@ class Jobs:
         job.state.progress = 0.8
         by_id = {item.image_id: item for item in spec.items}
         call_by_id = {item.image_id: item for item in call_items}
-        results: list[EmbedResultItem] = []
-        for reply_item in embed_reply.items:
+
+        async def upload(reply_item: EmbedReplyItem) -> EmbedResultItem:
             spec_item = by_id[reply_item.image_id]
             if not reply_item.ok:
-                results.append(
-                    EmbedResultItem(image_id=reply_item.image_id, ok=False, error=reply_item.error)
+                return EmbedResultItem(
+                    image_id=reply_item.image_id, ok=False, error=reply_item.error
                 )
-                continue
             call_item = call_by_id[reply_item.image_id]
             image_bytes = Path(call_item.image_out).read_bytes()
             text_bytes = Path(call_item.text_out).read_bytes()
-            await self._artifacts.put_bytes(
-                storage.Object(spec_item.image_key),
-                image_bytes,
-                content_type="application/octet-stream",
+            await asyncio.gather(
+                self._put_artifact(spec_item.image_key, image_bytes),
+                self._put_artifact(spec_item.text_key, text_bytes),
             )
-            await self._artifacts.put_bytes(
-                storage.Object(spec_item.text_key),
-                text_bytes,
-                content_type="application/octet-stream",
+            return EmbedResultItem(
+                image_id=reply_item.image_id,
+                ok=True,
+                image_key=spec_item.image_key,
+                text_key=spec_item.text_key,
+                model=reply_item.model,
+                dimension=reply_item.dimension,
             )
-            results.append(
-                EmbedResultItem(
-                    image_id=reply_item.image_id,
-                    ok=True,
-                    image_key=spec_item.image_key,
-                    text_key=spec_item.text_key,
-                    model=reply_item.model,
-                    dimension=reply_item.dimension,
-                )
-            )
+
+        results = await asyncio.gather(*(upload(item) for item in embed_reply.items))
         return EmbedResult(items=results).model_dump()
+
+    async def _read_media(self, key: str) -> bytes:
+        async with self._io_slots:
+            return await self._media.read_bytes(storage.Object(key), max_bytes=_MAX_IMAGE_BYTES)
+
+    async def _put_artifact(self, key: str, data: bytes) -> None:
+        async with self._io_slots:
+            await self._artifacts.put_bytes(
+                storage.Object(key), data, content_type="application/octet-stream"
+            )
 
     async def _run_index(self, job: _Job, spec: BuildSpec) -> dict:
         async def progress(phase: str, value: float) -> None:

@@ -178,7 +178,7 @@ class Models:
             else:
                 moved[key] = value.to(model.device)  # type: ignore[attr-defined]
 
-        with torch.no_grad():
+        with torch.inference_mode():
             if kind == "image" and has_image:
                 out = model.get_image_features(**moved)  # type: ignore[attr-defined]
             elif kind == "text" and has_text:

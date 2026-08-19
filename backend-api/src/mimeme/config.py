@@ -122,6 +122,7 @@ class ComputeConfig(BaseSettings):
     poll_interval_s: float = 5.0
     heartbeat_timeout_s: float = 30.0
     child_grace_s: float = 5.0
+    job_io_concurrency: int = Field(default=4, ge=1)
 
     @field_validator("socket_dir", mode="before")
     @classmethod

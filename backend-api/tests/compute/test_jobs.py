@@ -36,6 +36,35 @@ class InMemoryStore:
         return storage.Info(object=obj, length=len(data))
 
 
+class ObservedStore(InMemoryStore):
+    def __init__(self) -> None:
+        super().__init__()
+        self.active_reads = 0
+        self.max_reads = 0
+        self.active_writes = 0
+        self.max_writes = 0
+
+    async def read_bytes(self, obj: storage.Object, *, max_bytes: int) -> bytes:
+        self.active_reads += 1
+        self.max_reads = max(self.max_reads, self.active_reads)
+        try:
+            await asyncio.sleep(0.01)
+            return await super().read_bytes(obj, max_bytes=max_bytes)
+        finally:
+            self.active_reads -= 1
+
+    async def put_bytes(
+        self, obj: storage.Object, data: bytes, *, content_type: str
+    ) -> storage.Info:
+        self.active_writes += 1
+        self.max_writes = max(self.max_writes, self.active_writes)
+        try:
+            await asyncio.sleep(0.01)
+            return await super().put_bytes(obj, data, content_type=content_type)
+        finally:
+            self.active_writes -= 1
+
+
 class FakeSupervisor:
     def __init__(self) -> None:
         self.restarted: list[str] = []
@@ -143,6 +172,41 @@ async def test_embed_job_uploads_and_preserves_order(tmp_path: Path) -> None:
     assert ids == [1, 2]
     assert artifacts.objects["e/1.npy"] == b"IMG"
     assert artifacts.objects["e/2_text.npy"] == b"TXT"
+
+
+async def test_embed_s3_io_is_concurrent_and_globally_bounded(tmp_path: Path) -> None:
+    supervisor = FakeSupervisor()
+    media = ObservedStore()
+    artifacts = ObservedStore()
+    jobs = Jobs(
+        supervisor,  # type: ignore[arg-type]
+        media=media,  # type: ignore[arg-type]
+        artifacts=artifacts,  # type: ignore[arg-type]
+        workspace_dir=tmp_path / "work",
+        io_concurrency=2,
+    )
+    items: list[EmbedSpecItem] = []
+    for image_id in range(4):
+        media_key = f"images/{image_id}.jpg"
+        media.objects[media_key] = str(image_id).encode()
+        items.append(
+            EmbedSpecItem(
+                image_id=image_id,
+                media_key=media_key,
+                text=f"t{image_id}",
+                sha256=f"s{image_id}",
+                image_key=f"e/{image_id}.npy",
+                text_key=f"e/{image_id}_text.npy",
+            )
+        )
+
+    jobs.submit("concurrent-io", EmbedSpec(model="siglip", items=items))
+    await _wait(jobs, "concurrent-io")
+
+    state = jobs.get("concurrent-io")
+    assert state is not None and state.status == "succeeded"
+    assert media.max_reads == 2
+    assert artifacts.max_writes == 2
 
 
 async def test_embed_partial_failure(tmp_path: Path) -> None:

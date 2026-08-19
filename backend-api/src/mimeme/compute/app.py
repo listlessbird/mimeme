@@ -62,6 +62,7 @@ def create_app(settings: Settings) -> FastAPI:
             media=media,
             artifacts=artifacts,
             workspace_dir=workspace_dir,
+            io_concurrency=settings.compute.job_io_concurrency,
         )
         app.state.media = media
         app.state.artifacts = artifacts
