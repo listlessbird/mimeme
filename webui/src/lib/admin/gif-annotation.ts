@@ -1,4 +1,4 @@
-import { checkAdminAccess } from "@/lib/admin/guard";
+import { adminGuard } from "@/lib/admin/guard";
 import { queryOptions } from "@tanstack/react-query";
 import { createServerFn } from "@tanstack/react-start";
 import { env } from "cloudflare:workers";
@@ -159,58 +159,54 @@ async function loadCatalog(): Promise<{ dataset: Dataset; suggestions: Suggestio
 	return { dataset, suggestions };
 }
 
-async function assertAdminAccess(): Promise<void> {
-	const { allowed } = await checkAdminAccess();
-	if (!allowed) throw new Error("Admin access required");
-}
-
-export const listGifAnnotations = createServerFn({ method: "GET" }).handler(async () => {
-	await assertAdminAccess();
-	const [{ dataset, suggestions }, rowsResult] = await Promise.all([
-		loadCatalog(),
-		env.GIF_ANNOTATION_DB.prepare(
-			"SELECT sha256, annotation_json, status, revision, updated_at FROM gif_annotations",
-		).all<AnnotationRow>(),
-	]);
-	const rows = new Map(rowsResult.results.map((row) => [row.sha256, row]));
-	const publicBaseUrl = env.GIF_ANNOTATION_PUBLIC_BASE_URL.replace(/\/$/, "");
-	const items = dataset.items.map<GifAnnotationItem>((item) => {
-		const row = rows.get(item.sha256);
-		let annotation = emptyAnnotation();
-		if (row) {
-			try {
-				const savedAnnotation = gifAnnotationSchema.safeParse(JSON.parse(row.annotation_json));
-				annotation = savedAnnotation.success ? savedAnnotation.data : emptyAnnotation();
-			} catch {
-				annotation = emptyAnnotation();
+export const listGifAnnotations = createServerFn({ method: "GET" })
+	.middleware([adminGuard])
+	.handler(async () => {
+		const [{ dataset, suggestions }, rowsResult] = await Promise.all([
+			loadCatalog(),
+			env.GIF_ANNOTATION_DB.prepare(
+				"SELECT sha256, annotation_json, status, revision, updated_at FROM gif_annotations",
+			).all<AnnotationRow>(),
+		]);
+		const rows = new Map(rowsResult.results.map((row) => [row.sha256, row]));
+		const publicBaseUrl = env.GIF_ANNOTATION_PUBLIC_BASE_URL.replace(/\/$/, "");
+		const items = dataset.items.map<GifAnnotationItem>((item) => {
+			const row = rows.get(item.sha256);
+			let annotation = emptyAnnotation();
+			if (row) {
+				try {
+					const savedAnnotation = gifAnnotationSchema.safeParse(JSON.parse(row.annotation_json));
+					annotation = savedAnnotation.success ? savedAnnotation.data : emptyAnnotation();
+				} catch {
+					annotation = emptyAnnotation();
+				}
 			}
-		}
+			return {
+				sha256: item.sha256,
+				position: item.position,
+				split: item.split,
+				width: item.width,
+				height: item.height,
+				nFrames: item.n_frames,
+				durationMs: item.duration_ms,
+				nBytes: item.n_bytes,
+				gifUrl: `${publicBaseUrl}/${item.asset_key}`,
+				contactSheetUrl: `${publicBaseUrl}/${item.contact_sheet_asset_key}`,
+				suggestion: suggestions?.items[item.sha256] ?? null,
+				suggestionModel: suggestions?.model ?? null,
+				annotation,
+				status: row?.status ?? "draft",
+				revision: row?.revision ?? 0,
+				updatedAt: row?.updated_at ?? null,
+			};
+		});
 		return {
-			sha256: item.sha256,
-			position: item.position,
-			split: item.split,
-			width: item.width,
-			height: item.height,
-			nFrames: item.n_frames,
-			durationMs: item.duration_ms,
-			nBytes: item.n_bytes,
-			gifUrl: `${publicBaseUrl}/${item.asset_key}`,
-			contactSheetUrl: `${publicBaseUrl}/${item.contact_sheet_asset_key}`,
-			suggestion: suggestions?.items[item.sha256] ?? null,
-			suggestionModel: suggestions?.model ?? null,
-			annotation,
-			status: row?.status ?? "draft",
-			revision: row?.revision ?? 0,
-			updatedAt: row?.updated_at ?? null,
-		};
+			items,
+			completed: items.filter((item) => item.status === "complete").length,
+			skipped: items.filter((item) => item.status === "skipped").length,
+			total: items.length,
+		} satisfies GifAnnotationListResponse;
 	});
-	return {
-		items,
-		completed: items.filter((item) => item.status === "complete").length,
-		skipped: items.filter((item) => item.status === "skipped").length,
-		total: items.length,
-	} satisfies GifAnnotationListResponse;
-});
 
 const saveGifAnnotationSchema = z.object({
 	sha256: z.string().regex(/^[a-f0-9]{64}$/, "Invalid GIF sha256"),
@@ -220,9 +216,9 @@ const saveGifAnnotationSchema = z.object({
 });
 
 export const saveGifAnnotation = createServerFn({ method: "POST" })
+	.middleware([adminGuard])
 	.inputValidator(saveGifAnnotationSchema)
 	.handler(async ({ data }) => {
-		await assertAdminAccess();
 		const { dataset } = await loadCatalog();
 		if (!dataset.items.some((item) => item.sha256 === data.sha256)) {
 			throw new Error("GIF is not part of the annotation dataset");

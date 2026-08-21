@@ -6,6 +6,12 @@ import { z } from "zod";
 
 export const SEARCH_RESULT_LIMIT = 40;
 
+const searchInputSchema = z.object({
+	q: z.string().trim().min(1).max(200),
+	limit: z.number().int().min(1).max(SEARCH_RESULT_LIMIT).optional(),
+	offset: z.number().int().min(0).max(10_000).optional(),
+});
+
 const searchResultSchema = z.object({
 	id: z.number(),
 	sha256: z.string(),
@@ -62,7 +68,7 @@ class SearchApiError extends Error {
 }
 
 export const searchMemes = createServerFn({ method: "GET" })
-	.inputValidator((input: { q: string; limit?: number; offset?: number }) => input)
+	.inputValidator(searchInputSchema)
 	.handler(async ({ data }) => {
 		const start = Date.now();
 		const requestId = crypto.randomUUID();

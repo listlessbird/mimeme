@@ -8,10 +8,11 @@ os.environ.setdefault("APP_ENV", "development")
 os.environ.setdefault("PRELOAD_TEXT_ENCODER_ON_STARTUP", "false")
 
 from mimeme.api.main import create_app  # noqa: E402
+from mimeme.config import Settings  # noqa: E402
 
 
 def main() -> None:
-    schema = create_app().openapi()
+    schema = create_app(Settings()).openapi()
     payload = json.dumps(schema, indent=2)
 
     if len(sys.argv) > 1:

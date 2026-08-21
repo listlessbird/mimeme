@@ -21,14 +21,24 @@ from mimeme.search import router as search
 def create_app(settings: Settings) -> FastAPI:
     limiter.enabled = settings.http.rate_limit_enabled
 
+    debug = settings.debug and settings.app_env != "production"
+    cors_origins = list(settings.http.cors_origins)
+    if debug:
+        cors_origins += [
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+        ]
+
     middleware = [
         Middleware(SlowAPIMiddleware),
         Middleware(
             CORSMiddleware,  # ty:ignore[invalid-argument-type]
-            allow_origins=["*"] if settings.debug else [],
+            allow_origins=cors_origins,
             allow_credentials=True,
-            allow_methods=["*"],
-            allow_headers=["*"],
+            allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
+            allow_headers=["X-API-Key", "X-Request-ID", "Authorization", "Content-Type"],
         ),
     ]
     app = FastAPI(
@@ -36,8 +46,9 @@ def create_app(settings: Settings) -> FastAPI:
         description="Semantic meme search powered by SigLIP embeddings and FAISS",
         version="0.3.0",
         lifespan=lifespan,
-        docs_url="/docs" if settings.debug else None,
-        redoc_url="/redoc" if settings.debug else None,
+        docs_url="/docs" if debug else None,
+        redoc_url="/redoc" if debug else None,
+        openapi_url="/openapi.json" if debug else None,
         middleware=middleware,
     )
 

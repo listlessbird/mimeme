@@ -1,4 +1,5 @@
 import { env } from "@/env";
+import { adminGuard } from "@/lib/admin/guard";
 import type { components, paths } from "@/lib/api/schema";
 import { logInfo, serializeError } from "@/lib/observability";
 import { queryOptions } from "@tanstack/react-query";
@@ -185,11 +186,12 @@ async function callAdmin<T>(
 	}
 }
 
-export const listSources = createServerFn({ method: "GET" }).handler(() =>
-	callAdmin<SourceListResponse>("list_sources", (c) => c.GET("/sources")),
-);
+export const listSources = createServerFn({ method: "GET" })
+	.middleware([adminGuard])
+	.handler(() => callAdmin<SourceListResponse>("list_sources", (c) => c.GET("/sources")));
 
 export const getSource = createServerFn({ method: "GET" })
+	.middleware([adminGuard])
 	.inputValidator((input: { id: number }) => input)
 	.handler(({ data }) =>
 		callAdmin<SourceDetail>("get_source", (c) =>
@@ -198,12 +200,14 @@ export const getSource = createServerFn({ method: "GET" })
 	);
 
 export const createSource = createServerFn({ method: "POST" })
+	.middleware([adminGuard])
 	.inputValidator((input: CreateSourceRequest) => input)
 	.handler(({ data }) =>
 		callAdmin<Source>("create_source", (c) => c.POST("/sources", { body: data })),
 	);
 
 export const updateSource = createServerFn({ method: "POST" })
+	.middleware([adminGuard])
 	.inputValidator((input: { id: number; body: UpdateSourceRequest }) => input)
 	.handler(({ data }) =>
 		callAdmin<Source>("update_source", (c) =>
@@ -215,6 +219,7 @@ export const updateSource = createServerFn({ method: "POST" })
 	);
 
 export const deleteSource = createServerFn({ method: "POST" })
+	.middleware([adminGuard])
 	.inputValidator((input: { id: number }) => input)
 	.handler(({ data }) =>
 		callAdmin<void>("delete_source", (c) =>
@@ -223,6 +228,7 @@ export const deleteSource = createServerFn({ method: "POST" })
 	);
 
 export const triggerRun = createServerFn({ method: "POST" })
+	.middleware([adminGuard])
 	.inputValidator((input: { id: number }) => input)
 	.handler(({ data }) =>
 		callAdmin<TriggerRunResponse>("trigger_run", (c) =>
@@ -231,6 +237,7 @@ export const triggerRun = createServerFn({ method: "POST" })
 	);
 
 export const retrySource = createServerFn({ method: "POST" })
+	.middleware([adminGuard])
 	.inputValidator((input: { id: number }) => input)
 	.handler(({ data }) =>
 		callAdmin<RetryResponse>("retry_source", (c) =>
@@ -239,6 +246,7 @@ export const retrySource = createServerFn({ method: "POST" })
 	);
 
 export const retrySourceRun = createServerFn({ method: "POST" })
+	.middleware([adminGuard])
 	.inputValidator((input: { id: number; runId: number }) => input)
 	.handler(({ data }) =>
 		callAdmin<RetryResponse>("retry_source_run", (c) =>
@@ -249,6 +257,7 @@ export const retrySourceRun = createServerFn({ method: "POST" })
 	);
 
 export const retrySourceItem = createServerFn({ method: "POST" })
+	.middleware([adminGuard])
 	.inputValidator((input: { id: number; itemId: number }) => input)
 	.handler(({ data }) =>
 		callAdmin<RetryResponse>("retry_source_item", (c) =>
@@ -259,6 +268,7 @@ export const retrySourceItem = createServerFn({ method: "POST" })
 	);
 
 export const listSourceItems = createServerFn({ method: "GET" })
+	.middleware([adminGuard])
 	.inputValidator(
 		(input: { id: number; limit?: number; offset?: number; status?: SourceItemIngestState }) =>
 			input,
@@ -275,6 +285,7 @@ export const listSourceItems = createServerFn({ method: "GET" })
 	);
 
 export const listRunItems = createServerFn({ method: "GET" })
+	.middleware([adminGuard])
 	.inputValidator((input: { id: number; runId: number; limit?: number; offset?: number }) => input)
 	.handler(({ data }) =>
 		callAdmin<RunItemListResponse>("list_run_items", (c) =>
@@ -288,6 +299,7 @@ export const listRunItems = createServerFn({ method: "GET" })
 	);
 
 export const listImages = createServerFn({ method: "GET" })
+	.middleware([adminGuard])
 	.inputValidator((input: ImageListParams) => input)
 	.handler(({ data }) =>
 		callAdmin<ImageListResponse>("list_images", (c) =>
@@ -306,6 +318,7 @@ export const listImages = createServerFn({ method: "GET" })
 	);
 
 export const ingestImageUrls = createServerFn({ method: "POST" })
+	.middleware([adminGuard])
 	.inputValidator((input: { urls: string[]; dataset?: string | null; tags?: string[] }) => input)
 	.handler(({ data }) =>
 		callAdmin<ImageIngestResponse>("ingest_images", (c) =>
@@ -316,6 +329,7 @@ export const ingestImageUrls = createServerFn({ method: "POST" })
 	);
 
 export const uploadImageFile = createServerFn({ method: "POST" })
+	.middleware([adminGuard])
 	.inputValidator((data: FormData) => data)
 	.handler(async ({ data }) => {
 		const start = Date.now();
@@ -358,6 +372,7 @@ export interface IngestionListParams {
 }
 
 export const listIngestion = createServerFn({ method: "GET" })
+	.middleware([adminGuard])
 	.inputValidator((input: IngestionListParams) => input)
 	.handler(({ data }) =>
 		callAdmin<IngestionListResponse>("list_ingestion", (c) =>
@@ -381,6 +396,7 @@ export const listIngestion = createServerFn({ method: "GET" })
 	);
 
 export const getIngestionAttempt = createServerFn({ method: "GET" })
+	.middleware([adminGuard])
 	.inputValidator((input: { id: number }) => input)
 	.handler(({ data }) =>
 		callAdmin<IngestionDetail>("get_ingestion_attempt", (c) =>
@@ -391,6 +407,7 @@ export const getIngestionAttempt = createServerFn({ method: "GET" })
 	);
 
 export const getIngestionLogs = createServerFn({ method: "GET" })
+	.middleware([adminGuard])
 	.inputValidator((input: { id: number; limit?: number }) => input)
 	.handler(({ data }) =>
 		callAdmin<IngestionLogs>("get_ingestion_logs", (c) =>
@@ -404,6 +421,7 @@ export const getIngestionLogs = createServerFn({ method: "GET" })
 	);
 
 export const getImage = createServerFn({ method: "GET" })
+	.middleware([adminGuard])
 	.inputValidator((input: { id: number }) => input)
 	.handler(({ data }) =>
 		callAdmin<Image>("get_image", (c) =>
@@ -412,6 +430,7 @@ export const getImage = createServerFn({ method: "GET" })
 	);
 
 export const getJob = createServerFn({ method: "GET" })
+	.middleware([adminGuard])
 	.inputValidator((input: { id: string }) => input)
 	.handler(async ({ data }) => {
 		const job = await callAdmin<Schemas["JobResponse"]>("get_job", (c) =>

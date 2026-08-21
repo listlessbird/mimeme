@@ -98,7 +98,9 @@ class HttpConfig(BaseSettings):
 
     request_timeout_s: float = 30.0
     loop_lag_threshold_ms: float = 50.0
+    ready_cache_s: float = 5.0
     rate_limit_enabled: bool = True
+    cors_origins: list[str] = ["https://mimeme.dev"]
     api_key_admin: SecretStr | None = None
     api_key_readonly: SecretStr | None = None
 
@@ -204,7 +206,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=_ENV_FILE, env_file_encoding="utf-8", extra="ignore")
 
     app_env: str = "development"
-    debug: bool = True
+    # Defaults to False so a deployment that forgets to set DEBUG fails
+    # closed (docs/openapi/CORS stay locked down). Development .env files set
+    # DEBUG=true explicitly.
+    debug: bool = False
     tumblr_api_key: SecretStr | None = None
 
     database: DatabaseConfig = Field(default_factory=DatabaseConfig)

@@ -1,7 +1,7 @@
 import { env } from "@/env";
 import { isAccessAllowed } from "@/lib/admin/guard-logic";
 import { redirect } from "@tanstack/react-router";
-import { createServerFn } from "@tanstack/react-start";
+import { createMiddleware, createServerFn } from "@tanstack/react-start";
 import { getCookie, setCookie } from "@tanstack/react-start/server";
 
 export const ADMIN_SESSION_COOKIE = "admin_ui_session";
@@ -18,6 +18,17 @@ function hasValidSession(): boolean {
 		cookie: getCookie(ADMIN_SESSION_COOKIE),
 	});
 }
+
+
+export const adminGuard = createMiddleware({ type: "function" }).server(async ({ next }) => {
+	if (!isProduction()) return next();
+
+	if (!env.ADMIN_UI_SECRET) throw new Error("Admin access is not configured");
+
+	if (!hasValidSession()) throw new Error("Admin access required");
+
+	return next();
+});
 
 export const checkAdminAccess = createServerFn({ method: "GET" }).handler(async () => ({
 	allowed: hasValidSession(),
