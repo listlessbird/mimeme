@@ -13,9 +13,20 @@ from mimeme.config import InferenceConfig
 
 
 class _VisionLoader:
+    loaded: object | None = None
+
     @staticmethod
     def from_pretrained(*args, **kwargs) -> object:  # noqa: ANN002, ANN003
-        return object()
+        _VisionLoader.loaded = _CompilableVisionModel()
+        return _VisionLoader.loaded
+
+
+class _CompilableVisionModel:
+    def __init__(self) -> None:
+        self.compiled = False
+
+    def compile(self) -> None:
+        self.compiled = True
 
 
 class _VisionModel:
@@ -56,6 +67,20 @@ def test_swap_residency_releases_embed_model_when_loading_vision(monkeypatch) ->
     models._load_vision()
 
     assert models._siglip_model is None
+
+
+def test_vision_compile_uses_moondream_native_compile(monkeypatch) -> None:
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        SimpleNamespace(AutoModelForCausalLM=_VisionLoader),
+    )
+    models = Models(InferenceConfig(embed_device="cpu", vision_compile=True))
+
+    loaded = models._load_vision()
+
+    assert isinstance(loaded, _CompilableVisionModel)
+    assert loaded.compiled
 
 
 def test_annotate_reports_phase_timings(tmp_path: Path) -> None:
@@ -111,7 +136,7 @@ def test_embed_encodes_all_items_in_two_model_batches(tmp_path: Path) -> None:
     assert all(item.ok for item in reply.items)
     assert reply.telemetry is not None
     assert reply.telemetry.embed_batch_size == 3
-    assert reply.telemetry.residency_mode == "swap"
+    assert reply.telemetry.residency_mode == "both"
     assert np.load(tmp_path / "image-2.npy").tolist() == [8.0, 9.0, 10.0, 11.0]
 
 

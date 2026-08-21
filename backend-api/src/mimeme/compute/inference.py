@@ -97,12 +97,15 @@ class Models:
                 self._release_embed()
             from transformers import AutoModelForCausalLM
 
-            self._moondream = AutoModelForCausalLM.from_pretrained(
+            model = AutoModelForCausalLM.from_pretrained(
                 self._config.vision_model,
                 revision=self._config.vision_model_revision,
                 trust_remote_code=True,
                 device_map={"": self._config.embed_device},
             )
+            if self._config.vision_compile:
+                model.compile()
+            self._moondream = model
         return self._moondream
 
     def _load_embed(self) -> None:

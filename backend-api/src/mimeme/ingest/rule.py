@@ -13,7 +13,7 @@ FINISH_ACTIVITY = "mimeme.ingest.finish.v2"
 # One inference child and one image child serve the whole compute container, and
 # the pHash duplicate decision serializes on a single advisory lock. Keep only a
 # few ingestion batches in flight so downloads overlap without flooding either.
-FANOUT = 4
+FANOUT = 2
 EMBED_BATCH_SIZE = 16
 
 MAX_IMAGE_BYTES = 64 * 1024 * 1024

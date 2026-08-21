@@ -137,9 +137,10 @@ class InferenceConfig(BaseSettings):
 
     vision_model: str = "vikhyatk/moondream2"
     vision_model_revision: str | None = "2025-06-21"
+    vision_compile: bool = False
     embed_model: str = "google/siglip2-base-patch16-naflex"
     embed_device: str = "cuda"
-    residency: Literal["both", "swap"] = "swap"
+    residency: Literal["both", "swap"] = "both"
     embed_batch_size: int = Field(default=4, ge=1)
 
 

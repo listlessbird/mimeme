@@ -78,3 +78,42 @@ COMPUTE_INFERENCE_GATEWAY_URL=http://mimeme-gpu:8010
 
 Use a Tailscale ACL that permits the Pi to reach the GPU node on TCP 8010. The
 GPU node must also be able to reach both configured object-storage endpoints.
+
+## GPU benchmarks and cost planning
+
+Use a reproducible sample from the configured media bucket, then measure the
+model, compute gateway, and full Temporal path separately:
+
+```bash
+uv run python scripts/benchmark_sample.py --count 100
+uv run python scripts/benchmark_models.py \
+  --manifest data/benchmarks/sample/manifest.json --config B \
+  --output data/benchmarks/results/models-B.json
+uv run python scripts/benchmark_compute_gateway.py \
+  --manifest data/benchmarks/sample/manifest.json --batch-size 2 \
+  --output data/benchmarks/results/gateway.json
+uv run python scripts/benchmark_temporal_ingestion.py \
+  --manifest data/benchmarks/sample/manifest.json --limit 100 \
+  --worker-log data/benchmarks/worker.jsonl --gpu-price-per-hour 0.20 \
+  --output data/benchmarks/results/temporal.json
+```
+
+The RTX 5060 benchmark established the dedicated-GPU defaults: keep both models
+resident, leave vision compilation disabled, and use ingestion fanout 2. Caption
+generation is the throughput bottleneck; larger SigLIP batches did not improve
+end-to-end throughput materially.
+
+Convert a full-ingestion result into monthly serverless and always-on estimates:
+
+```bash
+uv run python scripts/benchmark_cost.py \
+  --result data/benchmarks/results/fanout-2.json \
+  --gpu-price-per-hour 0.20 \
+  --cold-start-seconds 14.15 --runs-per-month 30
+```
+
+`processing_cost_per_1000` is the warm variable cost. `serverless_gpu_cost`
+adds the specified cold start once per run. `always_on_gpu_cost` is simply the
+hourly GPU price times 730 hours, so throughput only changes its utilization,
+not its monthly bill. Provider CPU, RAM, storage, network, and minimum billing
+charges are intentionally excluded; add them when comparing an actual offer.
