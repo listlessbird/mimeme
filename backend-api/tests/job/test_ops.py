@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from mimeme.db.schema import (
     Annotation,
+    Image,
     IngestURL,
     Job,
     JobStatus,
@@ -354,6 +355,36 @@ class TestInference:
                 await session.scalars(select(Annotation).where(Annotation.image_id == image_id))
             ).all()
         assert len(rows) == 1 and rows[0].caption_text == "cap2"
+
+    async def test_concurrent_save_annotations_upserts(self, pool_db: PoolDb) -> None:
+        async with pool_db.write_session() as session:
+            image = Image(
+                sha256="c" * 64,
+                dataset="test",
+                s3_key="images/test/concurrent.jpg",
+                phash="c" * 16,
+            )
+            session.add(image)
+            await session.flush()
+            session.add(Processing(image_id=image.id))
+            image_id = image.id
+
+        async def save(caption: str) -> bool:
+            return await ops.save_annotations(
+                pool_db,
+                image_id=image_id,
+                caption=caption,
+                caption_model="m",
+                ocr_text="ocr",
+                ocr_model="m",
+            )
+
+        assert all(await asyncio.gather(save("first"), save("second")))
+        async with pool_db.read_session() as session:
+            rows = (
+                await session.scalars(select(Annotation).where(Annotation.image_id == image_id))
+            ).all()
+        assert len(rows) == 1
 
     async def test_save_embedding_marks_dirty_once(
         self, job_db: SavepointDb, run_sync_seed

@@ -313,6 +313,10 @@ class Store:
         caption_context_sha256: str | None = None,
         caption_prompt_version: str | None = None,
     ) -> bool:
+        # Duplicate ingestion batches can discover the same not-yet-annotated
+        # image concurrently. Serialize the read-then-insert on its canonical
+        # image row so both transactions cannot create the one annotation row.
+        await self._session.scalar(select(Image.id).where(Image.id == image_id).with_for_update())
         ann = (
             await self._session.scalars(select(Annotation).where(Annotation.image_id == image_id))
         ).first()
