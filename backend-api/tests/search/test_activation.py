@@ -7,12 +7,18 @@ from mimeme.search.activation import activate, reconcile
 
 
 class _Activation:
-    def __init__(self, *, serving: str | None = None) -> None:
+    def __init__(
+        self, *, serving: str | None = None, failures: dict[str, int] | None = None
+    ) -> None:
         self.serving = serving
+        self.failures = failures or {}
         self.calls: list[tuple[str, str]] = []
 
     async def load(self, generation: search.Load) -> search.Loaded:
         self.calls.append(("load", generation.version))
+        if self.failures.get("load", 0) > 0:
+            self.failures["load"] -= 1
+            raise search.Unavailable("search compute unavailable")
         return search.Loaded(
             version=generation.version,
             embed_model="test/embed",
@@ -79,3 +85,27 @@ async def test_reconciliation_is_a_noop_when_compute_already_matches() -> None:
 
     assert status.serving_version == "v2"
     assert remote.calls == []
+
+
+async def test_reconciliation_retries_transient_compute_unavailability(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("mimeme.search.activation._RETRY_BASE_DELAY_S", 0)
+    remote = _Activation(serving=None, failures={"load": 2})
+
+    status = await reconcile(_generation(), activation=remote)
+
+    assert status.serving_version == "v2"
+    assert remote.calls == [("load", "v2"), ("load", "v2"), ("load", "v2"), ("switch", "v2")]
+
+
+async def test_reconciliation_gives_up_when_compute_stays_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr("mimeme.search.activation._RETRY_BASE_DELAY_S", 0)
+    remote = _Activation(serving=None, failures={"load": 99})
+
+    with pytest.raises(search.Unavailable):
+        await reconcile(_generation(), activation=remote)
+
+    assert len(remote.calls) == 5

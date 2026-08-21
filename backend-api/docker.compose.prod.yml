@@ -103,7 +103,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1024M
+          memory: 1536M
     restart: unless-stopped
     stop_grace_period: 30s
     healthcheck:
