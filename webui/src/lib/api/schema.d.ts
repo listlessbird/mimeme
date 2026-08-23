@@ -28,8 +28,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Search */
-        get: operations["search_search_get"];
+        /** Search Text */
+        get: operations["search_text_search_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -45,8 +45,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Find Similar */
-        get: operations["find_similar_search_similar__image_id__get"];
+        /** Search Similar */
+        get: operations["search_similar_search_similar__image_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -152,6 +152,23 @@ export interface paths {
         };
         /** List Jobs */
         get: operations["list_jobs_jobs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/jobs/indexes/freshness": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Index Freshness */
+        get: operations["get_index_freshness_jobs_indexes_freshness_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -367,10 +384,220 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/search-evals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Overview */
+        get: operations["overview_search_evals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/search-evals/queries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Query */
+        post: operations["create_query_search_evals_queries_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/search-evals/queries/{query_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Disable Query */
+        delete: operations["disable_query_search_evals_queries__query_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/search-evals/queries/{query_id}/pool": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Pool Query */
+        post: operations["pool_query_search_evals_queries__query_id__pool_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/search-evals/queries/{query_id}/candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Add Candidate */
+        post: operations["add_candidate_search_evals_queries__query_id__candidates_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/search-evals/judgments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Judgment Workspace */
+        get: operations["judgment_workspace_search_evals_judgments_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/search-evals/queries/{query_id}/judgments/{image_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Save Judgment */
+        put: operations["save_judgment_search_evals_queries__query_id__judgments__image_id__put"];
+        post?: never;
+        /** Clear Judgment */
+        delete: operations["clear_judgment_search_evals_queries__query_id__judgments__image_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/search-evals/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Run */
+        post: operations["create_run_search_evals_runs_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/search-evals/runs/{run_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Run */
+        get: operations["get_run_search_evals_runs__run_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/search-evals/runs/{run_id}/finalize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Finalize Run */
+        post: operations["finalize_run_search_evals_runs__run_id__finalize_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/search-evals/runs/{run_id}/baseline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Set Baseline */
+        put: operations["set_baseline_search_evals_runs__run_id__baseline_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/search-evals/compare": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Compare */
+        get: operations["compare_search_evals_compare_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AddSearchEvalCandidateRequest */
+        AddSearchEvalCandidateRequest: {
+            /** Image Id */
+            image_id: number;
+        };
         /** ApiErrorResponse */
         ApiErrorResponse: {
             /**
@@ -388,6 +615,58 @@ export interface components {
             /** Tags */
             tags?: string[] | null;
         };
+        /** CandidateView */
+        CandidateView: {
+            /** Image Id */
+            image_id: number;
+            /** Url */
+            url: string | null;
+            /** Caption */
+            caption: string | null;
+            /** Ocr Text */
+            ocr_text: string | null;
+            /** Width */
+            width: number | null;
+            /** Height */
+            height: number | null;
+            /** Grade */
+            grade?: number | null;
+            /** Revision */
+            revision: number;
+        };
+        /** Comparison */
+        Comparison: {
+            baseline: components["schemas"]["RunView"];
+            candidate: components["schemas"]["RunView"];
+            /** Delta Ndcg At 10 */
+            delta_ndcg_at_10: number;
+            /** Delta Success At 5 */
+            delta_success_at_5: number;
+            /** Delta Mrr At 10 */
+            delta_mrr_at_10: number;
+            /** Delta Latency P95 Ms */
+            delta_latency_p95_ms: number;
+            /** Improved Queries */
+            improved_queries: number;
+            /** Unchanged Queries */
+            unchanged_queries: number;
+            /** Regressed Queries */
+            regressed_queries: number;
+            /** Queries */
+            queries: components["schemas"]["QueryComparison"][];
+        };
+        /** CreateSearchEvalQueryRequest */
+        CreateSearchEvalQueryRequest: {
+            /** Text */
+            text: string;
+            intent: components["schemas"]["Intent"];
+            /** @default human */
+            source: components["schemas"]["QuerySource"];
+        };
+        /** CreateSearchEvalRunRequest */
+        CreateSearchEvalRunRequest: {
+            mode: components["schemas"]["RunMode"];
+        };
         /** CreateSourceRequest */
         CreateSourceRequest: {
             /**
@@ -397,10 +676,11 @@ export interface components {
             name: string;
             /**
              * Adapter Key
-             * @description Adapter the system supports, e.g. 'meme_api'
+             * @description Adapter the system supports: 'meme_api', 'tumblr_tagged', or 'kym'
              */
             adapter_key: string;
-            adapter_config: components["schemas"]["MemeApiAdapterConfig"];
+            /** Adapter Config */
+            adapter_config: components["schemas"]["MemeApiAdapterConfig"] | components["schemas"]["TumblrAdapterConfig"] | components["schemas"]["KymAdapterConfig"];
             /** Dataset */
             dataset?: string | null;
             /** Schedule Cron */
@@ -562,6 +842,29 @@ export interface components {
          * @enum {string}
          */
         ImageStatus: "pending" | "downloading" | "scanning" | "annotating" | "embedding" | "done" | "failed";
+        /** IndexFreshnessResponse */
+        IndexFreshnessResponse: {
+            /** Desired Generation */
+            desired_generation: number;
+            /** Active Generation */
+            active_generation: number;
+            /** Is Stale */
+            is_stale: boolean;
+            /** Active Version */
+            active_version: string | null;
+            /** Rebuild Job Id */
+            rebuild_job_id: string | null;
+            /** Rebuild Target Generation */
+            rebuild_target_generation: number | null;
+            /** Rebuild Claimed At */
+            rebuild_claimed_at: string | null;
+            /** Last Dirty At */
+            last_dirty_at: string | null;
+            /** Last Dirty Reason */
+            last_dirty_reason: string | null;
+            /** Last Reconciled At */
+            last_reconciled_at: string | null;
+        };
         /** IndexVersionResponse */
         IndexVersionResponse: {
             /** Version */
@@ -584,8 +887,8 @@ export interface components {
             /** Versions */
             versions: components["schemas"]["IndexVersionResponse"][];
         };
-        /** IngestJobResultPayload */
-        IngestJobResultPayload: {
+        /** IngestResult */
+        IngestResult: {
             /** Processed */
             processed: number;
             /** Failed */
@@ -593,11 +896,6 @@ export interface components {
             /** Duplicates */
             duplicates: number;
         };
-        /**
-         * IngestOutcome
-         * @enum {string}
-         */
-        IngestOutcome: "ingested" | "deduped" | "failed" | "in_flight";
         /**
          * IngestStage
          * @enum {string}
@@ -608,7 +906,7 @@ export interface components {
             /** Ingest Url Id */
             ingest_url_id: number;
             /** Input */
-            input: components["schemas"]["RemoteImageUrlInput"] | components["schemas"]["StagedUploadInput"];
+            input: components["schemas"]["RemoteUrl"] | components["schemas"]["Staged"];
             /** Job Id */
             job_id: string;
             /** Source Run Id */
@@ -620,7 +918,7 @@ export interface components {
             trigger: components["schemas"]["SourceRunTrigger"];
             stage: components["schemas"]["IngestStage"];
             status: components["schemas"]["ProcessingStatus"];
-            outcome: components["schemas"]["IngestOutcome"];
+            outcome: components["schemas"]["Outcome"];
             duplicate_reason: components["schemas"]["DuplicateReason"] | null;
             /** Duplicate Of Image Id */
             duplicate_of_image_id: number | null;
@@ -690,7 +988,7 @@ export interface components {
             /** Ingest Url Id */
             ingest_url_id: number;
             /** Input */
-            input: components["schemas"]["RemoteImageUrlInput"] | components["schemas"]["StagedUploadInput"];
+            input: components["schemas"]["RemoteUrl"] | components["schemas"]["Staged"];
             /** Job Id */
             job_id: string;
             /** Source Run Id */
@@ -702,7 +1000,7 @@ export interface components {
             trigger: components["schemas"]["SourceRunTrigger"];
             stage: components["schemas"]["IngestStage"];
             status: components["schemas"]["ProcessingStatus"];
-            outcome: components["schemas"]["IngestOutcome"];
+            outcome: components["schemas"]["Outcome"];
             duplicate_reason: components["schemas"]["DuplicateReason"] | null;
             /** Duplicate Of Image Id */
             duplicate_of_image_id: number | null;
@@ -722,11 +1020,8 @@ export interface components {
             /** Stage Updated At */
             stage_updated_at: string | null;
         };
-        /**
-         * IngestionView
-         * @enum {string}
-         */
-        IngestionView: "live" | "completed" | "failed" | "all";
+        /** @enum {string} */
+        Intent: "reaction" | "situation" | "visual" | "template" | "quote" | "conceptual";
         /** JobListResponse */
         JobListResponse: {
             /** Jobs */
@@ -766,9 +1061,8 @@ export interface components {
             /** Completed At */
             completed_at?: string | null;
             /** @description Job result data */
-            result?: components["schemas"]["JobResultPayload"] | null;
+            result?: components["schemas"]["mimeme__job__model__Result"] | null;
         };
-        JobResultPayload: components["schemas"]["IngestJobResultPayload"] | components["schemas"]["RebuildJobResultPayload"] | components["schemas"]["RawJobResultPayload"];
         /**
          * JobStatus
          * @enum {string}
@@ -779,35 +1073,162 @@ export interface components {
          * @enum {string}
          */
         JobType: "ingest" | "rebuild_index";
+        /** JudgmentSave */
+        JudgmentSave: {
+            /** Query Id */
+            query_id: number;
+            /** Image Id */
+            image_id: number;
+            /** Grade */
+            grade: number;
+            /** Revision */
+            revision: number;
+        };
+        /** JudgmentWorkspace */
+        JudgmentWorkspace: {
+            query: components["schemas"]["QueryView"];
+            /** Candidates */
+            candidates: components["schemas"]["CandidateView"][];
+            /** Previous Query Id */
+            previous_query_id: number | null;
+            /** Next Query Id */
+            next_query_id: number | null;
+        };
+        /** KymAdapterConfig */
+        KymAdapterConfig: {
+            /** Start Page */
+            start_page?: number;
+            /** Max Entries Per Run */
+            max_entries_per_run?: number;
+            /** Max Photo Pages Per Entry */
+            max_photo_pages_per_entry?: number;
+            /** Delay Seconds */
+            delay_seconds?: number;
+            /** Timeout Seconds */
+            timeout_seconds?: number;
+            /** Retries */
+            retries?: number;
+            /** Impersonate */
+            impersonate?: string;
+        };
         /** MemeApiAdapterConfig */
         MemeApiAdapterConfig: {
             /** Subreddits */
             subreddits: string[];
             /** Min Score */
             min_score?: number;
-            /** Max Items Per Run */
-            max_items_per_run?: number | null;
         };
-        /** MemeApiRawMetadata */
-        MemeApiRawMetadata: {
-            /** Author */
-            author?: string | null;
-            /** Title */
-            title?: string | null;
-            /** Ups */
-            ups?: number | null;
-            /** Subreddit */
-            subreddit?: string | null;
-            /** Preview */
-            preview?: string | string[] | null;
-            /** Postlink */
-            postLink?: string | null;
+        /**
+         * Outcome
+         * @enum {string}
+         */
+        Outcome: "ingested" | "deduped" | "failed" | "in_flight";
+        /** Overview */
+        Overview: {
+            /** Queries */
+            queries: components["schemas"]["QueryView"][];
+            /** Recent Runs */
+            recent_runs: components["schemas"]["RunView"][];
+            /** Baseline Run Id */
+            baseline_run_id: string | null;
+            /** Active Query Count */
+            active_query_count: number;
+            /** Candidate Count */
+            candidate_count: number;
+            /** Judgment Count */
+            judgment_count: number;
+            /** Unjudged Count */
+            unjudged_count: number;
+        };
+        /** Page */
+        Page: {
+            /** Query */
+            query: string;
+            /** Results */
+            results: components["schemas"]["mimeme__search__model__Result"][];
+            /** Total */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Has More */
+            has_more: boolean;
+            /** Search Time Ms */
+            search_time_ms: number;
+            /** Index Version */
+            index_version: string | null;
+        };
+        /** PoolResult */
+        PoolResult: {
+            /** Query Id */
+            query_id: number;
+            /** Candidate Count */
+            candidate_count: number;
+            /** Added Count */
+            added_count: number;
+            /** Index Version */
+            index_version: string;
         };
         /**
          * ProcessingStatus
          * @enum {string}
          */
         ProcessingStatus: "PENDING" | "RUNNING" | "DONE" | "FAILED";
+        /** QueryComparison */
+        QueryComparison: {
+            /** Query Id */
+            query_id: number;
+            /** Text */
+            text: string;
+            intent: components["schemas"]["Intent"];
+            /** Baseline Ndcg At 10 */
+            baseline_ndcg_at_10: number;
+            /** Candidate Ndcg At 10 */
+            candidate_ndcg_at_10: number;
+            /** Delta Ndcg At 10 */
+            delta_ndcg_at_10: number;
+            /** Baseline Results */
+            baseline_results: components["schemas"]["RankedImage"][];
+            /** Candidate Results */
+            candidate_results: components["schemas"]["RankedImage"][];
+        };
+        /** @enum {string} */
+        QuerySource: "human" | "production" | "synthetic";
+        /** @enum {string} */
+        QueryStatus: "active" | "disabled";
+        /** QueryView */
+        QueryView: {
+            /** Id */
+            id: number;
+            /** Text */
+            text: string;
+            intent: components["schemas"]["Intent"];
+            source: components["schemas"]["QuerySource"];
+            status: components["schemas"]["QueryStatus"];
+            /** Candidate Count */
+            candidate_count: number;
+            /** Judgment Count */
+            judgment_count: number;
+            /** Relevant Count */
+            relevant_count: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** RankedImage */
+        RankedImage: {
+            /** Image Id */
+            image_id: number;
+            /** Rank */
+            rank: number;
+            /** Url */
+            url: string | null;
+            /** Grade */
+            grade: number | null;
+        };
         /** RateLimitErrorResponse */
         RateLimitErrorResponse: {
             /**
@@ -821,8 +1242,8 @@ export interface components {
              */
             retry_after: string;
         };
-        /** RawJobResultPayload */
-        RawJobResultPayload: {
+        /** RawResult */
+        RawResult: {
             /** Raw */
             raw: string;
         };
@@ -840,8 +1261,8 @@ export interface components {
              */
             model_name?: string | null;
         };
-        /** RebuildJobResultPayload */
-        RebuildJobResultPayload: {
+        /** RebuildResult */
+        RebuildResult: {
             /** Version */
             version: string;
             /** Num Vectors */
@@ -852,9 +1273,16 @@ export interface components {
             removed_versions: string[];
             /** Text Num Vectors */
             text_num_vectors?: number | null;
+            /**
+             * Skipped
+             * @default false
+             */
+            skipped: boolean;
+            /** Skip Reason */
+            skip_reason?: string | null;
         };
-        /** RemoteImageUrlInput */
-        RemoteImageUrlInput: {
+        /** RemoteUrl */
+        RemoteUrl: {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -890,7 +1318,7 @@ export interface components {
             /** Id */
             id: number;
             /** Input */
-            input: components["schemas"]["RemoteImageUrlInput"] | components["schemas"]["StagedUploadInput"];
+            input: components["schemas"]["RemoteUrl"] | components["schemas"]["Staged"];
             /** Source Item Id */
             source_item_id: number | null;
             /** External Item Id */
@@ -906,80 +1334,69 @@ export interface components {
             /** Thumbnail Url */
             thumbnail_url: string | null;
         };
-        /** SearchResponse */
-        SearchResponse: {
-            /**
-             * Query
-             * @description Original query
-             */
-            query: string;
-            /**
-             * Results
-             * @description Search results
-             */
-            results?: components["schemas"]["SearchResult"][];
-            /**
-             * Total
-             * @description Total matching results
-             */
-            total: number;
-            /** Limit */
-            limit: number;
-            /** Offset */
-            offset: number;
-            /**
-             * Search Time Ms
-             * @description Search time in milliseconds
-             */
-            search_time_ms: number;
-            /**
-             * Index Version
-             * @description Active index version
-             */
-            index_version?: string | null;
+        /** RunMetricsView */
+        RunMetricsView: {
+            /** Query Count */
+            query_count: number;
+            /** Ndcg At 10 */
+            ndcg_at_10: number;
+            /** Precision At 5 */
+            precision_at_5: number;
+            /** Success At 5 */
+            success_at_5: number;
+            /** Mrr At 10 */
+            mrr_at_10: number;
+            /** Judged At 10 */
+            judged_at_10: number;
+            /** Latency P50 Ms */
+            latency_p50_ms: number;
+            /** Latency P95 Ms */
+            latency_p95_ms: number;
         };
-        /** SearchResult */
-        SearchResult: {
+        /** @enum {string} */
+        RunMode: "image" | "hybrid";
+        /** @enum {string} */
+        RunPhase: "preparing" | "searching" | "calculating_metrics" | "finalizing";
+        /** @enum {string} */
+        RunStatus: "queued" | "running" | "needs_judgments" | "complete" | "failed" | "cancelled";
+        /** RunView */
+        RunView: {
+            /** Id */
+            id: string;
+            mode: components["schemas"]["RunMode"];
+            status: components["schemas"]["RunStatus"];
+            phase: components["schemas"]["RunPhase"] | null;
+            /** Progress Completed */
+            progress_completed: number;
+            /** Progress Total */
+            progress_total: number;
+            /** Index Version */
+            index_version: string | null;
+            /** Release Id */
+            release_id: string;
+            /** Snapshot Id */
+            snapshot_id: string;
+            metrics: components["schemas"]["RunMetricsView"] | null;
+            /** Missing Judgments */
+            missing_judgments: number;
+            /** Error */
+            error: string | null;
             /**
-             * Id
-             * @description Image ID
+             * Created At
+             * Format: date-time
              */
-            id: number;
-            /**
-             * Sha256
-             * @description Image hash
-             */
-            sha256: string;
-            /**
-             * Score
-             * @description Similarity score
-             */
-            score: number;
-            /**
-             * Url
-             * @description Image URL
-             */
-            url?: string | null;
-            /**
-             * Caption
-             * @description Generated caption
-             */
-            caption?: string | null;
-            /**
-             * Ocr Text
-             * @description Extracted text from image
-             */
-            ocr_text?: string | null;
-            /**
-             * Width
-             * @description Image width
-             */
-            width?: number | null;
-            /**
-             * Height
-             * @description Image height
-             */
-            height?: number | null;
+            created_at: string;
+            /** Started At */
+            started_at: string | null;
+            /** Completed At */
+            completed_at: string | null;
+        };
+        /** SaveSearchEvalJudgmentRequest */
+        SaveSearchEvalJudgmentRequest: {
+            /** Grade */
+            grade: number;
+            /** Revision */
+            revision: number;
         };
         /** SourceDetailResponse */
         SourceDetailResponse: {
@@ -989,7 +1406,8 @@ export interface components {
             name: string;
             /** Adapter Key */
             adapter_key: string;
-            adapter_config: components["schemas"]["MemeApiAdapterConfig"];
+            /** Adapter Config */
+            adapter_config: components["schemas"]["MemeApiAdapterConfig"] | components["schemas"]["TumblrAdapterConfig"] | components["schemas"]["KymAdapterConfig"];
             /** Dataset */
             dataset: string | null;
             /** Schedule Cron */
@@ -1042,7 +1460,10 @@ export interface components {
             external_item_id: string;
             /** Title */
             title: string | null;
-            raw_metadata: components["schemas"]["MemeApiRawMetadata"] | null;
+            /** Raw Metadata */
+            raw_metadata: {
+                [key: string]: unknown;
+            } | null;
             /** Thumbnail Url */
             thumbnail_url: string | null;
             /**
@@ -1077,7 +1498,8 @@ export interface components {
             name: string;
             /** Adapter Key */
             adapter_key: string;
-            adapter_config: components["schemas"]["MemeApiAdapterConfig"];
+            /** Adapter Config */
+            adapter_config: components["schemas"]["MemeApiAdapterConfig"] | components["schemas"]["TumblrAdapterConfig"] | components["schemas"]["KymAdapterConfig"];
             /** Dataset */
             dataset: string | null;
             /** Schedule Cron */
@@ -1115,7 +1537,8 @@ export interface components {
             name: string;
             /** Adapter Key */
             adapter_key: string;
-            adapter_config: components["schemas"]["MemeApiAdapterConfig"];
+            /** Adapter Config */
+            adapter_config: components["schemas"]["MemeApiAdapterConfig"] | components["schemas"]["TumblrAdapterConfig"] | components["schemas"]["KymAdapterConfig"];
             /** Dataset */
             dataset: string | null;
             /** Schedule Cron */
@@ -1188,8 +1611,8 @@ export interface components {
             /** Failed Count */
             failed_count: number;
         };
-        /** StagedUploadInput */
-        StagedUploadInput: {
+        /** Staged */
+        Staged: {
             /**
              * @description discriminator enum property added by openapi-typescript
              * @enum {string}
@@ -1205,9 +1628,17 @@ export interface components {
             /** Message */
             message: string;
         };
+        /** TumblrAdapterConfig */
+        TumblrAdapterConfig: {
+            /** Tags */
+            tags?: string[];
+            /** Min Note Count */
+            min_note_count?: number;
+        };
         /** UpdateSourceRequest */
         UpdateSourceRequest: {
-            adapter_config?: components["schemas"]["MemeApiAdapterConfig"] | null;
+            /** Adapter Config */
+            adapter_config?: components["schemas"]["MemeApiAdapterConfig"] | components["schemas"]["TumblrAdapterConfig"] | components["schemas"]["KymAdapterConfig"] | null;
             /** Dataset */
             dataset?: string | null;
             /** Schedule Cron */
@@ -1237,6 +1668,31 @@ export interface components {
             input?: unknown;
             /** Context */
             ctx?: Record<string, never>;
+        };
+        /**
+         * View
+         * @enum {string}
+         */
+        View: "live" | "completed" | "failed" | "all";
+        mimeme__job__model__Result: components["schemas"]["IngestResult"] | components["schemas"]["RebuildResult"] | components["schemas"]["RawResult"];
+        /** Result */
+        mimeme__search__model__Result: {
+            /** Id */
+            id: number;
+            /** Sha256 */
+            sha256: string;
+            /** Score */
+            score: number;
+            /** Url */
+            url?: string | null;
+            /** Caption */
+            caption?: string | null;
+            /** Ocr Text */
+            ocr_text?: string | null;
+            /** Width */
+            width?: number | null;
+            /** Height */
+            height?: number | null;
         };
     };
     responses: never;
@@ -1294,14 +1750,13 @@ export interface operations {
             };
         };
     };
-    search_search_get: {
+    search_text_search_get: {
         parameters: {
             query: {
                 /** @description Search query */
                 q: string;
                 limit?: number;
                 offset?: number;
-                /** @description Optional mode. Omit for image search; use 'hybrid' to fuse image and text indexes. */
                 mode?: "hybrid" | null;
             };
             header?: never;
@@ -1316,7 +1771,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SearchResponse"];
+                    "application/json": components["schemas"]["Page"];
                 };
             };
             /** @description Bad request */
@@ -1375,7 +1830,7 @@ export interface operations {
             };
         };
     };
-    find_similar_search_similar__image_id__get: {
+    search_similar_search_similar__image_id__get: {
         parameters: {
             query?: {
                 limit?: number;
@@ -1394,7 +1849,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["SearchResponse"];
+                    "application/json": components["schemas"]["Page"];
                 };
             };
             /** @description Forbidden */
@@ -2006,6 +2461,53 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    get_index_freshness_jobs_indexes_freshness_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IndexFreshnessResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
                 };
             };
             /** @description Rate limit exceeded */
@@ -2856,12 +3358,12 @@ export interface operations {
     list_ingestion_ingestion_get: {
         parameters: {
             query?: {
-                view?: components["schemas"]["IngestionView"];
+                view?: components["schemas"]["View"];
                 stage?: components["schemas"]["IngestStage"] | null;
                 trigger?: components["schemas"]["SourceRunTrigger"] | null;
                 source_id?: number | null;
                 dataset?: string | null;
-                outcome?: components["schemas"]["IngestOutcome"] | null;
+                outcome?: components["schemas"]["Outcome"] | null;
                 created_from?: string | null;
                 created_to?: string | null;
                 limit?: number;
@@ -3020,6 +3522,760 @@ export interface operations {
             };
             /** @description Not found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    overview_search_evals_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Overview"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    create_query_search_evals_queries_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSearchEvalQueryRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["QueryView"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    disable_query_search_evals_queries__query_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    pool_query_search_evals_queries__query_id__pool_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolResult"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    add_candidate_search_evals_queries__query_id__candidates_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddSearchEvalCandidateRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    judgment_workspace_search_evals_judgments_get: {
+        parameters: {
+            query?: {
+                query_id?: number | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JudgmentWorkspace"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    save_judgment_search_evals_queries__query_id__judgments__image_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                query_id: number;
+                image_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveSearchEvalJudgmentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JudgmentSave"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    clear_judgment_search_evals_queries__query_id__judgments__image_id__delete: {
+        parameters: {
+            query: {
+                revision: number;
+            };
+            header?: never;
+            path: {
+                query_id: number;
+                image_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    create_run_search_evals_runs_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSearchEvalRunRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunView"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    get_run_search_evals_runs__run_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunView"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    finalize_run_search_evals_runs__run_id__finalize_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunView"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    set_baseline_search_evals_runs__run_id__baseline_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunView"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    compare_search_evals_compare_get: {
+        parameters: {
+            query: {
+                baseline_run_id: string;
+                candidate_run_id: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Comparison"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
