@@ -14,9 +14,10 @@ foreign keys survive the copy; ``ingest_urls`` pointing at images outside the
 subset have those references nulled.
 
 Small provenance tables (``jobs``, ``ingestion_sources``, ``source_runs``,
-``source_items``, ``ingest_urls``) are copied whole. Index artifacts are not
-copied: ``search_index_state`` is seeded dirty so a local rebuild produces its
-own index from the per-image embedding objects that came along with the sample.
+``source_items``, ``source_media``, ``ingest_urls``) are copied whole. Index
+artifacts are not copied: ``search_index_state`` is seeded dirty so a local
+rebuild produces its own index from the per-image embedding objects that came
+along with the sample.
 
 The default mode is a dry run. Writing requires ``--apply``.
 """
@@ -42,9 +43,16 @@ TERRAFORM_DIR = REPO_ROOT / "terraform" / "infra"
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "::1", "0.0.0.0", "minio", "postgres"}
 
 IMAGE_TABLES = ("images", "processing", "annotations", "artifacts")
-WHOLE_TABLES = ("jobs", "ingestion_sources", "source_runs", "source_items")
+WHOLE_TABLES = (
+    "jobs",
+    "ingestion_sources",
+    "source_runs",
+    "source_items",
+    "source_media",
+)
 TRUNCATE_ORDER = (
     "ingest_urls",
+    "source_media",
     "source_items",
     "source_runs",
     "ingestion_sources",
@@ -62,6 +70,7 @@ SERIAL_TABLES = (
     "ingestion_sources",
     "source_runs",
     "source_items",
+    "source_media",
     "embedding_shards",
     "index_builds",
 )
@@ -236,7 +245,7 @@ async def _copy_rows(
     ingest_urls = []
     for row in await _fetch(prod, "ingest_urls", None):
         record = dict(row)
-        for column in ("image_id", "duplicate_of_image_id"):
+        for column in ("image_id", "duplicate_of_image_id", "similar_image_id"):
             if record[column] is not None and record[column] not in kept:
                 record[column] = None
         ingest_urls.append(record)
@@ -385,7 +394,7 @@ async def main(args: argparse.Namespace) -> int:
                     "images": len(image_ids),
                     "by_dataset": {row["dataset"]: row["count"] for row in datasets},
                     "objects": len(plan),
-                    "media_bytes": int(bytes_estimate),
+                    "media_bytes": int(bytes_estimate or 0),
                     "action_required": None if args.apply else "re-run with --apply",
                 },
                 indent=2,

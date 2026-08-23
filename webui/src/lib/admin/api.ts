@@ -148,7 +148,7 @@ interface ClientResult<T> {
 	response: Response;
 }
 
-async function callAdmin<T>(
+export async function callAdmin<T>(
 	operation: string,
 	request: (client: ReturnType<typeof adminClient>) => Promise<ClientResult<T>>,
 ): Promise<T> {

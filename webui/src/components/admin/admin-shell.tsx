@@ -14,7 +14,7 @@ import {
 	SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { Link, useLocation } from "@tanstack/react-router";
-import { Activity, Boxes, Captions, ImageIcon, ShieldAlert } from "lucide-react";
+import { Activity, Boxes, Captions, Gauge, ImageIcon, ShieldAlert } from "lucide-react";
 import type { ReactNode } from "react";
 
 export function AdminShell({ children }: { children: ReactNode }) {
@@ -23,6 +23,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
 	const onImages = location.pathname.startsWith("/admin/images");
 	const onIngestion = location.pathname.startsWith("/admin/ingestion");
 	const onGifAnnotation = location.pathname.startsWith("/admin/gif-annotation");
+	const onEvals = location.pathname.startsWith("/admin/evals");
 
 	return (
 		<SidebarProvider>
@@ -38,6 +39,12 @@ export function AdminShell({ children }: { children: ReactNode }) {
 						<SidebarGroupLabel>manage</SidebarGroupLabel>
 						<SidebarGroupContent>
 							<SidebarMenu>
+								<SidebarMenuItem>
+									<SidebarMenuButton render={<Link to="/admin/evals" />} isActive={onEvals}>
+										<Gauge />
+										<span>search evals</span>
+									</SidebarMenuButton>
+								</SidebarMenuItem>
 								<SidebarMenuItem>
 									<SidebarMenuButton render={<Link to="/admin/sources" />} isActive={onSources}>
 										<Boxes />

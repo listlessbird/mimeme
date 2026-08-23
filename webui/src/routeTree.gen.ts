@@ -14,13 +14,19 @@ import { Route as AdminUnlockRouteImport } from './routes/admin-unlock'
 import { Route as AdminRouteRouteImport } from './routes/admin/route'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as AdminIndexRouteImport } from './routes/admin/index'
+import { Route as AdminEvalsRouteRouteImport } from './routes/admin/evals/route'
 import { Route as AdminSourcesIndexRouteImport } from './routes/admin/sources/index'
 import { Route as AdminIngestionIndexRouteImport } from './routes/admin/ingestion/index'
 import { Route as AdminImagesIndexRouteImport } from './routes/admin/images/index'
 import { Route as AdminGifAnnotationIndexRouteImport } from './routes/admin/gif-annotation/index'
+import { Route as AdminEvalsIndexRouteImport } from './routes/admin/evals/index'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as AdminIngestionIngestUrlIdRouteImport } from './routes/admin/ingestion/$ingestUrlId'
 import { Route as AdminImagesImageIdRouteImport } from './routes/admin/images/$imageId'
+import { Route as AdminEvalsRunsRouteImport } from './routes/admin/evals/runs'
+import { Route as AdminEvalsQueriesRouteImport } from './routes/admin/evals/queries'
+import { Route as AdminEvalsJudgeRouteImport } from './routes/admin/evals/judge'
+import { Route as AdminEvalsCompareRouteImport } from './routes/admin/evals/compare'
 import { Route as AdminSourcesIdIndexRouteImport } from './routes/admin/sources/$id/index'
 import { Route as AdminSourcesIdRunsRunIdRouteImport } from './routes/admin/sources/$id/runs/$runId'
 
@@ -49,6 +55,11 @@ const AdminIndexRoute = AdminIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminEvalsRouteRoute = AdminEvalsRouteRouteImport.update({
+  id: '/evals',
+  path: '/evals',
+  getParentRoute: () => AdminRouteRoute,
+} as any)
 const AdminSourcesIndexRoute = AdminSourcesIndexRouteImport.update({
   id: '/sources/',
   path: '/sources/',
@@ -69,6 +80,11 @@ const AdminGifAnnotationIndexRoute = AdminGifAnnotationIndexRouteImport.update({
   path: '/gif-annotation/',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminEvalsIndexRoute = AdminEvalsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminEvalsRouteRoute,
+} as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -84,6 +100,26 @@ const AdminImagesImageIdRoute = AdminImagesImageIdRouteImport.update({
   id: '/images/$imageId',
   path: '/images/$imageId',
   getParentRoute: () => AdminRouteRoute,
+} as any)
+const AdminEvalsRunsRoute = AdminEvalsRunsRouteImport.update({
+  id: '/runs',
+  path: '/runs',
+  getParentRoute: () => AdminEvalsRouteRoute,
+} as any)
+const AdminEvalsQueriesRoute = AdminEvalsQueriesRouteImport.update({
+  id: '/queries',
+  path: '/queries',
+  getParentRoute: () => AdminEvalsRouteRoute,
+} as any)
+const AdminEvalsJudgeRoute = AdminEvalsJudgeRouteImport.update({
+  id: '/judge',
+  path: '/judge',
+  getParentRoute: () => AdminEvalsRouteRoute,
+} as any)
+const AdminEvalsCompareRoute = AdminEvalsCompareRouteImport.update({
+  id: '/compare',
+  path: '/compare',
+  getParentRoute: () => AdminEvalsRouteRoute,
 } as any)
 const AdminSourcesIdIndexRoute = AdminSourcesIdIndexRouteImport.update({
   id: '/sources/$id/',
@@ -101,10 +137,16 @@ export interface FileRoutesByFullPath {
   '/admin': typeof AdminRouteRouteWithChildren
   '/admin-unlock': typeof AdminUnlockRoute
   '/results': typeof ResultsRoute
+  '/admin/evals': typeof AdminEvalsRouteRouteWithChildren
   '/admin/': typeof AdminIndexRoute
+  '/admin/evals/compare': typeof AdminEvalsCompareRoute
+  '/admin/evals/judge': typeof AdminEvalsJudgeRoute
+  '/admin/evals/queries': typeof AdminEvalsQueriesRoute
+  '/admin/evals/runs': typeof AdminEvalsRunsRoute
   '/admin/images/$imageId': typeof AdminImagesImageIdRoute
   '/admin/ingestion/$ingestUrlId': typeof AdminIngestionIngestUrlIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/admin/evals/': typeof AdminEvalsIndexRoute
   '/admin/gif-annotation/': typeof AdminGifAnnotationIndexRoute
   '/admin/images/': typeof AdminImagesIndexRoute
   '/admin/ingestion/': typeof AdminIngestionIndexRoute
@@ -117,9 +159,14 @@ export interface FileRoutesByTo {
   '/admin-unlock': typeof AdminUnlockRoute
   '/results': typeof ResultsRoute
   '/admin': typeof AdminIndexRoute
+  '/admin/evals/compare': typeof AdminEvalsCompareRoute
+  '/admin/evals/judge': typeof AdminEvalsJudgeRoute
+  '/admin/evals/queries': typeof AdminEvalsQueriesRoute
+  '/admin/evals/runs': typeof AdminEvalsRunsRoute
   '/admin/images/$imageId': typeof AdminImagesImageIdRoute
   '/admin/ingestion/$ingestUrlId': typeof AdminIngestionIngestUrlIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/admin/evals': typeof AdminEvalsIndexRoute
   '/admin/gif-annotation': typeof AdminGifAnnotationIndexRoute
   '/admin/images': typeof AdminImagesIndexRoute
   '/admin/ingestion': typeof AdminIngestionIndexRoute
@@ -133,10 +180,16 @@ export interface FileRoutesById {
   '/admin': typeof AdminRouteRouteWithChildren
   '/admin-unlock': typeof AdminUnlockRoute
   '/results': typeof ResultsRoute
+  '/admin/evals': typeof AdminEvalsRouteRouteWithChildren
   '/admin/': typeof AdminIndexRoute
+  '/admin/evals/compare': typeof AdminEvalsCompareRoute
+  '/admin/evals/judge': typeof AdminEvalsJudgeRoute
+  '/admin/evals/queries': typeof AdminEvalsQueriesRoute
+  '/admin/evals/runs': typeof AdminEvalsRunsRoute
   '/admin/images/$imageId': typeof AdminImagesImageIdRoute
   '/admin/ingestion/$ingestUrlId': typeof AdminIngestionIngestUrlIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/admin/evals/': typeof AdminEvalsIndexRoute
   '/admin/gif-annotation/': typeof AdminGifAnnotationIndexRoute
   '/admin/images/': typeof AdminImagesIndexRoute
   '/admin/ingestion/': typeof AdminIngestionIndexRoute
@@ -151,10 +204,16 @@ export interface FileRouteTypes {
     | '/admin'
     | '/admin-unlock'
     | '/results'
+    | '/admin/evals'
     | '/admin/'
+    | '/admin/evals/compare'
+    | '/admin/evals/judge'
+    | '/admin/evals/queries'
+    | '/admin/evals/runs'
     | '/admin/images/$imageId'
     | '/admin/ingestion/$ingestUrlId'
     | '/api/auth/$'
+    | '/admin/evals/'
     | '/admin/gif-annotation/'
     | '/admin/images/'
     | '/admin/ingestion/'
@@ -167,9 +226,14 @@ export interface FileRouteTypes {
     | '/admin-unlock'
     | '/results'
     | '/admin'
+    | '/admin/evals/compare'
+    | '/admin/evals/judge'
+    | '/admin/evals/queries'
+    | '/admin/evals/runs'
     | '/admin/images/$imageId'
     | '/admin/ingestion/$ingestUrlId'
     | '/api/auth/$'
+    | '/admin/evals'
     | '/admin/gif-annotation'
     | '/admin/images'
     | '/admin/ingestion'
@@ -182,10 +246,16 @@ export interface FileRouteTypes {
     | '/admin'
     | '/admin-unlock'
     | '/results'
+    | '/admin/evals'
     | '/admin/'
+    | '/admin/evals/compare'
+    | '/admin/evals/judge'
+    | '/admin/evals/queries'
+    | '/admin/evals/runs'
     | '/admin/images/$imageId'
     | '/admin/ingestion/$ingestUrlId'
     | '/api/auth/$'
+    | '/admin/evals/'
     | '/admin/gif-annotation/'
     | '/admin/images/'
     | '/admin/ingestion/'
@@ -239,6 +309,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminIndexRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/admin/evals': {
+      id: '/admin/evals'
+      path: '/evals'
+      fullPath: '/admin/evals'
+      preLoaderRoute: typeof AdminEvalsRouteRouteImport
+      parentRoute: typeof AdminRouteRoute
+    }
     '/admin/sources/': {
       id: '/admin/sources/'
       path: '/sources'
@@ -267,6 +344,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminGifAnnotationIndexRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/admin/evals/': {
+      id: '/admin/evals/'
+      path: '/'
+      fullPath: '/admin/evals/'
+      preLoaderRoute: typeof AdminEvalsIndexRouteImport
+      parentRoute: typeof AdminEvalsRouteRoute
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -288,6 +372,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminImagesImageIdRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/admin/evals/runs': {
+      id: '/admin/evals/runs'
+      path: '/runs'
+      fullPath: '/admin/evals/runs'
+      preLoaderRoute: typeof AdminEvalsRunsRouteImport
+      parentRoute: typeof AdminEvalsRouteRoute
+    }
+    '/admin/evals/queries': {
+      id: '/admin/evals/queries'
+      path: '/queries'
+      fullPath: '/admin/evals/queries'
+      preLoaderRoute: typeof AdminEvalsQueriesRouteImport
+      parentRoute: typeof AdminEvalsRouteRoute
+    }
+    '/admin/evals/judge': {
+      id: '/admin/evals/judge'
+      path: '/judge'
+      fullPath: '/admin/evals/judge'
+      preLoaderRoute: typeof AdminEvalsJudgeRouteImport
+      parentRoute: typeof AdminEvalsRouteRoute
+    }
+    '/admin/evals/compare': {
+      id: '/admin/evals/compare'
+      path: '/compare'
+      fullPath: '/admin/evals/compare'
+      preLoaderRoute: typeof AdminEvalsCompareRouteImport
+      parentRoute: typeof AdminEvalsRouteRoute
+    }
     '/admin/sources/$id/': {
       id: '/admin/sources/$id/'
       path: '/sources/$id'
@@ -305,7 +417,28 @@ declare module '@tanstack/react-router' {
   }
 }
 
+interface AdminEvalsRouteRouteChildren {
+  AdminEvalsCompareRoute: typeof AdminEvalsCompareRoute
+  AdminEvalsJudgeRoute: typeof AdminEvalsJudgeRoute
+  AdminEvalsQueriesRoute: typeof AdminEvalsQueriesRoute
+  AdminEvalsRunsRoute: typeof AdminEvalsRunsRoute
+  AdminEvalsIndexRoute: typeof AdminEvalsIndexRoute
+}
+
+const AdminEvalsRouteRouteChildren: AdminEvalsRouteRouteChildren = {
+  AdminEvalsCompareRoute: AdminEvalsCompareRoute,
+  AdminEvalsJudgeRoute: AdminEvalsJudgeRoute,
+  AdminEvalsQueriesRoute: AdminEvalsQueriesRoute,
+  AdminEvalsRunsRoute: AdminEvalsRunsRoute,
+  AdminEvalsIndexRoute: AdminEvalsIndexRoute,
+}
+
+const AdminEvalsRouteRouteWithChildren = AdminEvalsRouteRoute._addFileChildren(
+  AdminEvalsRouteRouteChildren,
+)
+
 interface AdminRouteRouteChildren {
+  AdminEvalsRouteRoute: typeof AdminEvalsRouteRouteWithChildren
   AdminIndexRoute: typeof AdminIndexRoute
   AdminImagesImageIdRoute: typeof AdminImagesImageIdRoute
   AdminIngestionIngestUrlIdRoute: typeof AdminIngestionIngestUrlIdRoute
@@ -318,6 +451,7 @@ interface AdminRouteRouteChildren {
 }
 
 const AdminRouteRouteChildren: AdminRouteRouteChildren = {
+  AdminEvalsRouteRoute: AdminEvalsRouteRouteWithChildren,
   AdminIndexRoute: AdminIndexRoute,
   AdminImagesImageIdRoute: AdminImagesImageIdRoute,
   AdminIngestionIngestUrlIdRoute: AdminIngestionIngestUrlIdRoute,

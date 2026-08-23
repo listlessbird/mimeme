@@ -16,6 +16,8 @@ from mimeme.index.workflow import RebuildWorkflow
 from mimeme.ingest.activity import IngestActivities
 from mimeme.ingest.workflow import IngestWorkflow
 from mimeme.logging import setup_logging
+from mimeme.search_eval.activity import Activities as SearchEvalActivities
+from mimeme.search_eval.workflow import SearchEvalScoreWorkflow, SearchEvalWorkflow
 from mimeme.source import schedule as source_schedule
 from mimeme.source import store as source_store
 from mimeme.source.activity import SourceActivities
@@ -28,8 +30,16 @@ def registrations(
     ingest = IngestActivities(env, poll_interval_s=poll_interval_s)
     source = SourceActivities(env)
     index = IndexActivities(env)
+    search_eval = SearchEvalActivities(env)
     return (
-        [IngestWorkflow, SourceSyncWorkflow, SourceRetryWorkflow, RebuildWorkflow],
+        [
+            IngestWorkflow,
+            SourceSyncWorkflow,
+            SourceRetryWorkflow,
+            RebuildWorkflow,
+            SearchEvalWorkflow,
+            SearchEvalScoreWorkflow,
+        ],
         [
             ingest.item,
             ingest.batch,
@@ -41,6 +51,10 @@ def registrations(
             index.seal,
             index.build,
             index.activate,
+            search_eval.prepare,
+            search_eval.retrieve,
+            search_eval.score,
+            search_eval.fail,
         ],
     )
 
