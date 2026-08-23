@@ -14,6 +14,17 @@ from mimeme.db.schema.ingest import (
     IngestURL,
 )
 from mimeme.db.schema.job import Job, JobStatus, JobType
+from mimeme.db.schema.search_eval import (
+    SearchEvalBaseline,
+    SearchEvalJudgment,
+    SearchEvalPoolCandidate,
+    SearchEvalQuery,
+    SearchEvalQueryExecution,
+    SearchEvalResult,
+    SearchEvalRun,
+    SearchEvalScore,
+    SearchEvalSnapshot,
+)
 from mimeme.db.schema.search_index import (
     EmbeddingShard,
     IndexBuild,
@@ -48,6 +59,15 @@ __all__ = [
     "IndexBuild",
     "SearchIndexState",
     "RebuildTrigger",
+    "SearchEvalQuery",
+    "SearchEvalPoolCandidate",
+    "SearchEvalQueryExecution",
+    "SearchEvalJudgment",
+    "SearchEvalSnapshot",
+    "SearchEvalRun",
+    "SearchEvalScore",
+    "SearchEvalResult",
+    "SearchEvalBaseline",
     "DuplicateReason",
     "IngestionSource",
     "SourceRun",

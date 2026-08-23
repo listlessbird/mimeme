@@ -14,7 +14,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-08-03T06:08:18.103315583Z"
+exclude-newer = "2026-08-16T21:57:06.108066948Z"
 exclude-newer-span = "P7D"
 
 [[package]]
@@ -1376,6 +1376,18 @@ wheels = [
 ]
 
 [[package]]
+name = "ir-measures"
+version = "0.4.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytrec-eval-terrier" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/81/b4/d931aa71a73353cf0b8446b3d7ce9ed789e7fe595778d7e061e86faea28d/ir_measures-0.4.3.tar.gz", hash = "sha256:869a6019efefb02dda8b77ca0f68d6d57b01fe34998a46c76425b9fbb396e827", size = 51224, upload-time = "2025-11-25T17:36:52.06Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/76/62/15199767ad9f1e3f793dec253ba6f662cb36e7197fc647bc844a6ecb99bf/ir_measures-0.4.3-py3-none-any.whl", hash = "sha256:3d8b3b5283e4a77df85f9f6c8a1c2c99a7421b78fa014ef97f2ddab3037d3dcf", size = 61311, upload-time = "2025-11-25T17:36:51.183Z" },
+]
+
+[[package]]
 name = "jedi"
 version = "0.19.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1765,6 +1777,7 @@ dependencies = [
     { name = "asyncpg" },
     { name = "fastapi", extra = ["standard"] },
     { name = "httpx" },
+    { name = "ir-measures" },
     { name = "modal" },
     { name = "pydantic" },
     { name = "pydantic-settings" },
@@ -1855,6 +1868,7 @@ requires-dist = [
     { name = "httpx", specifier = "==0.28.1" },
     { name = "huggingface-hub", marker = "extra == 'compute'", specifier = "==0.36.2" },
     { name = "imagehash", marker = "extra == 'compute'", specifier = "==4.3.2" },
+    { name = "ir-measures", specifier = "==0.4.3" },
     { name = "modal", specifier = "==1.3.4" },
     { name = "numpy", marker = "extra == 'compute'", specifier = "==2.4.2" },
     { name = "onnxruntime", marker = "extra == 'compute'", specifier = "==1.27.0" },
@@ -3062,6 +3076,30 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/94/01/979e98d542a70714b0cb2b6728ed0b7c46792b695e3eaec3e20711271ca3/python_multipart-0.0.22.tar.gz", hash = "sha256:7340bef99a7e0032613f56dc36027b959fd3b30a787ed62d310e951f7c3a3a58", size = 37612, upload-time = "2026-01-25T10:15:56.219Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1b/d0/397f9626e711ff749a95d96b7af99b9c566a9bb5129b8e4c10fc4d100304/python_multipart-0.0.22-py3-none-any.whl", hash = "sha256:2b2cd894c83d21bf49d702499531c7bafd057d730c201782048f7945d82de155", size = 24579, upload-time = "2026-01-25T10:15:54.811Z" },
+]
+
+[[package]]
+name = "pytrec-eval-terrier"
+version = "0.5.10"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "scipy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/04/96/4925a95e4865a647bc74d3bb052243d12a3c8e8a34909d7d097b5a4d08c5/pytrec_eval_terrier-0.5.10.tar.gz", hash = "sha256:eaaf20580d17b5575a233e04dab8a4cbcc01a7e45be8cf547c07f0a2bb3e7eb9", size = 18634, upload-time = "2025-10-20T16:50:18.098Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/18/de/7659555355381e57a73e7ba31437dc31d3df146b5cc3fb66eb032683e84e/pytrec_eval_terrier-0.5.10-cp311-cp311-macosx_10_9_universal2.whl", hash = "sha256:1036735d4a12d1c92eea38a14a071168a292f8696099e90742c2c701479f010b", size = 136866, upload-time = "2025-10-20T16:50:40.054Z" },
+    { url = "https://files.pythonhosted.org/packages/d3/d7/1cbc2d3936eec51b57e1146840eb3ccd8a9fb2debc519d7aa748f13dd724/pytrec_eval_terrier-0.5.10-cp311-cp311-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b36a2fbdccc7669c4b8aba1f6de2a661e6f2f77c10f05855eda55dda60fc88f5", size = 304025, upload-time = "2025-10-20T16:54:15.957Z" },
+    { url = "https://files.pythonhosted.org/packages/7a/a2/84c93f0a260d0dabca007a02b206981d235c7f4b4c569ec746b5ef6d965b/pytrec_eval_terrier-0.5.10-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:9e4ca19110f24922d7435cf9ef9951a61f0b575488b6a1db86081d82b88dd621", size = 1327402, upload-time = "2025-10-20T16:54:16.842Z" },
+    { url = "https://files.pythonhosted.org/packages/4e/ee/3a20da0523228f54d8b89b9a11d7ec402625086cc3167fb940e36a9e2d5b/pytrec_eval_terrier-0.5.10-cp311-cp311-win_amd64.whl", hash = "sha256:d36e9a8966560ed10bc5aeb30c5c29a53d3fe8e4ccb6ff6bb026bffb21be3fe3", size = 58558, upload-time = "2025-10-20T16:51:46.032Z" },
+    { url = "https://files.pythonhosted.org/packages/d3/ca/f0edd9df08c08c96d2f088c298cfb824c3ee816302ac1f911ecb1bfdd681/pytrec_eval_terrier-0.5.10-cp312-cp312-macosx_10_13_universal2.whl", hash = "sha256:e28c3c14728713cdbad165964e2d1aba96b0fc7445a5a13168b398e9bd3bbd08", size = 137179, upload-time = "2025-10-20T16:51:07.809Z" },
+    { url = "https://files.pythonhosted.org/packages/73/55/e02a14b0d3ac520849f66391f03c6783b3383fd23a19372d07a2280b815e/pytrec_eval_terrier-0.5.10-cp312-cp312-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:689ee541d72c27d14ae15cd1f11d2cb86cf9bdc880f5e8af9c5dbbdd47663d4d", size = 304845, upload-time = "2025-10-20T16:54:17.791Z" },
+    { url = "https://files.pythonhosted.org/packages/76/9c/9020b700199b09ebdfc6dbadae81641a49555c4ee21dedbe2aa98af601b5/pytrec_eval_terrier-0.5.10-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:3f02118dadd3c09b71462bb26e405e49bd10fe0c60bcc169fcd31454a4256dc2", size = 1327965, upload-time = "2025-10-20T16:54:18.743Z" },
+    { url = "https://files.pythonhosted.org/packages/39/9e/6e7c2b89f52e1cebeef6c3bb47272f5bd69766ddbc6e9e5445da0c876899/pytrec_eval_terrier-0.5.10-cp312-cp312-win_amd64.whl", hash = "sha256:202e48fe24948453fe45dcd73261f9865f99cb2ff4c8a3255ac2ab4c993a64ba", size = 58641, upload-time = "2025-10-20T16:51:26.148Z" },
+    { url = "https://files.pythonhosted.org/packages/93/21/71a0dee7e2cd368237432af6bf6051ffde03370730dc1666cd39494c82a7/pytrec_eval_terrier-0.5.10-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:fcf96c33446c16de8db78e829c5279f7404ceaaf6b502bb5a6a3669b06051601", size = 137186, upload-time = "2025-10-20T16:50:22.941Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/8c/2494edf20d726bdd3ee0a20dc5ed84351c6cc6ccc17b11b474e315808762/pytrec_eval_terrier-0.5.10-cp313-cp313-manylinux_2_24_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:8455485f1faf6759f1be11b12c904d1c749ba5db7e2b6f414aa56e19533ce069", size = 304917, upload-time = "2025-10-20T16:54:20.486Z" },
+    { url = "https://files.pythonhosted.org/packages/cf/51/7611546afb55548e65db35354a63b90d5fd5ea593fc64e5993088bf61415/pytrec_eval_terrier-0.5.10-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:e7cc9666305281b0ca1873761dc71cd3f0863e6d759f00a12fd363aa2d558d6f", size = 1327998, upload-time = "2025-10-20T16:54:21.375Z" },
+    { url = "https://files.pythonhosted.org/packages/74/b3/20941b4dbe3b267271ed1ef80aa93b348da674aecb5d6aca8f311c4738b0/pytrec_eval_terrier-0.5.10-cp313-cp313-win_amd64.whl", hash = "sha256:9440bd4a78ee0bc5db6821d7483e962a6c494303fd26598f84f00d54cc64cdd7", size = 58631, upload-time = "2025-10-20T16:51:05.08Z" },
 ]
 
 [[package]]
