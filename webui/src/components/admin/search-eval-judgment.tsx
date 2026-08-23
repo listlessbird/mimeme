@@ -82,7 +82,9 @@ export function SearchEvalJudgment({ queryId }: { queryId?: number }) {
 			<Empty className="border">
 				<EmptyHeader>
 					<EmptyTitle>No candidates to judge</EmptyTitle>
-					<EmptyDescription>Add a query and pool its results first.</EmptyDescription>
+					<EmptyDescription>
+						Add a query and generate its candidates from the Queries page.
+					</EmptyDescription>
 				</EmptyHeader>
 			</Empty>
 		);
@@ -261,7 +263,7 @@ function JudgmentHeader() {
 	const judged = candidates.filter((candidate) => candidate.grade !== null).length;
 	const progress = candidates.length ? (judged / candidates.length) * 100 : 0;
 	return (
-		<div className="flex flex-col gap-4 border bg-card p-4 md:p-5">
+		<div className="flex flex-col gap-4 rounded-xl border bg-card p-4 shadow-sm md:p-5">
 			<div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
 				<div className="flex max-w-3xl flex-col gap-2">
 					<div className="flex items-center gap-2">
@@ -321,13 +323,15 @@ function JudgmentCanvas() {
 			<Empty className="border">
 				<EmptyHeader>
 					<EmptyTitle>This pool is empty</EmptyTitle>
-					<EmptyDescription>Return to Overview and pool the query.</EmptyDescription>
+					<EmptyDescription>
+						Generate candidates for this query from the Queries page.
+					</EmptyDescription>
 				</EmptyHeader>
 			</Empty>
 		);
 	return (
 		<div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_22rem]">
-			<div className="flex min-h-[28rem] min-w-0 flex-col overflow-hidden border bg-muted/30 md:min-h-[38rem]">
+			<div className="flex min-h-80 min-w-0 flex-col overflow-hidden rounded-xl border bg-muted/30 sm:min-h-[28rem] md:min-h-[38rem]">
 				<div className="relative flex min-h-0 flex-1 items-center justify-center p-3">
 					{activeCandidate.url ? (
 						<img

@@ -36,7 +36,7 @@ import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowDown, ArrowRight, Equal, ImageOff } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 /** Side-by-side comparison of two runs scored from the same judgment snapshot. */
 export function SearchEvalComparison({
@@ -67,7 +67,7 @@ export function SearchEvalComparison({
 			) : comparison.isPending ? (
 				<ComparisonSkeleton />
 			) : comparison.data ? (
-				<ComparisonResults comparison={comparison.data} />
+				<ComparisonResults key={`${baseline}:${candidate}`} comparison={comparison.data} />
 			) : null}
 		</div>
 	);
@@ -123,13 +123,13 @@ function ComparisonPicker({
 					</SelectTrigger>
 					<SelectContent>
 						<SelectGroup>
-							{runs
-								.filter((run) => run.id !== baseline)
-								.map((run) => (
+							{runs.map((run) =>
+								run.id === baseline ? null : (
 									<SelectItem key={run.id} value={run.id}>
 										{runLabel(run)}
 									</SelectItem>
-								))}
+								),
+							)}
 						</SelectGroup>
 					</SelectContent>
 				</Select>
@@ -144,7 +144,6 @@ function runLabel(run: { id: string; mode: string; index_version: string | null 
 
 function ComparisonResults({ comparison }: { comparison: ComparisonData }) {
 	const [selectedQueryId, setSelectedQueryId] = useState(comparison.queries[0]?.query_id ?? null);
-	useEffect(() => setSelectedQueryId(comparison.queries[0]?.query_id ?? null), [comparison]);
 	const selected =
 		comparison.queries.find((query) => query.query_id === selectedQueryId) ?? comparison.queries[0];
 	return (

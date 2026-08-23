@@ -23,6 +23,8 @@ import { Route as AdminEvalsIndexRouteImport } from './routes/admin/evals/index'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as AdminIngestionIngestUrlIdRouteImport } from './routes/admin/ingestion/$ingestUrlId'
 import { Route as AdminImagesImageIdRouteImport } from './routes/admin/images/$imageId'
+import { Route as AdminEvalsRunsRouteImport } from './routes/admin/evals/runs'
+import { Route as AdminEvalsQueriesRouteImport } from './routes/admin/evals/queries'
 import { Route as AdminEvalsJudgeRouteImport } from './routes/admin/evals/judge'
 import { Route as AdminEvalsCompareRouteImport } from './routes/admin/evals/compare'
 import { Route as AdminSourcesIdIndexRouteImport } from './routes/admin/sources/$id/index'
@@ -99,6 +101,16 @@ const AdminImagesImageIdRoute = AdminImagesImageIdRouteImport.update({
   path: '/images/$imageId',
   getParentRoute: () => AdminRouteRoute,
 } as any)
+const AdminEvalsRunsRoute = AdminEvalsRunsRouteImport.update({
+  id: '/runs',
+  path: '/runs',
+  getParentRoute: () => AdminEvalsRouteRoute,
+} as any)
+const AdminEvalsQueriesRoute = AdminEvalsQueriesRouteImport.update({
+  id: '/queries',
+  path: '/queries',
+  getParentRoute: () => AdminEvalsRouteRoute,
+} as any)
 const AdminEvalsJudgeRoute = AdminEvalsJudgeRouteImport.update({
   id: '/judge',
   path: '/judge',
@@ -129,6 +141,8 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AdminIndexRoute
   '/admin/evals/compare': typeof AdminEvalsCompareRoute
   '/admin/evals/judge': typeof AdminEvalsJudgeRoute
+  '/admin/evals/queries': typeof AdminEvalsQueriesRoute
+  '/admin/evals/runs': typeof AdminEvalsRunsRoute
   '/admin/images/$imageId': typeof AdminImagesImageIdRoute
   '/admin/ingestion/$ingestUrlId': typeof AdminIngestionIngestUrlIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -147,6 +161,8 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminIndexRoute
   '/admin/evals/compare': typeof AdminEvalsCompareRoute
   '/admin/evals/judge': typeof AdminEvalsJudgeRoute
+  '/admin/evals/queries': typeof AdminEvalsQueriesRoute
+  '/admin/evals/runs': typeof AdminEvalsRunsRoute
   '/admin/images/$imageId': typeof AdminImagesImageIdRoute
   '/admin/ingestion/$ingestUrlId': typeof AdminIngestionIngestUrlIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -168,6 +184,8 @@ export interface FileRoutesById {
   '/admin/': typeof AdminIndexRoute
   '/admin/evals/compare': typeof AdminEvalsCompareRoute
   '/admin/evals/judge': typeof AdminEvalsJudgeRoute
+  '/admin/evals/queries': typeof AdminEvalsQueriesRoute
+  '/admin/evals/runs': typeof AdminEvalsRunsRoute
   '/admin/images/$imageId': typeof AdminImagesImageIdRoute
   '/admin/ingestion/$ingestUrlId': typeof AdminIngestionIngestUrlIdRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
@@ -190,6 +208,8 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/admin/evals/compare'
     | '/admin/evals/judge'
+    | '/admin/evals/queries'
+    | '/admin/evals/runs'
     | '/admin/images/$imageId'
     | '/admin/ingestion/$ingestUrlId'
     | '/api/auth/$'
@@ -208,6 +228,8 @@ export interface FileRouteTypes {
     | '/admin'
     | '/admin/evals/compare'
     | '/admin/evals/judge'
+    | '/admin/evals/queries'
+    | '/admin/evals/runs'
     | '/admin/images/$imageId'
     | '/admin/ingestion/$ingestUrlId'
     | '/api/auth/$'
@@ -228,6 +250,8 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/admin/evals/compare'
     | '/admin/evals/judge'
+    | '/admin/evals/queries'
+    | '/admin/evals/runs'
     | '/admin/images/$imageId'
     | '/admin/ingestion/$ingestUrlId'
     | '/api/auth/$'
@@ -348,6 +372,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminImagesImageIdRouteImport
       parentRoute: typeof AdminRouteRoute
     }
+    '/admin/evals/runs': {
+      id: '/admin/evals/runs'
+      path: '/runs'
+      fullPath: '/admin/evals/runs'
+      preLoaderRoute: typeof AdminEvalsRunsRouteImport
+      parentRoute: typeof AdminEvalsRouteRoute
+    }
+    '/admin/evals/queries': {
+      id: '/admin/evals/queries'
+      path: '/queries'
+      fullPath: '/admin/evals/queries'
+      preLoaderRoute: typeof AdminEvalsQueriesRouteImport
+      parentRoute: typeof AdminEvalsRouteRoute
+    }
     '/admin/evals/judge': {
       id: '/admin/evals/judge'
       path: '/judge'
@@ -382,12 +420,16 @@ declare module '@tanstack/react-router' {
 interface AdminEvalsRouteRouteChildren {
   AdminEvalsCompareRoute: typeof AdminEvalsCompareRoute
   AdminEvalsJudgeRoute: typeof AdminEvalsJudgeRoute
+  AdminEvalsQueriesRoute: typeof AdminEvalsQueriesRoute
+  AdminEvalsRunsRoute: typeof AdminEvalsRunsRoute
   AdminEvalsIndexRoute: typeof AdminEvalsIndexRoute
 }
 
 const AdminEvalsRouteRouteChildren: AdminEvalsRouteRouteChildren = {
   AdminEvalsCompareRoute: AdminEvalsCompareRoute,
   AdminEvalsJudgeRoute: AdminEvalsJudgeRoute,
+  AdminEvalsQueriesRoute: AdminEvalsQueriesRoute,
+  AdminEvalsRunsRoute: AdminEvalsRunsRoute,
   AdminEvalsIndexRoute: AdminEvalsIndexRoute,
 }
 
