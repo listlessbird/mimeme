@@ -8,7 +8,7 @@ inputs = ["docker_logs"]
 source = '''
 parsed, err = parse_json(.message)
 if err == null && is_object(parsed) {
-  . = merge(., parsed)
+  . = merge!(., parsed)
 }
 '''
 
