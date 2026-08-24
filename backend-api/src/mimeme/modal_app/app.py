@@ -14,6 +14,7 @@ app = modal.App(settings.compute.modal_app_name)
 
 gpu_image = (
     modal.Image.debian_slim(python_version="3.12")
+    .env({"MIMEME_RELEASE_ID": release.ID})
     .apt_install("libgl1", "libglib2.0-0", "libvips42", "libjpeg-dev", "libtiff-dev")
     .pip_install(
         "torch==2.9.0",
