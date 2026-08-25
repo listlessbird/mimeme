@@ -18,6 +18,20 @@ def test_tumblr_source_config_is_accepted() -> None:
     assert request.adapter_config["min_note_count"] == 100
 
 
+def test_flip_source_config_is_accepted() -> None:
+    request = CreateSourceRequest(
+        name="Imgflip top new",
+        adapter_key="flip",
+        adapter_config={
+            "mode": "top-new",
+            "max_templates_per_run": 10,
+            "max_meme_pages": 1,
+        },
+    )
+
+    assert request.adapter_config["mode"] == "top-new"
+
+
 def test_tumblr_api_key_is_redacted_from_source_responses() -> None:
     payload = _public_source_payload(
         {

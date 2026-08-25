@@ -7,6 +7,7 @@ from mimeme.source.adapter import (
     UnknownAdapterKey,
     get_adapter,
 )
+from mimeme.source.flip import FlipAdapter, FlipConfig, ListingMode
 from mimeme.source.model import (
     DiscoveredItem,
     DiscoverInput,
@@ -43,8 +44,11 @@ __all__ = [
     "FetchRequest",
     "FinishInput",
     "FinishResult",
+    "FlipAdapter",
+    "FlipConfig",
     "KNOWN_ADAPTER_KEYS",
     "MemeApiAdapter",
+    "ListingMode",
     "NothingToRetry",
     "RawResponse",
     "RetryInput",

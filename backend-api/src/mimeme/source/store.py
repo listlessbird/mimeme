@@ -6,7 +6,7 @@ import json
 from collections.abc import Sequence
 from typing import Any
 
-from sqlalchemy import and_, case, func, select, update
+from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mimeme.db import Db
@@ -263,6 +263,21 @@ class Store:
     ) -> list[tuple[DiscoveredMedia, int, int]]:
         now = datetime.datetime.now(datetime.UTC)
         queued: list[tuple[DiscoveredMedia, int, int]] = []
+        candidate_urls = {media.media_url for item in items for media in item.media}
+        urls_seen_by_other_sources = (
+            set(
+                (
+                    await self._session.scalars(
+                        select(IngestURL.url).where(
+                            IngestURL.url.in_(candidate_urls),
+                            or_(IngestURL.source_id != source_id, IngestURL.source_id.is_(None)),
+                        )
+                    )
+                ).all()
+            )
+            if candidate_urls
+            else set()
+        )
         for item in items:
             row = (
                 await self._session.scalars(
@@ -317,7 +332,9 @@ class Store:
                 media.raw_metadata = discovered_media.raw_metadata
                 media.last_seen_at = now
                 await self._session.flush()
-                if is_new or facts_changed:
+                if (
+                    is_new or facts_changed
+                ) and discovered_media.media_url not in urls_seen_by_other_sources:
                     queued.append((discovered_media, row.id, media.id))
         run = await self._session.get(SourceRun, source_run_id)
         if run is not None:

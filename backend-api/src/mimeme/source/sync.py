@@ -76,7 +76,7 @@ async def discover(
         adapter_config["api_key"] = api_key.get_secret_value()
     discovered_items: list[DiscoveredItem] = []
     fetcher_options = {}
-    if config.adapter_key == "kym":
+    if config.adapter_key in {"flip", "kym"}:
         fetcher_options = {
             key: adapter_config[key]
             for key in ("delay_seconds", "timeout_seconds", "retries", "impersonate")

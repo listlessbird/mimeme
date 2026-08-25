@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from mimeme.db.schema import (
@@ -11,6 +11,7 @@ from mimeme.db.schema import (
     IngestURL,
     Job,
     ProcessingStatus,
+    SourceMedia,
     SourceRun,
     SourceRunStatus,
     SourceRunTrigger,
@@ -188,6 +189,51 @@ class TestDiscoveryPersistence:
                     )
                 )
                 == 1
+            )
+
+    async def test_same_url_from_another_source_is_not_requeued(
+        self, db: SavepointDb, run_sync_seed
+    ) -> None:
+        first_source_id, second_source_id = await run_sync_seed(
+            lambda session: (
+                create_ingestion_source(session=session, name="first").id,
+                create_ingestion_source(session=session, name="second").id,
+            )
+        )
+
+        async with db.write_session() as session:
+            store = Store(session)
+            first_run_id = await store.create_run(
+                source_id=first_source_id, trigger=SourceRunTrigger.MANUAL
+            )
+            first_media = await store.reconcile_discovery(
+                source_id=first_source_id,
+                source_run_id=first_run_id,
+                items=[_item("shared")],
+            )
+            await store.create_ingest_job(
+                source_id=first_source_id,
+                source_run_id=first_run_id,
+                media=first_media,
+            )
+
+            second_run_id = await store.create_run(
+                source_id=second_source_id, trigger=SourceRunTrigger.MANUAL
+            )
+            second_media = await store.reconcile_discovery(
+                source_id=second_source_id,
+                source_run_id=second_run_id,
+                items=[_item("shared")],
+            )
+
+            assert second_media == []
+            assert (
+                await session.scalar(
+                    select(func.count(SourceMedia.id)).where(
+                        SourceMedia.media_url == "https://a/shared.jpg"
+                    )
+                )
+                == 2
             )
 
     async def test_seen_ids_excludes_existing(self, db: SavepointDb, run_sync_seed) -> None:

@@ -13,6 +13,7 @@ wheels/
 data/raw_memes/**/*.*
 data/cache
 scripts/kym/output/
+scripts/flip/output/
 *.npy
 
 .env.*

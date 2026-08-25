@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Any, NotRequired, TypedDict
+from typing import Annotated, Any, Literal, NotRequired, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -30,7 +30,17 @@ class KymAdapterConfig(TypedDict):
     impersonate: NotRequired[str]
 
 
-AdapterConfig = MemeApiAdapterConfig | TumblrAdapterConfig | KymAdapterConfig
+class FlipAdapterConfig(TypedDict):
+    mode: NotRequired[Literal["top-30-days", "top-all-time", "top-new"]]
+    max_templates_per_run: NotRequired[Annotated[int, Field(ge=1, le=100)]]
+    max_meme_pages: NotRequired[Annotated[int, Field(ge=1, le=20)]]
+    delay_seconds: NotRequired[Annotated[float, Field(ge=0)]]
+    timeout_seconds: NotRequired[Annotated[float, Field(gt=0)]]
+    retries: NotRequired[Annotated[int, Field(ge=0, le=10)]]
+    impersonate: NotRequired[str]
+
+
+AdapterConfig = MemeApiAdapterConfig | TumblrAdapterConfig | KymAdapterConfig | FlipAdapterConfig
 
 
 class MemeApiRawMetadata(TypedDict, total=False):
@@ -45,7 +55,7 @@ class MemeApiRawMetadata(TypedDict, total=False):
 class CreateSourceRequest(BaseModel):
     name: str = Field(description="Unique (among live Sources) display name")
     adapter_key: str = Field(
-        description="Adapter the system supports: 'meme_api', 'tumblr_tagged', or 'kym'"
+        description="Adapter the system supports: 'meme_api', 'tumblr_tagged', 'kym', or 'flip'"
     )
     adapter_config: AdapterConfig
     dataset: str | None = None
