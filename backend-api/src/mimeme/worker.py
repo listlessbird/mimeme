@@ -73,7 +73,10 @@ async def main() -> None:
     try:
         desired = await source_store.list_schedule_specs(env.db)
         await source_schedule.reconcile(
-            source_schedule.TemporalScheduleStore(env.temporal), desired=desired
+            source_schedule.TemporalScheduleStore(
+                env.temporal, task_queue=settings.temporal.task_queue
+            ),
+            desired=desired,
         )
         await IndexSchedule(env.temporal, task_queue=settings.temporal.task_queue).reconcile(
             IndexScheduleSpec(
