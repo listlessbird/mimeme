@@ -87,15 +87,15 @@ class Fetcher:
                     stealthy_headers=True,
                 )
             except Exception as exc:
-                raise Retryable(f"KYM fetch failed for {url}: {exc}") from exc
+                raise Retryable(f"source fetch failed for {url}: {exc}") from exc
             self._last_request_at = time.monotonic()
             if response.status == 404:
                 raise PageNotFound(url)
             if response.status != 200:
-                raise Retryable(f"KYM HTTP {response.status} for {url}")
+                raise Retryable(f"source fetch HTTP {response.status} for {url}")
             body = bytes(response.body)
             if len(body) > _MAX_CHECKPOINT_BYTES:
-                raise Retryable(f"KYM page exceeds checkpoint limit for {url}")
+                raise Retryable(f"source page exceeds checkpoint limit for {url}")
             if checkpoint is not None and self._artifacts is not None:
                 await self._artifacts.put_bytes(checkpoint, body, content_type="text/html")
             self._html_by_url[url] = body

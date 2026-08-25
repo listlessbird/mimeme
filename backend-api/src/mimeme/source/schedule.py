@@ -151,7 +151,7 @@ async def reconcile(store: ScheduleStore, *, desired: list[ScheduleSpec]) -> lis
 
 
 class TemporalScheduleStore:
-    def __init__(self, client: Client, *, task_queue: str = rule.TASK_QUEUE) -> None:
+    def __init__(self, client: Client, *, task_queue: str) -> None:
         self._client = client
         self._task_queue = task_queue
 

@@ -324,10 +324,14 @@ ADAPTERS: dict[str, Adapter] = {
     )
 }
 
-KNOWN_ADAPTER_KEYS = frozenset({*ADAPTERS, "kym"})
+KNOWN_ADAPTER_KEYS = frozenset({*ADAPTERS, "flip", "kym"})
 
 
 def get_adapter(key: str) -> Adapter:
+    if key == "flip":
+        from mimeme.source.flip import FlipAdapter
+
+        return cast(Adapter, FlipAdapter())
     if key == "kym":
         from mimeme.source.kym import KymAdapter
 

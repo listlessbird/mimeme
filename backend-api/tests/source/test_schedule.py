@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from temporalio.client import ScheduleActionStartWorkflow
+
 from mimeme.source import rule
 from mimeme.source.schedule import (
     CreateSchedule,
@@ -7,6 +9,7 @@ from mimeme.source.schedule import (
     DesiredScheduleState,
     ExistingSchedule,
     ScheduleSpec,
+    TemporalScheduleStore,
     UpdateSchedule,
     derive_schedule_spec,
     plan_reconciliation,
@@ -51,6 +54,14 @@ class TestDeriveSpec:
             source_id=1, schedule_cron=None, schedule_timezone="UTC", enabled=True, deleted=False
         )
         assert spec.desired_state == DesiredScheduleState.ABSENT
+
+
+def test_temporal_schedule_uses_configured_task_queue() -> None:
+    store = TemporalScheduleStore(object(), task_queue="mimeme-v2")  # type: ignore[arg-type]
+    temporal_schedule = store._build_schedule(_spec(1))  # noqa: SLF001
+
+    assert isinstance(temporal_schedule.action, ScheduleActionStartWorkflow)
+    assert temporal_schedule.action.task_queue == "mimeme-v2"
 
 
 class TestPlanReconciliation:

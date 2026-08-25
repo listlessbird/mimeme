@@ -59,10 +59,12 @@ def _public_source_payload(payload: dict[str, Any]) -> dict[str, Any]:
     return {**payload, "adapter_config": {**config, "api_key": "[REDACTED]"}}
 
 
-async def _sync_schedules(db: Db, temporal: TemporalClientDep) -> None:
+async def _sync_schedules(db: Db, temporal: TemporalClientDep, *, task_queue: str) -> None:
     try:
         desired = await store.list_schedule_specs(db)
-        await schedule.reconcile(schedule.TemporalScheduleStore(temporal), desired=desired)
+        await schedule.reconcile(
+            schedule.TemporalScheduleStore(temporal, task_queue=task_queue), desired=desired
+        )
     except Exception as exc:
         log.warning(
             "inline_schedule_sync_failed",
@@ -78,7 +80,11 @@ async def _sync_schedules(db: Db, temporal: TemporalClientDep) -> None:
     responses=error_responses(400, 409),
 )
 async def create_source(
-    _auth: AdminRequired, db: DbDep, body: CreateSourceRequest, temporal: TemporalClientDep
+    _auth: AdminRequired,
+    db: DbDep,
+    settings: SettingsDep,
+    body: CreateSourceRequest,
+    temporal: TemporalClientDep,
 ) -> SourceResponse:
     try:
         view = await store.create(
@@ -97,7 +103,7 @@ async def create_source(
     except DuplicateSourceName as exc:
         raise HTTPException(status_code=409, detail=f"Source name already in use: {exc}")
 
-    await _sync_schedules(db, temporal)
+    await _sync_schedules(db, temporal, task_queue=settings.temporal.task_queue)
 
     return SourceResponse.model_validate(_public_source_payload(view.model_dump()))
 
@@ -128,6 +134,7 @@ async def get_source(_auth: AdminRequired, db: DbDep, source_id: int) -> SourceD
 async def update_source(
     _auth: AdminRequired,
     db: DbDep,
+    settings: SettingsDep,
     source_id: int,
     body: UpdateSourceRequest,
     temporal: TemporalClientDep,
@@ -140,7 +147,7 @@ async def update_source(
     except SourceNotFound:
         raise HTTPException(status_code=404, detail="Source not found")
 
-    await _sync_schedules(db, temporal)
+    await _sync_schedules(db, temporal, task_queue=settings.temporal.task_queue)
 
     return SourceResponse.model_validate(_public_source_payload(view.model_dump()))
 
@@ -334,11 +341,15 @@ async def list_run_items(
 
 @router.delete("/{source_id}", status_code=204, responses=error_responses(404))
 async def delete_source(
-    _auth: AdminRequired, db: DbDep, source_id: int, temporal: TemporalClientDep
+    _auth: AdminRequired,
+    db: DbDep,
+    settings: SettingsDep,
+    source_id: int,
+    temporal: TemporalClientDep,
 ) -> None:
     try:
         await store.soft_delete(db, source_id)
     except SourceNotFound:
         raise HTTPException(status_code=404, detail="Source not found")
 
-    await _sync_schedules(db, temporal)
+    await _sync_schedules(db, temporal, task_queue=settings.temporal.task_queue)

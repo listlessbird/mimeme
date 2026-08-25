@@ -21,8 +21,10 @@ class TestRegistry:
     def test_known_key_resolves(self) -> None:
         assert get_adapter("meme_api").key == "meme_api"
         assert get_adapter("tumblr_tagged").key == "tumblr_tagged"
+        assert get_adapter("flip").key == "flip"
         assert "meme_api" in KNOWN_ADAPTER_KEYS
         assert "tumblr_tagged" in KNOWN_ADAPTER_KEYS
+        assert "flip" in KNOWN_ADAPTER_KEYS
 
     def test_unknown_key_raises(self) -> None:
         with pytest.raises(UnknownAdapterKey):
