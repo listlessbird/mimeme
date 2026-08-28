@@ -43,16 +43,18 @@ const judgmentInput = z.object({
 /** Load the Core Search workspace and recent runs. */
 export const getSearchEvalOverview = createServerFn({ method: "GET" })
 	.middleware([adminGuard])
-	.handler(() =>
-		callAdmin<SearchEvalOverview>("search_eval_overview", (client) => client.GET("/search-evals")),
+	.handler(({ context }) =>
+		callAdmin<SearchEvalOverview>("search_eval_overview", context.adminHeaders, (client) =>
+			client.GET("/search-evals"),
+		),
 	);
 
 /** Create a user-centered Core Search query. */
 export const createSearchEvalQuery = createServerFn({ method: "POST" })
 	.middleware([adminGuard])
 	.inputValidator(createQueryInput)
-	.handler(({ data }) =>
-		callAdmin<SearchEvalQuery>("create_search_eval_query", (client) =>
+	.handler(({ data, context }) =>
+		callAdmin<SearchEvalQuery>("create_search_eval_query", context.adminHeaders, (client) =>
 			client.POST("/search-evals/queries", { body: data }),
 		),
 	);
@@ -61,8 +63,8 @@ export const createSearchEvalQuery = createServerFn({ method: "POST" })
 export const disableSearchEvalQuery = createServerFn({ method: "POST" })
 	.middleware([adminGuard])
 	.inputValidator(queryIdInput)
-	.handler(({ data }) =>
-		callAdmin<void>("disable_search_eval_query", (client) =>
+	.handler(({ data, context }) =>
+		callAdmin<void>("disable_search_eval_query", context.adminHeaders, (client) =>
 			client.DELETE("/search-evals/queries/{query_id}", {
 				params: { path: { query_id: data.queryId } },
 			}),
@@ -73,8 +75,8 @@ export const disableSearchEvalQuery = createServerFn({ method: "POST" })
 export const poolSearchEvalQuery = createServerFn({ method: "POST" })
 	.middleware([adminGuard])
 	.inputValidator(queryIdInput)
-	.handler(({ data }) =>
-		callAdmin<Schemas["PoolResult"]>("pool_search_eval_query", (client) =>
+	.handler(({ data, context }) =>
+		callAdmin<Schemas["PoolResult"]>("pool_search_eval_query", context.adminHeaders, (client) =>
 			client.POST("/search-evals/queries/{query_id}/pool", {
 				params: { path: { query_id: data.queryId } },
 			}),
@@ -90,8 +92,8 @@ export const addSearchEvalCandidate = createServerFn({ method: "POST" })
 			imageId: z.number().int().positive(),
 		}),
 	)
-	.handler(({ data }) =>
-		callAdmin<void>("add_search_eval_candidate", (client) =>
+	.handler(({ data, context }) =>
+		callAdmin<void>("add_search_eval_candidate", context.adminHeaders, (client) =>
 			client.POST("/search-evals/queries/{query_id}/candidates", {
 				params: { path: { query_id: data.queryId } },
 				body: { image_id: data.imageId },
@@ -103,11 +105,14 @@ export const addSearchEvalCandidate = createServerFn({ method: "POST" })
 export const getSearchEvalJudgments = createServerFn({ method: "GET" })
 	.middleware([adminGuard])
 	.inputValidator(z.object({ queryId: z.number().int().positive().optional() }))
-	.handler(({ data }) =>
-		callAdmin<SearchEvalJudgmentWorkspace>("search_eval_judgments", (client) =>
-			client.GET("/search-evals/judgments", {
-				params: { query: { query_id: data.queryId } },
-			}),
+	.handler(({ data, context }) =>
+		callAdmin<SearchEvalJudgmentWorkspace>(
+			"search_eval_judgments",
+			context.adminHeaders,
+			(client) =>
+				client.GET("/search-evals/judgments", {
+					params: { query: { query_id: data.queryId } },
+				}),
 		),
 	);
 
@@ -115,12 +120,15 @@ export const getSearchEvalJudgments = createServerFn({ method: "GET" })
 export const saveSearchEvalJudgment = createServerFn({ method: "POST" })
 	.middleware([adminGuard])
 	.inputValidator(judgmentInput)
-	.handler(({ data }) =>
-		callAdmin<Schemas["JudgmentSave"]>("save_search_eval_judgment", (client) =>
-			client.PUT("/search-evals/queries/{query_id}/judgments/{image_id}", {
-				params: { path: { query_id: data.queryId, image_id: data.imageId } },
-				body: { grade: data.grade, revision: data.revision },
-			}),
+	.handler(({ data, context }) =>
+		callAdmin<Schemas["JudgmentSave"]>(
+			"save_search_eval_judgment",
+			context.adminHeaders,
+			(client) =>
+				client.PUT("/search-evals/queries/{query_id}/judgments/{image_id}", {
+					params: { path: { query_id: data.queryId, image_id: data.imageId } },
+					body: { grade: data.grade, revision: data.revision },
+				}),
 		),
 	);
 
@@ -134,8 +142,8 @@ export const clearSearchEvalJudgment = createServerFn({ method: "POST" })
 			revision: z.number().int().positive(),
 		}),
 	)
-	.handler(({ data }) =>
-		callAdmin<void>("clear_search_eval_judgment", (client) =>
+	.handler(({ data, context }) =>
+		callAdmin<void>("clear_search_eval_judgment", context.adminHeaders, (client) =>
 			client.DELETE("/search-evals/queries/{query_id}/judgments/{image_id}", {
 				params: {
 					path: { query_id: data.queryId, image_id: data.imageId },
@@ -149,8 +157,8 @@ export const clearSearchEvalJudgment = createServerFn({ method: "POST" })
 export const createSearchEvalRun = createServerFn({ method: "POST" })
 	.middleware([adminGuard])
 	.inputValidator(z.object({ mode: z.enum(["image", "hybrid"]) }))
-	.handler(({ data }) =>
-		callAdmin<SearchEvalRun>("create_search_eval_run", (client) =>
+	.handler(({ data, context }) =>
+		callAdmin<SearchEvalRun>("create_search_eval_run", context.adminHeaders, (client) =>
 			client.POST("/search-evals/runs", { body: data }),
 		),
 	);
@@ -159,8 +167,8 @@ export const createSearchEvalRun = createServerFn({ method: "POST" })
 export const finalizeSearchEvalRun = createServerFn({ method: "POST" })
 	.middleware([adminGuard])
 	.inputValidator(z.object({ runId: z.string().min(1).max(32) }))
-	.handler(({ data }) =>
-		callAdmin<SearchEvalRun>("finalize_search_eval_run", (client) =>
+	.handler(({ data, context }) =>
+		callAdmin<SearchEvalRun>("finalize_search_eval_run", context.adminHeaders, (client) =>
 			client.POST("/search-evals/runs/{run_id}/finalize", {
 				params: { path: { run_id: data.runId } },
 			}),
@@ -171,8 +179,8 @@ export const finalizeSearchEvalRun = createServerFn({ method: "POST" })
 export const setSearchEvalBaseline = createServerFn({ method: "POST" })
 	.middleware([adminGuard])
 	.inputValidator(z.object({ runId: z.string().min(1).max(32) }))
-	.handler(({ data }) =>
-		callAdmin<SearchEvalRun>("set_search_eval_baseline", (client) =>
+	.handler(({ data, context }) =>
+		callAdmin<SearchEvalRun>("set_search_eval_baseline", context.adminHeaders, (client) =>
 			client.PUT("/search-evals/runs/{run_id}/baseline", {
 				params: { path: { run_id: data.runId } },
 			}),
@@ -188,8 +196,8 @@ export const getSearchEvalComparison = createServerFn({ method: "GET" })
 			candidateRunId: z.string().min(1).max(32),
 		}),
 	)
-	.handler(({ data }) =>
-		callAdmin<SearchEvalComparison>("compare_search_eval_runs", (client) =>
+	.handler(({ data, context }) =>
+		callAdmin<SearchEvalComparison>("compare_search_eval_runs", context.adminHeaders, (client) =>
 			client.GET("/search-evals/compare", {
 				params: {
 					query: {

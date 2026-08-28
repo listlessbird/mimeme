@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal, cast
+from typing import Annotated, Literal, cast
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from pydantic import Field, PostgresDsn, SecretStr, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 _ENV_FILE = ".env"
 
@@ -103,6 +103,29 @@ class HttpConfig(BaseSettings):
     cors_origins: list[str] = ["https://mimeme.dev"]
     api_key_admin: SecretStr | None = None
     api_key_readonly: SecretStr | None = None
+
+
+class AuthConfig(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="AUTH_", env_file=_ENV_FILE, env_file_encoding="utf-8", extra="ignore"
+    )
+
+    github_client_id: str | None = None
+    github_client_secret: SecretStr | None = None
+    github_callback_url: str = "http://localhost:8000/auth/github/callback"
+    allowed_github_ids: Annotated[frozenset[str], NoDecode] = frozenset()
+    session_secret: SecretStr | None = None
+    session_cookie: str = "mimeme_admin_session"
+    session_max_age_s: int = 60 * 60 * 24 * 7
+    cookie_domain: str | None = None
+    ui_url: str = "http://localhost:3000"
+
+    @field_validator("allowed_github_ids", mode="before")
+    @classmethod
+    def parse_allowed_github_ids(cls, value: object) -> object:
+        if isinstance(value, str):
+            return frozenset(item.strip() for item in value.split(",") if item.strip())
+        return value
 
 
 class ComputeConfig(BaseSettings):
@@ -217,6 +240,7 @@ class Settings(BaseSettings):
     artifacts: ArtifactConfig = Field(default_factory=ArtifactConfig)
     temporal: TemporalConfig = Field(default_factory=TemporalConfig)
     http: HttpConfig = Field(default_factory=HttpConfig)
+    auth: AuthConfig = Field(default_factory=AuthConfig)
     compute: ComputeConfig = Field(default_factory=ComputeConfig)
     inference: InferenceConfig = Field(default_factory=InferenceConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)

@@ -4,6 +4,74 @@
  */
 
 export interface paths {
+    "/auth/github/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Github Login */
+        get: operations["github_login_auth_github_login_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/github/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Github Callback */
+        get: operations["github_callback_auth_github_callback_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Admin Session */
+        get: operations["get_admin_session_auth_session_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Logout */
+        post: operations["logout_auth_logout_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/ready": {
         parameters: {
             query?: never;
@@ -598,6 +666,23 @@ export interface components {
             /** Image Id */
             image_id: number;
         };
+        /** AdminSessionResponse */
+        AdminSessionResponse: {
+            /** Authenticated */
+            authenticated: boolean;
+            /** Dev Open */
+            dev_open: boolean;
+            user?: components["schemas"]["AdminUserResponse"] | null;
+        };
+        /** AdminUserResponse */
+        AdminUserResponse: {
+            /** Id */
+            id: string;
+            /** Login */
+            login: string;
+            /** Avatar Url */
+            avatar_url?: string | null;
+        };
         /** ApiErrorResponse */
         ApiErrorResponse: {
             /**
@@ -676,11 +761,11 @@ export interface components {
             name: string;
             /**
              * Adapter Key
-             * @description Adapter the system supports: 'meme_api', 'tumblr_tagged', or 'kym'
+             * @description Adapter the system supports: 'meme_api', 'tumblr_tagged', 'kym', or 'flip'
              */
             adapter_key: string;
             /** Adapter Config */
-            adapter_config: components["schemas"]["MemeApiAdapterConfig"] | components["schemas"]["TumblrAdapterConfig"] | components["schemas"]["KymAdapterConfig"];
+            adapter_config: components["schemas"]["MemeApiAdapterConfig"] | components["schemas"]["TumblrAdapterConfig"] | components["schemas"]["KymAdapterConfig"] | components["schemas"]["FlipAdapterConfig"];
             /** Dataset */
             dataset?: string | null;
             /** Schedule Cron */
@@ -703,6 +788,26 @@ export interface components {
          * @enum {string}
          */
         DuplicateReason: "SOURCE_SEEN" | "SHA256" | "PHASH";
+        /** FlipAdapterConfig */
+        FlipAdapterConfig: {
+            /**
+             * Mode
+             * @enum {string}
+             */
+            mode?: "top-30-days" | "top-all-time" | "top-new";
+            /** Max Templates Per Run */
+            max_templates_per_run?: number;
+            /** Max Meme Pages */
+            max_meme_pages?: number;
+            /** Delay Seconds */
+            delay_seconds?: number;
+            /** Timeout Seconds */
+            timeout_seconds?: number;
+            /** Retries */
+            retries?: number;
+            /** Impersonate */
+            impersonate?: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1407,7 +1512,7 @@ export interface components {
             /** Adapter Key */
             adapter_key: string;
             /** Adapter Config */
-            adapter_config: components["schemas"]["MemeApiAdapterConfig"] | components["schemas"]["TumblrAdapterConfig"] | components["schemas"]["KymAdapterConfig"];
+            adapter_config: components["schemas"]["MemeApiAdapterConfig"] | components["schemas"]["TumblrAdapterConfig"] | components["schemas"]["KymAdapterConfig"] | components["schemas"]["FlipAdapterConfig"];
             /** Dataset */
             dataset: string | null;
             /** Schedule Cron */
@@ -1499,7 +1604,7 @@ export interface components {
             /** Adapter Key */
             adapter_key: string;
             /** Adapter Config */
-            adapter_config: components["schemas"]["MemeApiAdapterConfig"] | components["schemas"]["TumblrAdapterConfig"] | components["schemas"]["KymAdapterConfig"];
+            adapter_config: components["schemas"]["MemeApiAdapterConfig"] | components["schemas"]["TumblrAdapterConfig"] | components["schemas"]["KymAdapterConfig"] | components["schemas"]["FlipAdapterConfig"];
             /** Dataset */
             dataset: string | null;
             /** Schedule Cron */
@@ -1538,7 +1643,7 @@ export interface components {
             /** Adapter Key */
             adapter_key: string;
             /** Adapter Config */
-            adapter_config: components["schemas"]["MemeApiAdapterConfig"] | components["schemas"]["TumblrAdapterConfig"] | components["schemas"]["KymAdapterConfig"];
+            adapter_config: components["schemas"]["MemeApiAdapterConfig"] | components["schemas"]["TumblrAdapterConfig"] | components["schemas"]["KymAdapterConfig"] | components["schemas"]["FlipAdapterConfig"];
             /** Dataset */
             dataset: string | null;
             /** Schedule Cron */
@@ -1638,7 +1743,7 @@ export interface components {
         /** UpdateSourceRequest */
         UpdateSourceRequest: {
             /** Adapter Config */
-            adapter_config?: components["schemas"]["MemeApiAdapterConfig"] | components["schemas"]["TumblrAdapterConfig"] | components["schemas"]["KymAdapterConfig"] | null;
+            adapter_config?: components["schemas"]["MemeApiAdapterConfig"] | components["schemas"]["TumblrAdapterConfig"] | components["schemas"]["KymAdapterConfig"] | components["schemas"]["FlipAdapterConfig"] | null;
             /** Dataset */
             dataset?: string | null;
             /** Schedule Cron */
@@ -1703,6 +1808,86 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    github_login_auth_github_login_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    github_callback_auth_github_callback_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_admin_session_auth_session_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AdminSessionResponse"];
+                };
+            };
+        };
+    };
+    logout_auth_logout_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+        };
+    };
     check_readiness_ready_get: {
         parameters: {
             query?: never;

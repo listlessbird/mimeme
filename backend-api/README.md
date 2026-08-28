@@ -19,7 +19,25 @@ uv run compute
 
 The default URLs are API `http://localhost:8000`, Temporal UI
 `http://localhost:8088`, and MinIO console `http://localhost:9001`. Development
-mode bypasses API-key auth. Production requests use `X-API-Key`.
+mode bypasses admin auth. Production web-admin requests use a signed GitHub
+OAuth session. Scripts may continue to use `X-API-Key`.
+
+## GitHub admin sign-in
+
+Create one GitHub OAuth app with both callback URLs:
+
+- `https://api.mimeme.dev/auth/github/callback`
+- `http://localhost:8000/auth/github/callback`
+
+Set `AUTH_GITHUB_CALLBACK_URL` to the matching URL in each environment. Configure
+the remaining `AUTH_GITHUB_*`, `AUTH_ALLOWED_GITHUB_IDS`, `AUTH_SESSION_SECRET`,
+`AUTH_COOKIE_DOMAIN`, and `AUTH_UI_URL` values shown in `.env.example`.
+
+Find the durable numeric ID for the currently authenticated GitHub account with:
+
+```bash
+gh api user --jq .id
+```
 
 To use Modal inference instead of a compute gateway:
 

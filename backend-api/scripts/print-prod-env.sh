@@ -42,5 +42,13 @@ LOG_AXIOM_API_TOKEN=$(tf_output axiom_ingest_token)
 LOG_AXIOM_QUERY_TOKEN=$(tf_output axiom_query_token)
 LOG_AXIOM_REGION=$(tf_output axiom_region)
 
+AUTH_GITHUB_CLIENT_ID=<github-oauth-client-id>
+AUTH_GITHUB_CLIENT_SECRET=<github-oauth-client-secret>
+AUTH_GITHUB_CALLBACK_URL=https://api.mimeme.dev/auth/github/callback
+AUTH_ALLOWED_GITHUB_IDS=<comma-separated-github-account-ids>
+AUTH_SESSION_SECRET=<generate-with-python-secrets-token-urlsafe-48>
+AUTH_COOKIE_DOMAIN=.mimeme.dev
+AUTH_UI_URL=https://mimeme.dev
+
 API_BASE_URL=$(tf_output api_url)
 EOF

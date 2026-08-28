@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from pydantic import SecretStr
 
 from mimeme.api.auth import ApiKeyRole, _resolve_role, require_admin, require_readonly
-from mimeme.config import Settings
+from mimeme.config import AuthConfig, Settings
 
 
 def _settings(*, app_env: str = "production", keys: bool = True) -> Settings:
@@ -18,11 +18,18 @@ def _settings(*, app_env: str = "production", keys: bool = True) -> Settings:
     return settings
 
 
-def _request(settings: Settings, *, path: str = "/images", method: str = "POST") -> MagicMock:
+def _request(
+    settings: Settings,
+    *,
+    path: str = "/images",
+    method: str = "POST",
+    github_id: str | None = None,
+) -> MagicMock:
     request = MagicMock()
     request.app.state.env = SimpleNamespace(settings=settings)
     request.url.path = path
     request.method = method
+    request.scope = {"session": {"github_id": github_id} if github_id else {}}
     return request
 
 
@@ -59,6 +66,23 @@ def test_admin_rejects_missing_invalid_or_readonly_key(key: str | None) -> None:
 
 def test_admin_accepts_admin_key() -> None:
     assert require_admin(_request(_settings()), api_key="admin-key") is ApiKeyRole.ADMIN
+
+
+def test_admin_accepts_allowlisted_github_session() -> None:
+    settings = _settings(keys=False)
+    settings.auth = AuthConfig(allowed_github_ids=frozenset({"12345"}))
+
+    assert require_admin(_request(settings, github_id="12345")) is ApiKeyRole.ADMIN
+
+
+def test_admin_rejects_session_after_github_id_is_removed_from_allowlist() -> None:
+    settings = _settings(keys=False)
+    settings.auth = AuthConfig(allowed_github_ids=frozenset({"99999"}))
+
+    with pytest.raises(HTTPException) as error:
+        require_admin(_request(settings, github_id="12345"))
+
+    assert error.value.status_code == 403
 
 
 def test_readonly_rejects_missing_key() -> None:
