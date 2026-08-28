@@ -20,7 +20,6 @@ import { Route as AdminIngestionIndexRouteImport } from './routes/admin/ingestio
 import { Route as AdminImagesIndexRouteImport } from './routes/admin/images/index'
 import { Route as AdminGifAnnotationIndexRouteImport } from './routes/admin/gif-annotation/index'
 import { Route as AdminEvalsIndexRouteImport } from './routes/admin/evals/index'
-import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as AdminIngestionIngestUrlIdRouteImport } from './routes/admin/ingestion/$ingestUrlId'
 import { Route as AdminImagesImageIdRouteImport } from './routes/admin/images/$imageId'
 import { Route as AdminEvalsRunsRouteImport } from './routes/admin/evals/runs'
@@ -85,11 +84,6 @@ const AdminEvalsIndexRoute = AdminEvalsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminEvalsRouteRoute,
 } as any)
-const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
-  id: '/api/auth/$',
-  path: '/api/auth/$',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const AdminIngestionIngestUrlIdRoute =
   AdminIngestionIngestUrlIdRouteImport.update({
     id: '/ingestion/$ingestUrlId',
@@ -145,7 +139,6 @@ export interface FileRoutesByFullPath {
   '/admin/evals/runs': typeof AdminEvalsRunsRoute
   '/admin/images/$imageId': typeof AdminImagesImageIdRoute
   '/admin/ingestion/$ingestUrlId': typeof AdminIngestionIngestUrlIdRoute
-  '/api/auth/$': typeof ApiAuthSplatRoute
   '/admin/evals/': typeof AdminEvalsIndexRoute
   '/admin/gif-annotation/': typeof AdminGifAnnotationIndexRoute
   '/admin/images/': typeof AdminImagesIndexRoute
@@ -165,7 +158,6 @@ export interface FileRoutesByTo {
   '/admin/evals/runs': typeof AdminEvalsRunsRoute
   '/admin/images/$imageId': typeof AdminImagesImageIdRoute
   '/admin/ingestion/$ingestUrlId': typeof AdminIngestionIngestUrlIdRoute
-  '/api/auth/$': typeof ApiAuthSplatRoute
   '/admin/evals': typeof AdminEvalsIndexRoute
   '/admin/gif-annotation': typeof AdminGifAnnotationIndexRoute
   '/admin/images': typeof AdminImagesIndexRoute
@@ -188,7 +180,6 @@ export interface FileRoutesById {
   '/admin/evals/runs': typeof AdminEvalsRunsRoute
   '/admin/images/$imageId': typeof AdminImagesImageIdRoute
   '/admin/ingestion/$ingestUrlId': typeof AdminIngestionIngestUrlIdRoute
-  '/api/auth/$': typeof ApiAuthSplatRoute
   '/admin/evals/': typeof AdminEvalsIndexRoute
   '/admin/gif-annotation/': typeof AdminGifAnnotationIndexRoute
   '/admin/images/': typeof AdminImagesIndexRoute
@@ -212,7 +203,6 @@ export interface FileRouteTypes {
     | '/admin/evals/runs'
     | '/admin/images/$imageId'
     | '/admin/ingestion/$ingestUrlId'
-    | '/api/auth/$'
     | '/admin/evals/'
     | '/admin/gif-annotation/'
     | '/admin/images/'
@@ -232,7 +222,6 @@ export interface FileRouteTypes {
     | '/admin/evals/runs'
     | '/admin/images/$imageId'
     | '/admin/ingestion/$ingestUrlId'
-    | '/api/auth/$'
     | '/admin/evals'
     | '/admin/gif-annotation'
     | '/admin/images'
@@ -254,7 +243,6 @@ export interface FileRouteTypes {
     | '/admin/evals/runs'
     | '/admin/images/$imageId'
     | '/admin/ingestion/$ingestUrlId'
-    | '/api/auth/$'
     | '/admin/evals/'
     | '/admin/gif-annotation/'
     | '/admin/images/'
@@ -269,7 +257,6 @@ export interface RootRouteChildren {
   AdminRouteRoute: typeof AdminRouteRouteWithChildren
   AdminUnlockRoute: typeof AdminUnlockRoute
   ResultsRoute: typeof ResultsRoute
-  ApiAuthSplatRoute: typeof ApiAuthSplatRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -350,13 +337,6 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/evals/'
       preLoaderRoute: typeof AdminEvalsIndexRouteImport
       parentRoute: typeof AdminEvalsRouteRoute
-    }
-    '/api/auth/$': {
-      id: '/api/auth/$'
-      path: '/api/auth/$'
-      fullPath: '/api/auth/$'
-      preLoaderRoute: typeof ApiAuthSplatRouteImport
-      parentRoute: typeof rootRouteImport
     }
     '/admin/ingestion/$ingestUrlId': {
       id: '/admin/ingestion/$ingestUrlId'
@@ -472,7 +452,6 @@ const rootRouteChildren: RootRouteChildren = {
   AdminRouteRoute: AdminRouteRouteWithChildren,
   AdminUnlockRoute: AdminUnlockRoute,
   ResultsRoute: ResultsRoute,
-  ApiAuthSplatRoute: ApiAuthSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

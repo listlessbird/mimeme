@@ -46,17 +46,21 @@ def require_admin(
 
     role = _resolve_role(settings, api_key)
 
-    if role != ApiKeyRole.ADMIN:
+    session = request.scope.get("session")
+    github_id = session.get("github_id") if isinstance(session, dict) else None
+    has_admin_session = isinstance(github_id, str) and github_id in settings.auth.allowed_github_ids
+
+    if role != ApiKeyRole.ADMIN and not has_admin_session:
         log.warning(
             "auth_denied",
             path=request.url.path,
             method=request.method,
-            reason="missing_or_invalid_key",
+            reason="missing_or_invalid_admin_credential",
         )
 
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid request")
 
-    return role
+    return ApiKeyRole.ADMIN
 
 
 def require_readonly(

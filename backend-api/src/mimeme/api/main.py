@@ -8,12 +8,14 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from starlette.middleware import Middleware
 from starlette.middleware.cors import CORSMiddleware
+from starlette.middleware.sessions import SessionMiddleware
 from starlette.types import ExceptionHandler
 
+from mimeme.api.github_oauth import AuthlibGitHubOAuth
 from mimeme.api.lifespan import lifespan
 from mimeme.api.middleware import register_middleware
 from mimeme.api.rate_limit import limiter, rate_limit_exceeded_handler
-from mimeme.api.routers import health, images, ingestion, jobs, search_evals, sources
+from mimeme.api.routers import auth, health, images, ingestion, jobs, search_evals, sources
 from mimeme.config import Settings
 from mimeme.search import router as search
 
@@ -31,8 +33,36 @@ def create_app(settings: Settings) -> FastAPI:
             "http://127.0.0.1:5173",
         ]
 
+    session_secret = settings.auth.session_secret
+    if settings.app_env == "production" and session_secret is None:
+        raise ValueError("AUTH_SESSION_SECRET is required in production")
+    session_secret_value = (
+        session_secret.get_secret_value()
+        if session_secret is not None
+        else "mimeme-development-session-secret"
+    )
+    if settings.app_env == "production" and len(session_secret_value) < 32:
+        raise ValueError("AUTH_SESSION_SECRET must contain at least 32 characters")
+
+    github_oauth = None
+    if settings.auth.github_client_id and settings.auth.github_client_secret is not None:
+        github_oauth = AuthlibGitHubOAuth(settings.auth)
+    elif settings.app_env == "production":
+        raise ValueError("GitHub OAuth credentials are required in production")
+    if settings.app_env == "production" and not settings.auth.allowed_github_ids:
+        raise ValueError("AUTH_ALLOWED_GITHUB_IDS is required in production")
+
     middleware = [
         Middleware(SlowAPIMiddleware),
+        Middleware(
+            SessionMiddleware,
+            secret_key=session_secret_value,
+            session_cookie=settings.auth.session_cookie,
+            max_age=settings.auth.session_max_age_s,
+            same_site="lax",
+            https_only=settings.app_env == "production",
+            domain=settings.auth.cookie_domain,
+        ),
         Middleware(
             CORSMiddleware,  # ty:ignore[invalid-argument-type]
             allow_origins=cors_origins,
@@ -53,6 +83,7 @@ def create_app(settings: Settings) -> FastAPI:
     )
 
     app.state.settings = settings
+    app.state.github_oauth = github_oauth
     app.state.limiter = limiter
     app.add_exception_handler(
         RateLimitExceeded, cast(ExceptionHandler, rate_limit_exceeded_handler)
@@ -60,6 +91,7 @@ def create_app(settings: Settings) -> FastAPI:
 
     register_middleware(app)
 
+    app.include_router(auth.router)
     app.include_router(health.router)
     app.include_router(search.router)
     app.include_router(images.router)

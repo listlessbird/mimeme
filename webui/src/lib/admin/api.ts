@@ -123,10 +123,10 @@ export function adminErrorMessage(error: unknown, fallback: string): string {
 	return error instanceof AdminApiError && error.detail ? error.detail : fallback;
 }
 
-function adminClient() {
+function adminClient(headers: Record<string, string>) {
 	return createClient<paths>({
 		baseUrl: env.API_BASE_URL,
-		headers: { "X-API-Key": env.API_KEY_ADMIN ?? "" },
+		headers,
 	});
 }
 
@@ -150,13 +150,14 @@ interface ClientResult<T> {
 
 export async function callAdmin<T>(
 	operation: string,
+	headers: Record<string, string>,
 	request: (client: ReturnType<typeof adminClient>) => Promise<ClientResult<T>>,
 ): Promise<T> {
 	const start = Date.now();
 	const event: Record<string, unknown> = { operation };
 
 	try {
-		const { data, error, response } = await request(adminClient());
+		const { data, error, response } = await request(adminClient(headers));
 		event.status_code = response.status;
 
 		if (error !== undefined || !response.ok) {
@@ -188,13 +189,15 @@ export async function callAdmin<T>(
 
 export const listSources = createServerFn({ method: "GET" })
 	.middleware([adminGuard])
-	.handler(() => callAdmin<SourceListResponse>("list_sources", (c) => c.GET("/sources")));
+	.handler(({ context }) =>
+		callAdmin<SourceListResponse>("list_sources", context.adminHeaders, (c) => c.GET("/sources")),
+	);
 
 export const getSource = createServerFn({ method: "GET" })
 	.middleware([adminGuard])
 	.inputValidator((input: { id: number }) => input)
-	.handler(({ data }) =>
-		callAdmin<SourceDetail>("get_source", (c) =>
+	.handler(({ data, context }) =>
+		callAdmin<SourceDetail>("get_source", context.adminHeaders, (c) =>
 			c.GET("/sources/{source_id}", { params: { path: { source_id: data.id } } }),
 		),
 	);
@@ -202,15 +205,17 @@ export const getSource = createServerFn({ method: "GET" })
 export const createSource = createServerFn({ method: "POST" })
 	.middleware([adminGuard])
 	.inputValidator((input: CreateSourceRequest) => input)
-	.handler(({ data }) =>
-		callAdmin<Source>("create_source", (c) => c.POST("/sources", { body: data })),
+	.handler(({ data, context }) =>
+		callAdmin<Source>("create_source", context.adminHeaders, (c) =>
+			c.POST("/sources", { body: data }),
+		),
 	);
 
 export const updateSource = createServerFn({ method: "POST" })
 	.middleware([adminGuard])
 	.inputValidator((input: { id: number; body: UpdateSourceRequest }) => input)
-	.handler(({ data }) =>
-		callAdmin<Source>("update_source", (c) =>
+	.handler(({ data, context }) =>
+		callAdmin<Source>("update_source", context.adminHeaders, (c) =>
 			c.PATCH("/sources/{source_id}", {
 				params: { path: { source_id: data.id } },
 				body: data.body,
@@ -221,8 +226,8 @@ export const updateSource = createServerFn({ method: "POST" })
 export const deleteSource = createServerFn({ method: "POST" })
 	.middleware([adminGuard])
 	.inputValidator((input: { id: number }) => input)
-	.handler(({ data }) =>
-		callAdmin<void>("delete_source", (c) =>
+	.handler(({ data, context }) =>
+		callAdmin<void>("delete_source", context.adminHeaders, (c) =>
 			c.DELETE("/sources/{source_id}", { params: { path: { source_id: data.id } } }),
 		),
 	);
@@ -230,8 +235,8 @@ export const deleteSource = createServerFn({ method: "POST" })
 export const triggerRun = createServerFn({ method: "POST" })
 	.middleware([adminGuard])
 	.inputValidator((input: { id: number }) => input)
-	.handler(({ data }) =>
-		callAdmin<TriggerRunResponse>("trigger_run", (c) =>
+	.handler(({ data, context }) =>
+		callAdmin<TriggerRunResponse>("trigger_run", context.adminHeaders, (c) =>
 			c.POST("/sources/{source_id}/run", { params: { path: { source_id: data.id } } }),
 		),
 	);
@@ -239,8 +244,8 @@ export const triggerRun = createServerFn({ method: "POST" })
 export const retrySource = createServerFn({ method: "POST" })
 	.middleware([adminGuard])
 	.inputValidator((input: { id: number }) => input)
-	.handler(({ data }) =>
-		callAdmin<RetryResponse>("retry_source", (c) =>
+	.handler(({ data, context }) =>
+		callAdmin<RetryResponse>("retry_source", context.adminHeaders, (c) =>
 			c.POST("/sources/{source_id}/retry", { params: { path: { source_id: data.id } } }),
 		),
 	);
@@ -248,8 +253,8 @@ export const retrySource = createServerFn({ method: "POST" })
 export const retrySourceRun = createServerFn({ method: "POST" })
 	.middleware([adminGuard])
 	.inputValidator((input: { id: number; runId: number }) => input)
-	.handler(({ data }) =>
-		callAdmin<RetryResponse>("retry_source_run", (c) =>
+	.handler(({ data, context }) =>
+		callAdmin<RetryResponse>("retry_source_run", context.adminHeaders, (c) =>
 			c.POST("/sources/{source_id}/runs/{run_id}/retry", {
 				params: { path: { source_id: data.id, run_id: data.runId } },
 			}),
@@ -259,8 +264,8 @@ export const retrySourceRun = createServerFn({ method: "POST" })
 export const retrySourceItem = createServerFn({ method: "POST" })
 	.middleware([adminGuard])
 	.inputValidator((input: { id: number; itemId: number }) => input)
-	.handler(({ data }) =>
-		callAdmin<RetryResponse>("retry_source_item", (c) =>
+	.handler(({ data, context }) =>
+		callAdmin<RetryResponse>("retry_source_item", context.adminHeaders, (c) =>
 			c.POST("/sources/{source_id}/items/{item_id}/retry", {
 				params: { path: { source_id: data.id, item_id: data.itemId } },
 			}),
@@ -273,8 +278,8 @@ export const listSourceItems = createServerFn({ method: "GET" })
 		(input: { id: number; limit?: number; offset?: number; status?: SourceItemIngestState }) =>
 			input,
 	)
-	.handler(({ data }) =>
-		callAdmin<SourceItemListResponse>("list_source_items", (c) =>
+	.handler(({ data, context }) =>
+		callAdmin<SourceItemListResponse>("list_source_items", context.adminHeaders, (c) =>
 			c.GET("/sources/{source_id}/items", {
 				params: {
 					path: { source_id: data.id },
@@ -287,8 +292,8 @@ export const listSourceItems = createServerFn({ method: "GET" })
 export const listRunItems = createServerFn({ method: "GET" })
 	.middleware([adminGuard])
 	.inputValidator((input: { id: number; runId: number; limit?: number; offset?: number }) => input)
-	.handler(({ data }) =>
-		callAdmin<RunItemListResponse>("list_run_items", (c) =>
+	.handler(({ data, context }) =>
+		callAdmin<RunItemListResponse>("list_run_items", context.adminHeaders, (c) =>
 			c.GET("/sources/{source_id}/runs/{run_id}/items", {
 				params: {
 					path: { source_id: data.id, run_id: data.runId },
@@ -301,8 +306,8 @@ export const listRunItems = createServerFn({ method: "GET" })
 export const listImages = createServerFn({ method: "GET" })
 	.middleware([adminGuard])
 	.inputValidator((input: ImageListParams) => input)
-	.handler(({ data }) =>
-		callAdmin<ImageListResponse>("list_images", (c) =>
+	.handler(({ data, context }) =>
+		callAdmin<ImageListResponse>("list_images", context.adminHeaders, (c) =>
 			c.GET("/images", {
 				params: {
 					query: {
@@ -320,8 +325,8 @@ export const listImages = createServerFn({ method: "GET" })
 export const ingestImageUrls = createServerFn({ method: "POST" })
 	.middleware([adminGuard])
 	.inputValidator((input: { urls: string[]; dataset?: string | null; tags?: string[] }) => input)
-	.handler(({ data }) =>
-		callAdmin<ImageIngestResponse>("ingest_images", (c) =>
+	.handler(({ data, context }) =>
+		callAdmin<ImageIngestResponse>("ingest_images", context.adminHeaders, (c) =>
 			c.POST("/images", {
 				body: { urls: data.urls, dataset: data.dataset || undefined, tags: data.tags ?? [] },
 			}),
@@ -331,13 +336,13 @@ export const ingestImageUrls = createServerFn({ method: "POST" })
 export const uploadImageFile = createServerFn({ method: "POST" })
 	.middleware([adminGuard])
 	.inputValidator((data: FormData) => data)
-	.handler(async ({ data }) => {
+	.handler(async ({ data, context }) => {
 		const start = Date.now();
 		const event: Record<string, unknown> = { operation: "upload_image" };
 		try {
 			const res = await fetch(new URL("/images/upload", env.API_BASE_URL), {
 				method: "POST",
-				headers: { "X-API-Key": env.API_KEY_ADMIN ?? "" },
+				headers: context.adminHeaders,
 				body: data,
 			});
 			event.status_code = res.status;
@@ -374,8 +379,8 @@ export interface IngestionListParams {
 export const listIngestion = createServerFn({ method: "GET" })
 	.middleware([adminGuard])
 	.inputValidator((input: IngestionListParams) => input)
-	.handler(({ data }) =>
-		callAdmin<IngestionListResponse>("list_ingestion", (c) =>
+	.handler(({ data, context }) =>
+		callAdmin<IngestionListResponse>("list_ingestion", context.adminHeaders, (c) =>
 			c.GET("/ingestion", {
 				params: {
 					query: {
@@ -398,8 +403,8 @@ export const listIngestion = createServerFn({ method: "GET" })
 export const getIngestionAttempt = createServerFn({ method: "GET" })
 	.middleware([adminGuard])
 	.inputValidator((input: { id: number }) => input)
-	.handler(({ data }) =>
-		callAdmin<IngestionDetail>("get_ingestion_attempt", (c) =>
+	.handler(({ data, context }) =>
+		callAdmin<IngestionDetail>("get_ingestion_attempt", context.adminHeaders, (c) =>
 			c.GET("/ingestion/{ingest_url_id}", {
 				params: { path: { ingest_url_id: data.id } },
 			}),
@@ -409,8 +414,8 @@ export const getIngestionAttempt = createServerFn({ method: "GET" })
 export const getIngestionLogs = createServerFn({ method: "GET" })
 	.middleware([adminGuard])
 	.inputValidator((input: { id: number; limit?: number }) => input)
-	.handler(({ data }) =>
-		callAdmin<IngestionLogs>("get_ingestion_logs", (c) =>
+	.handler(({ data, context }) =>
+		callAdmin<IngestionLogs>("get_ingestion_logs", context.adminHeaders, (c) =>
 			c.GET("/ingestion/{ingest_url_id}/logs", {
 				params: {
 					path: { ingest_url_id: data.id },
@@ -423,8 +428,8 @@ export const getIngestionLogs = createServerFn({ method: "GET" })
 export const getImage = createServerFn({ method: "GET" })
 	.middleware([adminGuard])
 	.inputValidator((input: { id: number }) => input)
-	.handler(({ data }) =>
-		callAdmin<Image>("get_image", (c) =>
+	.handler(({ data, context }) =>
+		callAdmin<Image>("get_image", context.adminHeaders, (c) =>
 			c.GET("/images/{image_id}", { params: { path: { image_id: data.id } } }),
 		),
 	);
@@ -432,8 +437,8 @@ export const getImage = createServerFn({ method: "GET" })
 export const getJob = createServerFn({ method: "GET" })
 	.middleware([adminGuard])
 	.inputValidator((input: { id: string }) => input)
-	.handler(async ({ data }) => {
-		const job = await callAdmin<Schemas["JobResponse"]>("get_job", (c) =>
+	.handler(async ({ data, context }) => {
+		const job = await callAdmin<Schemas["JobResponse"]>("get_job", context.adminHeaders, (c) =>
 			c.GET("/jobs/{job_id}", { params: { path: { job_id: data.id } } }),
 		);
 		// SAFETY: narrow the generated open `JobResult` union (which includes a

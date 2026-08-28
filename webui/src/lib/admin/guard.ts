@@ -1,62 +1,61 @@
 import { env } from "@/env";
-import { isAccessAllowed } from "@/lib/admin/guard-logic";
 import { redirect } from "@tanstack/react-router";
 import { createMiddleware, createServerFn } from "@tanstack/react-start";
-import { getCookie, setCookie } from "@tanstack/react-start/server";
+import { getCookie } from "@tanstack/react-start/server";
+import { z } from "zod";
 
-export const ADMIN_SESSION_COOKIE = "admin_ui_session";
-const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
+const ADMIN_SESSION_COOKIE = "mimeme_admin_session";
 
-function isProduction(): boolean {
-	return process.env.NODE_ENV === "production";
-}
-
-function hasValidSession(): boolean {
-	return isAccessAllowed({
-		isProduction: isProduction(),
-		secret: env.ADMIN_UI_SECRET,
-		cookie: getCookie(ADMIN_SESSION_COOKIE),
-	});
-}
-
-
-export const adminGuard = createMiddleware({ type: "function" }).server(async ({ next }) => {
-	if (!isProduction()) return next();
-
-	if (!env.ADMIN_UI_SECRET) throw new Error("Admin access is not configured");
-
-	if (!hasValidSession()) throw new Error("Admin access required");
-
-	return next();
+const adminSessionSchema = z.object({
+	authenticated: z.boolean(),
+	dev_open: z.boolean(),
+	user: z
+		.object({
+			id: z.string(),
+			login: z.string(),
+			avatar_url: z.string().nullable(),
+		})
+		.nullable(),
 });
 
-export const checkAdminAccess = createServerFn({ method: "GET" }).handler(async () => ({
-	allowed: hasValidSession(),
-	devOpen: !isProduction(),
-}));
+function adminSessionHeaders(): Record<string, string> {
+	const session = getCookie(ADMIN_SESSION_COOKIE);
+	return session ? { Cookie: `${ADMIN_SESSION_COOKIE}=${session}` } : {};
+}
 
-export const unlockAdmin = createServerFn({ method: "POST" })
-	.inputValidator((input: { secret: string }) => input)
-	.handler(async ({ data }) => {
-		if (!isProduction()) return { ok: true as const };
+/** Reject server functions unless the Python backend accepts the current session. */
+export const adminGuard = createMiddleware({ type: "function" }).server(async ({ next }) => {
+	const headers = adminSessionHeaders();
+	const session = await fetchAdminSession(headers);
+	if (!session.authenticated) throw new Error("Admin access required");
 
-		if (!env.ADMIN_UI_SECRET || data.secret !== env.ADMIN_UI_SECRET) {
-			return { ok: false as const };
-		}
+	return next({ context: { adminHeaders: headers } });
+});
 
-		setCookie(ADMIN_SESSION_COOKIE, env.ADMIN_UI_SECRET, {
-			httpOnly: true,
-			secure: true,
-			sameSite: "lax",
-			path: "/",
-			maxAge: SESSION_MAX_AGE_SECONDS,
-		});
-		return { ok: true as const };
+async function fetchAdminSession(
+	headers: Record<string, string>,
+): Promise<z.infer<typeof adminSessionSchema>> {
+	const response = await fetch(new URL("/auth/session", env.API_BASE_URL), {
+		headers,
 	});
+	if (!response.ok) throw new Error("Admin session check failed");
+	return adminSessionSchema.parse(await response.json());
+}
 
+/** Check whether the Python backend accepts the current admin session. */
+export const checkAdminAccess = createServerFn({ method: "GET" }).handler(() =>
+	fetchAdminSession(adminSessionHeaders()),
+);
+
+/** Return the backend endpoint that starts GitHub sign-in. */
+export const getAdminLoginUrl = createServerFn({ method: "GET" }).handler(() =>
+	new URL("/auth/github/login", env.API_BASE_URL).toString(),
+);
+
+/** Redirect unauthenticated admin routes to the GitHub sign-in screen. */
 export async function requireAdminAccess(): Promise<void> {
-	const { allowed } = await checkAdminAccess();
-	if (!allowed) {
+	const { authenticated } = await checkAdminAccess();
+	if (!authenticated) {
 		throw redirect({ to: "/admin-unlock" });
 	}
 }
