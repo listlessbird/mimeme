@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 from sqlalchemy import func, select, update
@@ -18,6 +19,7 @@ from mimeme.db.schema import (
     Processing,
     ProcessingStatus,
     SearchIndexState,
+    SourceItem,
 )
 from mimeme.ingest.model import restore
 from mimeme.job import rule
@@ -41,6 +43,7 @@ from mimeme.job.model import (
     StateMissing,
     View,
 )
+from mimeme.search import document
 
 _SINGLETON_ID = 1
 
@@ -286,16 +289,26 @@ class Store:
         url = await self._session.get(IngestURL, ingest_url_id)
         if url is None:
             return ItemDone(found=False, image_exists=None)
+        prior_image_id = url.image_id
         image_exists = (
             await self._session.scalar(select(Image.id).where(Image.id == image_id))
         ) is not None
         if image_exists:
+            before = await self._projected_document(image_id)
             url.status = ProcessingStatus.DONE
             url.image_id = image_id
             url.duplicate_reason = duplicate_reason
             url.duplicate_of_image_id = duplicate_of_image_id
             url.similar_image_id = similar_image_id
             url.phash_distance = phash_distance
+            await self._session.flush()
+            after = await self._projected_document(image_id)
+            if (
+                prior_image_id != image_id
+                and before != after
+                and await self._is_searchable(image_id)
+            ):
+                await self.mark_dirty(reason="source_alias_linked")
         else:
             url.status = ProcessingStatus.FAILED
             url.error_message = f"Image {image_id} not found while marking ingest URL done"
@@ -323,6 +336,11 @@ class Store:
         proc = (
             await self._session.scalars(select(Processing).where(Processing.image_id == image_id))
         ).first()
+        before = document.project(
+            image_id,
+            caption=ann.caption_text if ann is not None else None,
+            ocr_text=ann.ocr_text if ann is not None else None,
+        )
         if ann is None:
             ann = Annotation(image_id=image_id)
             self._session.add(ann)
@@ -335,8 +353,51 @@ class Store:
             proc.caption_model = caption_model
             proc.ocr_status = ProcessingStatus.DONE
             proc.ocr_model = ocr_model
+        after = document.project(image_id, caption=caption, ocr_text=ocr_text)
+        if (
+            before != after
+            and proc is not None
+            and proc.embed_status is ProcessingStatus.DONE
+            and bool(proc.embed_s3_key)
+        ):
+            await self.mark_dirty(reason="annotations_changed")
         await self._session.flush()
         return proc is not None
+
+    async def _is_searchable(self, image_id: int) -> bool:
+        return bool(
+            await self._session.scalar(
+                select(Processing.image_id).where(
+                    Processing.image_id == image_id,
+                    Processing.embed_status == ProcessingStatus.DONE,
+                    Processing.embed_s3_key.is_not(None),
+                    Processing.embed_s3_key != "",
+                )
+            )
+        )
+
+    async def _projected_document(self, image_id: int) -> document.SearchDocument:
+        annotation = await self._session.get(Annotation, image_id)
+        rows = (
+            await self._session.execute(
+                select(SourceItem.title, SourceItem.known_facts)
+                .join(IngestURL, IngestURL.source_item_id == SourceItem.id)
+                .where(IngestURL.image_id == image_id)
+                .order_by(SourceItem.id)
+            )
+        ).all()
+        return document.project(
+            image_id,
+            sources=(
+                document.source_facts(
+                    title,
+                    facts if isinstance(facts, Mapping) else {},
+                )
+                for title, facts in rows
+            ),
+            caption=annotation.caption_text if annotation is not None else None,
+            ocr_text=annotation.ocr_text if annotation is not None else None,
+        )
 
     async def save_embedding(
         self,

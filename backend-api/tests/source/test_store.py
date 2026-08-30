@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 
 import pytest
 from sqlalchemy import func, select
@@ -11,6 +13,7 @@ from mimeme.db.schema import (
     IngestURL,
     Job,
     ProcessingStatus,
+    SearchIndexState,
     SourceMedia,
     SourceRun,
     SourceRunStatus,
@@ -29,9 +32,12 @@ from mimeme.source.model import (
 )
 from mimeme.source.store import Store
 from tests.factories import (
+    create_image,
     create_ingest_url,
     create_ingestion_source,
     create_job,
+    create_processing,
+    create_search_index_state,
     create_source_item,
     create_source_run,
 )
@@ -190,6 +196,62 @@ class TestDiscoveryPersistence:
                 )
                 == 1
             )
+
+    async def test_linked_projected_facts_dirty_once_across_retries(
+        self, db: SavepointDb, run_sync_seed
+    ) -> None:
+        def seed(session: Session) -> tuple[int, int]:
+            create_search_index_state(session=session, desired_generation=1, active_generation=1)
+            source = create_ingestion_source(session=session)
+            run = create_source_run(session=session, source=source, source_id=source.id)
+            job = create_job(session=session)
+            image = create_image(session=session)
+            processing = create_processing(session=session, image=image)
+            processing.embed_status = ProcessingStatus.DONE
+            processing.embed_s3_key = "embeddings/ready.npy"
+            facts = KnownFacts().model_dump(mode="json")
+            facts_hash = hashlib.sha256(
+                json.dumps(facts, sort_keys=True, separators=(",", ":")).encode()
+            ).hexdigest()
+            item = create_source_item(
+                session=session,
+                source=source,
+                source_id=source.id,
+                external_item_id="same",
+                title="same",
+                known_facts=facts,
+                known_facts_sha256=facts_hash,
+            )
+            create_ingest_url(
+                session=session,
+                job=job,
+                image=image,
+                image_id=image.id,
+                source_id=source.id,
+                source_item_id=item.id,
+                status=ProcessingStatus.DONE,
+            )
+            session.flush()
+            return source.id, run.id
+
+        source_id, run_id = await run_sync_seed(seed)
+        changed = _item("same").model_copy(update={"title": "renamed alias"})
+        async with db.write_session() as session:
+            store = Store(session)
+            await store.reconcile_discovery(
+                source_id=source_id,
+                source_run_id=run_id,
+                items=[changed],
+            )
+            await store.reconcile_discovery(
+                source_id=source_id,
+                source_run_id=run_id,
+                items=[changed],
+            )
+
+        async with db.read_session() as session:
+            state = await session.get(SearchIndexState, 1)
+        assert state is not None and state.desired_generation == 2
 
     async def test_same_url_from_another_source_is_not_requeued(
         self, db: SavepointDb, run_sync_seed

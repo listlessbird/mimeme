@@ -20,6 +20,7 @@ dependencies = [
     "aiobotocore>=3.7.0",
     "scrapling[fetchers]>=0.4,<0.5",
     "ir-measures==0.4.3",
+    "zstandard>=0.24,<1",
 ]
 
 # Extras only needed to run models locally (GPU_BACKEND=local) or to import

@@ -6,28 +6,11 @@ from typing import Any, cast
 from sqlalchemy import CursorResult, Row, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mimeme import inference
 from mimeme.db.schema import EmbeddingShard, IndexBuild, Processing, ProcessingStatus
-from mimeme.index.model import Embedding, Manifest, Snapshot
+from mimeme.index import documents
+from mimeme.index.model import Manifest, Snapshot
 from mimeme.job.model import ClaimOwnership
 from mimeme.job.store import Store as JobStore
-
-
-def _embedding(row: Row) -> Embedding:
-    if row.embed_shard is not None and row.embed_row is not None and row.seq is not None:
-        return Embedding(
-            image_id=row.image_id,
-            shard=row.embed_shard,
-            row=row.embed_row,
-            seq=row.seq,
-            text_present=bool(row.embed_text_present),
-        )
-    image_key = str(row.embed_s3_key)
-    return Embedding(
-        image_id=row.image_id,
-        image_key=image_key,
-        text_key=inference.text_embedding_key(image_key) if row.embed_text_present else None,
-    )
 
 
 class Store:
@@ -47,49 +30,20 @@ class Store:
         )
 
     async def snapshot(self, *, model: str, target_generation: int) -> Snapshot:
-        rows = (
-            await self._session.execute(
-                select(
-                    Processing.image_id,
-                    Processing.embed_s3_key,
-                    Processing.embed_dim,
-                    Processing.embed_text_present,
-                    Processing.embed_shard,
-                    Processing.embed_row,
-                    EmbeddingShard.seq,
-                )
-                .outerjoin(
-                    EmbeddingShard,
-                    (EmbeddingShard.embed_model == Processing.embed_model)
-                    & (EmbeddingShard.number == Processing.embed_shard),
-                )
-                .where(
-                    Processing.embed_status == ProcessingStatus.DONE,
-                    Processing.embed_model == model,
-                    Processing.embed_s3_key.is_not(None),
-                    Processing.embed_s3_key != "",
-                )
-                .order_by(Processing.image_id)
-            )
-        ).all()
-        dimensions = {int(row.embed_dim) for row in rows if row.embed_dim is not None}
-        if len(dimensions) > 1:
-            raise ValueError(f"snapshot contains mixed embedding dimensions: {dimensions}")
-        if rows and not dimensions:
-            raise ValueError("snapshot embeddings have no recorded dimension")
-        dimension = next(iter(dimensions), 0)
-        if not rows:
+        snapshot = await documents.capture(
+            self._session,
+            model=model,
+            target_generation=target_generation,
+        )
+        if not snapshot.embeddings:
             active = (
                 await self._session.scalars(
                     select(IndexBuild).where(IndexBuild.is_active.is_(True))
                 )
             ).first()
             dimension = active.dimension or 0 if active is not None else 0
-        return Snapshot(
-            target_generation=target_generation,
-            dimension=dimension,
-            embeddings=[_embedding(row) for row in rows],
-        )
+            return snapshot.model_copy(update={"dimension": dimension})
+        return snapshot
 
     async def unsealed(self, *, model: str, limit: int | None = None) -> list[Row]:
         query = (

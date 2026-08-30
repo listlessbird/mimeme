@@ -356,6 +356,64 @@ class TestInference:
             ).all()
         assert len(rows) == 1 and rows[0].caption_text == "cap2"
 
+    async def test_annotation_changes_dirty_once_after_embedding(
+        self, job_db: SavepointDb, run_sync_seed
+    ) -> None:
+        def seed(session: Session) -> int:
+            create_search_index_state(session=session, desired_generation=1, active_generation=1)
+            image = create_image(session=session)
+            processing = create_processing(session=session, image=image)
+            processing.embed_status = ProcessingStatus.DONE
+            processing.embed_s3_key = "embeddings/ready.npy"
+            session.flush()
+            return image.id
+
+        image_id = await run_sync_seed(seed)
+        for _ in range(2):
+            assert await ops.save_annotations(
+                job_db,
+                image_id=image_id,
+                caption="same  caption",
+                caption_model="m",
+                ocr_text="same\nocr",
+                ocr_model="m",
+            )
+
+        assert (await ops.index_status(job_db)).view.desired_generation == 2
+
+    async def test_new_source_alias_on_existing_image_dirties_once(
+        self, job_db: SavepointDb, run_sync_seed
+    ) -> None:
+        def seed(session: Session) -> tuple[int, int]:
+            create_search_index_state(session=session, desired_generation=1, active_generation=1)
+            job = create_job(session=session)
+            image = create_image(session=session)
+            processing = create_processing(session=session, image=image)
+            processing.embed_status = ProcessingStatus.DONE
+            processing.embed_s3_key = "embeddings/ready.npy"
+            source = create_ingestion_source(session=session)
+            item = create_source_item(
+                session=session,
+                source=source,
+                source_id=source.id,
+                title="New alias",
+            )
+            url = create_ingest_url(
+                session=session,
+                job=job,
+                source_id=source.id,
+                source_item_id=item.id,
+            )
+            session.flush()
+            return url.id, image.id
+
+        url_id, image_id = await run_sync_seed(seed)
+        for _ in range(2):
+            done = await ops.mark_item_done(job_db, url_id, image_id)
+            assert done.found and done.image_exists
+
+        assert (await ops.index_status(job_db)).view.desired_generation == 2
+
     async def test_concurrent_save_annotations_upserts(self, pool_db: PoolDb) -> None:
         async with pool_db.write_session() as session:
             image = Image(

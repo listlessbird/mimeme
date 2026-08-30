@@ -8,8 +8,9 @@ from tests.support.storage import Memory
 from mimeme import index, storage
 from mimeme.compute.index import build
 from mimeme.compute.model import ChildOk
-from mimeme.index import pack
+from mimeme.index import documents, pack
 from mimeme.index.gateway import Gateway
+from mimeme.search.document import SearchDocument
 
 
 class _Calls:
@@ -45,6 +46,12 @@ async def test_gateway_owns_transfer_and_publishes_completeness_last(tmp_path) -
         storage.Object("embeddings/1.npy"), _npy([1, 0]), content_type="application/octet-stream"
     )
     artifacts.writes.clear()
+    document_file = await documents.publish(
+        artifacts,
+        version="v2-g3-rebuild-1",
+        documents=[SearchDocument(image_id=1)],
+    )
+    artifacts.writes.clear()
     gateway = Gateway(_Calls(), artifacts=artifacts, workspace_dir=tmp_path)
 
     result = await gateway.build(
@@ -57,10 +64,13 @@ async def test_gateway_owns_transfer_and_publishes_completeness_last(tmp_path) -
             dimension=2,
             encoder=index.Encoder(repo="test/encoder", revision="rev", variant="model.onnx"),
             embeddings=[index.Embedding(image_id=1, image_key="embeddings/1.npy")],
+            documents=document_file,
         )
     )
 
     assert result.manifest is not None
+    assert result.manifest.format_version == 2
+    assert result.manifest.documents == document_file
     assert artifacts.writes[-1] == result.manifest.complete_key
     assert await artifacts.stat(storage.Object(result.manifest.complete_key)) is not None
     assert not list(tmp_path.iterdir())

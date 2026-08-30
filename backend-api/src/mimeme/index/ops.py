@@ -10,7 +10,7 @@ from mimeme import inference, search, storage
 from mimeme.config import Settings
 from mimeme.db import Db
 from mimeme.db.schema import Job, JobStatus, JobType
-from mimeme.index import pack, rule
+from mimeme.index import documents, pack, rule
 from mimeme.index.client import Client
 from mimeme.index.model import (
     Activated,
@@ -59,6 +59,7 @@ async def load_build(artifacts: storage.Store, plan: BuildPlan) -> Build:
         native_threads=plan.native_threads,
         encoder=plan.encoder,
         embeddings=manifest.embeddings,
+        documents=plan.documents,
         planned_reads=plan.planned_reads,
     )
 
@@ -147,6 +148,11 @@ async def prepare(
         )
     planned_reads = pack.reads(snapshot.embeddings)
     version = _version(job_id, target_generation)
+    document_file = await documents.publish(
+        artifacts,
+        version=version,
+        documents=snapshot.documents,
+    )
     key = plan_key(version)
     await artifacts.put_bytes(
         storage.Object(key),
@@ -177,6 +183,7 @@ async def prepare(
                 threads=settings.search.encoder_threads,
             ),
             embeddings_key=key,
+            documents=document_file,
             num_embeddings=len(snapshot.embeddings),
             planned_reads=planned_reads,
         ),
@@ -313,6 +320,15 @@ async def validate(artifacts: storage.Store, expected: Manifest) -> Manifest:
             raise ValueError(f"artifact is missing or has wrong length: {file.key}")
         if info.checksum is not None and info.checksum.value != file.sha256:
             raise ValueError(f"artifact checksum mismatch: {file.key}")
+    if actual.documents is not None:
+        info = await artifacts.stat(storage.Object(actual.documents.key))
+        if info is None or info.length != actual.documents.length:
+            raise ValueError(
+                f"document artifact is missing or has wrong length: {actual.documents.key}"
+            )
+        if info.checksum is not None and info.checksum.value != actual.documents.sha256:
+            raise ValueError(f"document artifact checksum mismatch: {actual.documents.key}")
+        await documents.verify(artifacts, actual.documents)
     return actual
 
 

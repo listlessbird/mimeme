@@ -5,6 +5,8 @@ from typing import Annotated, Literal, Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from mimeme.search.document import SearchDocument
+
 
 class _Frozen(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -65,6 +67,16 @@ class Encoder(_Frozen):
     threads: int = Field(default=1, ge=1)
 
 
+class DocumentFile(_Frozen):
+    name: Literal["documents.jsonl.zst"] = "documents.jsonl.zst"
+    key: str = Field(min_length=1)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    length: int = Field(ge=0)
+    count: int = Field(ge=0)
+    projection_version: Literal[1] = 1
+
+
 class Build(_Frozen):
     job_id: str = Field(min_length=1)
     version: str = Field(min_length=1)
@@ -75,6 +87,7 @@ class Build(_Frozen):
     native_threads: int = Field(default=1, ge=1)
     encoder: Encoder
     embeddings: list[Embedding]
+    documents: DocumentFile | None = None
     planned_reads: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
@@ -105,7 +118,7 @@ class File(_Frozen):
 
 
 class Manifest(_Frozen):
-    format_version: Literal[1] = 1
+    format_version: Literal[1, 2] = 1
     version: str = Field(min_length=1)
     target_generation: int = Field(ge=0)
     model: str = Field(min_length=1)
@@ -115,6 +128,7 @@ class Manifest(_Frozen):
     image_count: int = Field(ge=0)
     text_count: int | None = Field(default=None, ge=0)
     files: list[File]
+    documents: DocumentFile | None = None
     complete_key: str = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -134,6 +148,14 @@ class Manifest(_Frozen):
             raise ValueError("completeness manifest must use its generation prefix")
         if any(not file.key.startswith(prefix) for file in self.files):
             raise ValueError("every artifact must use its generation prefix")
+        if self.format_version == 1 and self.documents is not None:
+            raise ValueError("manifest v1 cannot contain a document artifact")
+        if self.format_version == 2 and self.documents is None:
+            raise ValueError("manifest v2 requires a document artifact")
+        if self.documents is not None and self.documents.key != f"{prefix}{self.documents.name}":
+            raise ValueError("document artifact must use its generation prefix")
+        if self.documents is not None and self.documents.count != self.image_count:
+            raise ValueError("document count must match image count")
         return self
 
 
@@ -173,6 +195,7 @@ class BuildPlan(_Frozen):
     native_threads: int = Field(default=1, ge=1)
     encoder: Encoder
     embeddings_key: str = Field(min_length=1)
+    documents: DocumentFile | None = None
     num_embeddings: int = Field(ge=0)
     planned_reads: int = Field(default=0, ge=0)
 
@@ -226,6 +249,15 @@ class Snapshot(_Frozen):
     target_generation: int = Field(ge=0)
     dimension: int = Field(ge=0)
     embeddings: list[Embedding]
+    documents: list[SearchDocument]
+
+    @model_validator(mode="after")
+    def _documents_match_embeddings(self) -> Self:
+        embedded = [item.image_id for item in self.embeddings]
+        projected = [item.image_id for item in self.documents]
+        if projected != embedded:
+            raise ValueError("snapshot documents must match embedding image order")
+        return self
 
 
 class WorkflowInput(_Frozen):

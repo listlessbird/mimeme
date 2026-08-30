@@ -67,6 +67,50 @@ def test_complete_manifest_requires_generation_artifacts_and_own_prefix() -> Non
         )
 
 
+def test_manifest_v2_requires_matching_document_artifact() -> None:
+    files = [
+        index.File(name="index.faiss", key="indexes/v2/index.faiss", sha256="0" * 64, length=4),
+        index.File(name="mapping.json", key="indexes/v2/mapping.json", sha256="1" * 64, length=4),
+        index.File(name="metadata.json", key="indexes/v2/metadata.json", sha256="2" * 64, length=4),
+    ]
+    document = index.DocumentFile(
+        key="indexes/v2/documents.jsonl.zst",
+        sha256="3" * 64,
+        content_sha256="4" * 64,
+        length=10,
+        count=1,
+    )
+
+    manifest = index.Manifest(
+        format_version=2,
+        version="v2",
+        target_generation=2,
+        model="test/embed",
+        index_type="flat",
+        encoder=index.Encoder(repo="test/encoder", revision="rev", variant="model.onnx"),
+        dimension=2,
+        image_count=1,
+        files=files,
+        documents=document,
+        complete_key="indexes/v2/complete.json",
+    )
+
+    assert index.Manifest.model_validate_json(manifest.model_dump_json()) == manifest
+    with pytest.raises(ValidationError, match="requires a document artifact"):
+        index.Manifest(
+            format_version=2,
+            version="v2",
+            target_generation=2,
+            model="test/embed",
+            index_type="flat",
+            encoder=index.Encoder(repo="test/encoder", revision="rev", variant="model.onnx"),
+            dimension=2,
+            image_count=1,
+            files=files,
+            complete_key="indexes/v2/complete.json",
+        )
+
+
 def test_state_machine_rejects_invalid_activation_transition() -> None:
     state = index.State(job_id="rebuild-1")
 

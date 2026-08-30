@@ -10,22 +10,23 @@ from temporalio.exceptions import ApplicationError
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
-from mimeme.db.schema import SourceRunStatus, SourceRunTrigger
-from mimeme.ingest import rule as ingest_rule
-from mimeme.ingest.model import ItemRef, RemoteUrl
-from mimeme.ingest.model import WorkflowInput as IngestWorkflowInput
-from mimeme.job.model import IngestResult
-from mimeme.source import rule
-from mimeme.source.model import (
-    CleanupInput,
-    DiscoverInput,
-    DiscoverResult,
-    FinishInput,
-    FinishResult,
-    RetryInput,
-    SyncInput,
-)
-from mimeme.source.workflow import SourceRetryWorkflow, SourceSyncWorkflow
+with workflow.unsafe.imports_passed_through():
+    from mimeme.db.schema import SourceRunStatus, SourceRunTrigger
+    from mimeme.ingest import rule as ingest_rule
+    from mimeme.ingest.model import ItemRef, RemoteUrl
+    from mimeme.ingest.model import WorkflowInput as IngestWorkflowInput
+    from mimeme.job.model import IngestResult
+    from mimeme.source import rule
+    from mimeme.source.model import (
+        CleanupInput,
+        DiscoverInput,
+        DiscoverResult,
+        FinishInput,
+        FinishResult,
+        RetryInput,
+        SyncInput,
+    )
+    from mimeme.source.workflow import SourceRetryWorkflow, SourceSyncWorkflow
 
 # Mutated by an *activity* (runs in the worker process, not the workflow
 # sandbox), so the test can observe which child workflow ids actually ran.

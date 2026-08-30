@@ -121,6 +121,7 @@ class Gateway:
                     )
                 )
             manifest = Manifest(
+                format_version=2 if request.documents is not None else 1,
                 version=built.version,
                 target_generation=built.target_generation,
                 model=built.model,
@@ -130,6 +131,7 @@ class Gateway:
                 image_count=built.image_count,
                 text_count=built.text_count,
                 files=files,
+                documents=request.documents,
                 complete_key=f"indexes/{built.version}/complete.json",
             )
             await meter.put_bytes(
