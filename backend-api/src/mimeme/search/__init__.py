@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from mimeme.search import fusion, recipe
 from mimeme.search.activation import activate, reconcile
 from mimeme.search.client import Activation, Client
 from mimeme.search.error import (
@@ -70,6 +71,8 @@ __all__ = [
     "Unavailable",
     "activate",
     "create",
+    "fusion",
+    "recipe",
     "reconcile",
     "run",
 ]

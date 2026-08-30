@@ -13,6 +13,7 @@ def test_query_accepts_text_and_similar_searches() -> None:
     similar = search.Query(similar_image_id=42, limit=5)
 
     assert text.text == "funny cat"
+    assert text.recipe_id == "image_siglip_text"
     assert text.mode == "hybrid"
     assert similar.similar_image_id == 42
     assert similar.mode == "image"

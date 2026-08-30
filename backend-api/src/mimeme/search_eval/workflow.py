@@ -45,7 +45,8 @@ class SearchEvalWorkflow:
                     rule.RETRIEVE_ACTIVITY,
                     RetrievalBatch(
                         run_id=prepared.run_id,
-                        mode=prepared.mode,
+                        recipe_id=prepared.recipe_id,
+                        recipe=prepared.recipe,
                         index_version=prepared.index_version,
                         queries=prepared.queries[offset : offset + rule.BATCH_SIZE],
                     ),

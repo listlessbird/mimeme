@@ -46,10 +46,16 @@ async def search_text(
     limit: Annotated[int, HttpQuery(ge=1, le=100)] = 20,
     offset: Annotated[int, HttpQuery(ge=0)] = 0,
     mode: Annotated[Literal["hybrid"] | None, HttpQuery()] = None,
+    recipe: Annotated[
+        Literal["image_only", "image_siglip_text"] | None,
+        HttpQuery(description="Versioned retrieval recipe"),
+    ] = None,
 ) -> search.Page:
+    if mode is not None and recipe is not None:
+        raise HTTPException(status_code=400, detail="Use recipe or legacy mode, not both")
     query = search.Query(
         text=q,
-        mode="hybrid" if mode == "hybrid" else "image",
+        recipe_id=recipe or ("image_siglip_text" if mode == "hybrid" else "image_only"),
         limit=limit,
         offset=offset,
     )

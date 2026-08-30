@@ -3,7 +3,9 @@ from __future__ import annotations
 import math
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from mimeme.search import recipe
 
 
 class _Frozen(BaseModel):
@@ -13,9 +15,19 @@ class _Frozen(BaseModel):
 class Query(_Frozen):
     text: str | None = Field(default=None, max_length=200)
     similar_image_id: int | None = Field(default=None, gt=0)
-    mode: Literal["image", "hybrid"] = "image"
+    recipe_id: recipe.RecipeId = Field(
+        default="image_only",
+        validation_alias=AliasChoices("recipe_id", "mode"),
+    )
     limit: int = Field(default=20, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
+
+    @field_validator("recipe_id", mode="before")
+    @classmethod
+    def _resolve_recipe(cls, value: object) -> recipe.RecipeId:
+        if not isinstance(value, str):
+            raise ValueError("recipe ID must be a string")
+        return recipe.id_of(value)
 
     @model_validator(mode="after")
     def _one_input(self) -> Self:
@@ -24,9 +36,13 @@ class Query(_Frozen):
                 raise ValueError("text must not be blank")
         if (self.text is None) == (self.similar_image_id is None):
             raise ValueError("provide exactly one of text or similar_image_id")
-        if self.similar_image_id is not None and self.mode != "image":
-            raise ValueError("similar search only supports image mode")
+        if self.similar_image_id is not None and self.recipe_id != "image_only":
+            raise ValueError("similar search only supports the image-only recipe")
         return self
+
+    @property
+    def mode(self) -> Literal["image", "hybrid"]:
+        return "hybrid" if self.recipe_id == "image_siglip_text" else "image"
 
 
 class Candidate(_Frozen):

@@ -73,6 +73,17 @@ def test_search_route_awaits_the_shared_client_and_preserves_response() -> None:
     assert remote.queries[0].mode == "hybrid"
 
 
+def test_search_route_accepts_recipe_and_rejects_two_selectors() -> None:
+    remote = _Client()
+    with TestClient(_app(remote)) as client:
+        response = client.get("/search?q=cat&recipe=image_siglip_text&limit=5")
+        conflict = client.get("/search?q=cat&recipe=image_only&mode=hybrid")
+
+    assert response.status_code == 200
+    assert remote.queries[0].recipe_id == "image_siglip_text"
+    assert conflict.status_code == 400
+
+
 def test_search_route_maps_compute_unavailability() -> None:
     with TestClient(_app(_Client(error=search.Unavailable("compute restarting")))) as client:
         response = client.get("/search?q=cat")

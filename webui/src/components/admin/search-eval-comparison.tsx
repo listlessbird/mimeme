@@ -80,7 +80,7 @@ function ComparisonPicker({
 }: {
 	baseline: string;
 	candidate: string;
-	runs: Array<{ id: string; mode: string; index_version: string | null }>;
+	runs: Array<{ id: string; recipe: { label: string }; index_version: string | null }>;
 }) {
 	const navigate = useNavigate();
 	const update = (next: { baseline?: string; candidate?: string }) =>
@@ -138,8 +138,12 @@ function ComparisonPicker({
 	);
 }
 
-function runLabel(run: { id: string; mode: string; index_version: string | null }): string {
-	return `${run.mode} · ${run.index_version ?? "unknown index"} · ${run.id.slice(0, 7)}`;
+function runLabel(run: {
+	id: string;
+	recipe: { label: string };
+	index_version: string | null;
+}): string {
+	return `${run.recipe.label} · ${run.index_version ?? "unknown index"} · ${run.id.slice(0, 7)}`;
 }
 
 function ComparisonResults({ comparison }: { comparison: ComparisonData }) {

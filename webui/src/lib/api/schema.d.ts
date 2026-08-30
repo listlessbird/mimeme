@@ -589,6 +589,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/search-evals/experiments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Experiment */
+        post: operations["create_experiment_search_evals_experiments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/search-evals/runs/{run_id}": {
         parameters: {
             query?: never;
@@ -691,6 +708,40 @@ export interface components {
              */
             detail: string;
         };
+        /**
+         * Bm25Settings
+         * @description Versioned lexical settings frozen into evaluation run snapshots.
+         */
+        Bm25Settings: {
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /**
+             * Projection Version
+             * @default 1
+             * @constant
+             */
+            projection_version: 1;
+            /**
+             * Tokenizer
+             * @default porter unicode61
+             * @constant
+             */
+            tokenizer: "porter unicode61";
+            /** Weights */
+            weights: [
+                number,
+                number,
+                number,
+                number,
+                number,
+                number,
+                number
+            ];
+        };
         /** Body_upload_image_images_upload_post */
         Body_upload_image_images_upload_post: {
             /** File */
@@ -740,6 +791,11 @@ export interface components {
             /** Queries */
             queries: components["schemas"]["QueryComparison"][];
         };
+        /** CreateSearchEvalExperimentRequest */
+        CreateSearchEvalExperimentRequest: {
+            /** Recipe Ids */
+            recipe_ids: ("image_only" | "image_siglip_text" | "image_bm25")[];
+        };
         /** CreateSearchEvalQueryRequest */
         CreateSearchEvalQueryRequest: {
             /** Text */
@@ -750,7 +806,11 @@ export interface components {
         };
         /** CreateSearchEvalRunRequest */
         CreateSearchEvalRunRequest: {
-            mode: components["schemas"]["RunMode"];
+            /**
+             * Recipe Id
+             * @enum {string}
+             */
+            recipe_id: "image_only" | "image_siglip_text" | "image_bm25";
         };
         /** CreateSourceRequest */
         CreateSourceRequest: {
@@ -783,11 +843,47 @@ export interface components {
              */
             enabled: boolean;
         };
+        /** Definition */
+        Definition: {
+            /**
+             * Id
+             * @enum {string}
+             */
+            id: "image_only" | "image_siglip_text" | "image_bm25";
+            /**
+             * Version
+             * @default 1
+             * @constant
+             */
+            version: 1;
+            /** Label */
+            label: string;
+            /** Retrievers */
+            retrievers: ("siglip_image" | "siglip_text" | "bm25")[];
+            /** Candidate Depth */
+            candidate_depth: number;
+            /** Rrf K */
+            rrf_k: number;
+            bm25?: components["schemas"]["Bm25Settings"] | null;
+        };
         /**
          * DuplicateReason
          * @enum {string}
          */
         DuplicateReason: "SOURCE_SEEN" | "SHA256" | "PHASH";
+        /** ExperimentView */
+        ExperimentView: {
+            /** Id */
+            id: string;
+            /** Snapshot Id */
+            snapshot_id: string;
+            /** Index Version */
+            index_version: string | null;
+            /** Recipes */
+            recipes: components["schemas"]["Definition"][];
+            /** Runs */
+            runs: components["schemas"]["RunView"][];
+        };
         /** FlipAdapterConfig */
         FlipAdapterConfig: {
             /**
@@ -1244,6 +1340,8 @@ export interface components {
             judgment_count: number;
             /** Unjudged Count */
             unjudged_count: number;
+            /** Recipes */
+            recipes: components["schemas"]["Definition"][];
         };
         /** Page */
         Page: {
@@ -1274,6 +1372,13 @@ export interface components {
             added_count: number;
             /** Index Version */
             index_version: string;
+            /** Batch Id */
+            batch_id: string;
+        };
+        /** PoolSearchEvalQueryRequest */
+        PoolSearchEvalQueryRequest: {
+            /** Recipe Ids */
+            recipe_ids: ("image_only" | "image_siglip_text" | "image_bm25")[];
         };
         /**
          * ProcessingStatus
@@ -1468,6 +1573,14 @@ export interface components {
         RunView: {
             /** Id */
             id: string;
+            /** Experiment Id */
+            experiment_id: string | null;
+            /**
+             * Recipe Id
+             * @enum {string}
+             */
+            recipe_id: "image_only" | "image_siglip_text" | "image_bm25";
+            recipe: components["schemas"]["Definition"];
             mode: components["schemas"]["RunMode"];
             status: components["schemas"]["RunStatus"];
             phase: components["schemas"]["RunPhase"] | null;
@@ -1943,6 +2056,8 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 mode?: "hybrid" | null;
+                /** @description Versioned retrieval recipe */
+                recipe?: ("image_only" | "image_siglip_text") | null;
             };
             header?: never;
             path?: never;
@@ -3915,7 +4030,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PoolSearchEvalQueryRequest"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -4224,6 +4343,66 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunView"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Rate limit exceeded */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitErrorResponse"];
+                };
+            };
+            /** @description Internal server error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiErrorResponse"];
+                };
+            };
+        };
+    };
+    create_experiment_search_evals_experiments_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSearchEvalExperimentRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExperimentView"];
                 };
             };
             /** @description Forbidden */

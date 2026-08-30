@@ -6,6 +6,7 @@ package entrypoint import-light lets Temporal safely load workflow definitions.
 
 from mimeme.search_eval.model import (
     Comparison,
+    ExperimentView,
     JudgmentSave,
     JudgmentWorkspace,
     Overview,
@@ -16,6 +17,7 @@ from mimeme.search_eval.model import (
 
 __all__ = [
     "Comparison",
+    "ExperimentView",
     "JudgmentSave",
     "JudgmentWorkspace",
     "Overview",
