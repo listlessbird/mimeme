@@ -136,6 +136,7 @@ class Load(_Frozen):
 
 class PreparedLoad(_Frozen):
     version: str
+    workspace: str
     paths: dict[str, str]
     encoder: Encoder
     hnsw_ef_search: int = Field(default=128, ge=1)
@@ -190,7 +191,11 @@ class RollbackCall(_Frozen):
     failed_version: str
 
 
+class ClearCall(_Frozen):
+    op: Literal["search.clear"] = "search.clear"
+
+
 ChildCall = Annotated[
-    StatusCall | QueryCall | LoadCall | SwitchCall | RollbackCall,
+    StatusCall | QueryCall | LoadCall | SwitchCall | RollbackCall | ClearCall,
     Field(discriminator="op"),
 ]

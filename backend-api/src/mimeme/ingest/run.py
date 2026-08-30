@@ -225,9 +225,7 @@ async def _resolve(
                 resolved = None
 
     if resolved is not None:
-        return await _duplicate(
-            env, input, resolved[0], resolved[1], context, timings=timings
-        )
+        return await _duplicate(env, input, resolved[0], resolved[1], context, timings=timings)
     return await _complete_new(
         env,
         input,
@@ -411,9 +409,7 @@ async def _annotate(env: Deps, image_id: int, media_key: str, context) -> infere
         raise InvalidImage(f"annotate failed: {exc}") from exc
 
 
-async def _embed_pending(
-    env: Deps, pending: list[_PendingEmbedding]
-) -> list[Result]:
+async def _embed_pending(env: Deps, pending: list[_PendingEmbedding]) -> list[Result]:
     if not pending:
         return []
     batch = inference.Batch(
@@ -434,7 +430,9 @@ async def _embed_pending(
     except (inference.Unavailable, inference.Timeout) as exc:
         raise Retryable(f"embed unavailable: {exc}") from exc
     except inference.Invalid as exc:
-        return [await _fail(env, item.input, InvalidImage(f"embed failed: {exc}")) for item in pending]
+        return [
+            await _fail(env, item.input, InvalidImage(f"embed failed: {exc}")) for item in pending
+        ]
 
     embedding_ms = round((perf_counter() - embedding_started) * 1000, 2)
     embeddings = {item.image_id: item for item in batch_result.results}

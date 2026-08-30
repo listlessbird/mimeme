@@ -136,6 +136,7 @@ class Activities:
     async def build(self, request: BuildPlan) -> Result:
         started = time.monotonic()
         log = structlog.get_logger()
+
         async def progress(phase: str, value: float) -> None:
             activity.heartbeat({"phase": phase, "progress": value, "version": request.version})
             try:

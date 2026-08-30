@@ -104,7 +104,9 @@ async def test_gateway_hydrates_and_verifies_generation_before_child_load(
 
     assert loaded.version == "v1"
     assert supervisor.calls[0]["op"] == "search.load"
-    assert list(tmp_path.iterdir()) == []
+    roots = list(tmp_path.iterdir())
+    assert len(roots) == 1
+    assert roots[0].is_dir()
 
 
 async def test_gateway_clear_restarts_search_without_a_serving_generation(tmp_path: Path) -> None:
@@ -118,6 +120,7 @@ async def test_gateway_clear_restarts_search_without_a_serving_generation(tmp_pa
 
     assert supervisor.restarts == 1
     assert status.serving_version is None
+    assert list(tmp_path.iterdir()) == []
 
 
 async def test_gateway_restarts_a_dead_child_and_returns_bounded_unavailability(

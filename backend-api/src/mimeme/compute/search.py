@@ -1,8 +1,8 @@
-"""Blocking ONNX and FAISS state owned only by the resident search child."""
-
 from __future__ import annotations
 
 import json
+import os
+import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -11,14 +11,18 @@ from typing import Literal, Protocol, cast
 import faiss  # type: ignore[import-untyped]
 import numpy as np
 import onnxruntime as ort
+import structlog
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
+from mimeme.compute import encoder_cache
+from mimeme.search import generation_workspace
 from mimeme.search.error import Failed, Incompatible, Loading, NotFound, Stale, Unavailable
 from mimeme.search.model import (
     Batch,
     Candidate,
     CandidateRequest,
     ChildCall,
+    ClearCall,
     Encoder,
     LoadCall,
     Loaded,
@@ -53,13 +57,10 @@ class _Metadata(BaseModel):
     kind: Literal["image", "text"] = "image"
 
 
-class _TextEncoder(Protocol):
-    source_model: str
-
-    def encode(self, text: str) -> np.ndarray: ...
+class _TextEncoder(encoder_cache.Session, Protocol): ...
 
 
-EncoderFactory = Callable[[Encoder], _TextEncoder]
+EncoderFactory = Callable[[Encoder], encoder_cache.Session]
 
 
 class _Index:
@@ -123,15 +124,15 @@ class _Generation:
         metadata: _Metadata,
         image: _Index,
         text: _Index | None,
-        encoder: _TextEncoder,
-        encoder_revision: str,
+        encoder: encoder_cache.Lease,
+        workspace: generation_workspace.Workspace,
     ) -> None:
         self.version = version
         self.metadata = metadata
         self.image = image
         self.text = text
         self.encoder = encoder
-        self.encoder_revision = encoder_revision
+        self.workspace = workspace
 
 
 class _Cursor:
@@ -155,7 +156,7 @@ class _Cursor:
 
 class Resident:
     def __init__(self, *, encoder_factory: EncoderFactory | None = None) -> None:
-        self._encoder_factory = encoder_factory or _load_encoder
+        self._encoders = encoder_cache.create(encoder_factory or _load_encoder)
         self._active: _Generation | None = None
         self._candidate: _Generation | None = None
         self._retained: _Generation | None = None
@@ -170,26 +171,51 @@ class Resident:
             retained_version=self._retained.version if self._retained else None,
             embed_model=active.metadata.embed_model if active else None,
             encoder_repo=active.metadata.encoder_repo if active else None,
-            encoder_revision=active.encoder_revision if active else None,
+            encoder_revision=(encoder_cache.identity(active.encoder).revision if active else None),
             encoder_variant=active.metadata.encoder_variant if active else None,
             detail=None if active else "no index generation is serving",
         )
 
     def load(self, call: PreparedLoad) -> Loaded:
-        generation = self._read_generation(call)
-        self._candidate = generation
-        return Loaded(
-            version=generation.version,
-            embed_model=generation.metadata.embed_model,
-            dimension=generation.metadata.dimension,
-            image_count=generation.image.size,
-            text_count=generation.text.size if generation.text else None,
-            faiss_version=generation.metadata.faiss_version,
-            onnxruntime_version=generation.metadata.onnxruntime_version,
-            encoder_revision=generation.encoder_revision,
+        started = time.perf_counter()
+        identity = encoder_cache.identify(call.encoder)
+        try:
+            generation = self._read_generation(call)
+            previous = self._candidate
+            self._candidate = generation
+            if previous is not None:
+                self._evict(previous, reason="candidate_replaced")
+            result = Loaded(
+                version=generation.version,
+                embed_model=generation.metadata.embed_model,
+                dimension=generation.metadata.dimension,
+                image_count=generation.image.size,
+                text_count=generation.text.size if generation.text else None,
+                faiss_version=generation.metadata.faiss_version,
+                onnxruntime_version=generation.metadata.onnxruntime_version,
+                encoder_revision=identity.revision,
+            )
+        except Exception as exc:
+            _emit_resource_event(
+                "search_generation_load",
+                started=started,
+                version=call.version,
+                identity=identity,
+                outcome="failed",
+                error_type=type(exc).__name__,
+            )
+            raise
+        _emit_resource_event(
+            "search_generation_load",
+            started=started,
+            version=call.version,
+            identity=identity,
+            outcome="loaded",
         )
+        return result
 
     def switch(self, version: str) -> Status:
+        started = time.perf_counter()
         candidate = self._candidate
         if candidate is None:
             raise Loading("no candidate generation is loaded")
@@ -197,23 +223,59 @@ class Resident:
             raise Stale(
                 f"loaded candidate {candidate.version!r} does not match requested {version!r}"
             )
+        previous_retained = self._retained
         self._retained = self._active
         self._active = candidate
         self._candidate = None
         self._cursors.clear()
-        return self.status()
+        if previous_retained is not None:
+            self._evict(previous_retained, reason="retained_replaced")
+        status = self.status()
+        _emit_resource_event(
+            "search_generation_switch",
+            started=started,
+            version=candidate.version,
+            identity=encoder_cache.identity(candidate.encoder),
+            outcome="serving",
+        )
+        return status
 
     def rollback(self, failed_version: str) -> Status:
+        started = time.perf_counter()
         active = self._active
         if active is None or active.version != failed_version:
             raise Stale(f"generation {failed_version!r} is not currently serving")
         retained = self._retained
         if retained is None:
             raise Unavailable("no retained generation is available for rollback")
+        previous_candidate = self._candidate
         self._candidate = active
         self._active = retained
         self._retained = None
         self._cursors.clear()
+        if previous_candidate is not None:
+            self._evict(previous_candidate, reason="rollback_candidate_replaced")
+        status = self.status()
+        _emit_resource_event(
+            "search_generation_rollback",
+            started=started,
+            version=retained.version,
+            identity=encoder_cache.identity(retained.encoder),
+            outcome="serving",
+        )
+        return status
+
+    def clear(self) -> Status:
+        generations = (self._candidate, self._active, self._retained)
+        self._candidate = None
+        self._active = None
+        self._retained = None
+        self._cursors.clear()
+        seen: set[int] = set()
+        for generation in generations:
+            if generation is not None and id(generation) not in seen:
+                seen.add(id(generation))
+                self._evict(generation, reason="clear")
         return self.status()
 
     def query(self, request: CandidateRequest) -> Batch:
@@ -286,7 +348,7 @@ class Resident:
         else:
             assert query.text is not None
             try:
-                vector = generation.encoder.encode(query.text)
+                vector = encoder_cache.encode(generation.encoder, query.text)
             except Exception as exc:
                 raise Failed(f"query encoding failed: {exc}") from exc
             image = generation.image.search(vector, k)
@@ -298,6 +360,22 @@ class Resident:
 
     def _read_generation(self, call: PreparedLoad) -> _Generation:
         paths = {name: Path(path) for name, path in call.paths.items()}
+        try:
+            workspace = generation_workspace.claim(Path(call.workspace), paths.values())
+        except Exception as exc:
+            raise Incompatible(f"invalid generation workspace: {exc}") from exc
+        try:
+            return self._read_claimed_generation(call, paths, workspace)
+        except Exception:
+            generation_workspace.release(workspace)
+            raise
+
+    def _read_claimed_generation(
+        self,
+        call: PreparedLoad,
+        paths: dict[str, Path],
+        workspace: generation_workspace.Workspace,
+    ) -> _Generation:
         required = {"index.faiss", "mapping.json", "metadata.json"}
         if not required.issubset(paths):
             raise Incompatible("image index generation is incomplete")
@@ -340,36 +418,55 @@ class Resident:
             )
 
         try:
-            encoder = self._encoder_factory(call.encoder)
+            encoder = encoder_cache.acquire(self._encoders, call.encoder)
         except Exception as exc:
             raise Failed(f"text encoder load failed: {exc}") from exc
-        if encoder.source_model != metadata.embed_model:
-            raise Incompatible(
-                f"encoder model {encoder.source_model!r} does not match index model "
-                f"{metadata.embed_model!r}"
-            )
-        if (
-            metadata.encoder_repo != call.encoder.repo
-            or metadata.encoder_revision != call.encoder.revision
-            or metadata.encoder_variant != call.encoder.variant
-        ):
-            raise Incompatible("encoder artifact identity does not match index metadata")
         try:
-            warmup = _normalize(encoder.encode("warmup"))
-        except Exception as exc:
-            raise Failed(f"text encoder warmup failed: {exc}") from exc
-        if warmup.shape[1] != metadata.dimension:
-            raise Incompatible(
-                f"encoder dimension {warmup.shape[1]} does not match index dimension "
-                f"{metadata.dimension}"
-            )
+            source_model = encoder_cache.source_model(encoder)
+            if source_model != metadata.embed_model:
+                raise Incompatible(
+                    f"encoder model {source_model!r} does not match index model "
+                    f"{metadata.embed_model!r}"
+                )
+            if (
+                metadata.encoder_repo != call.encoder.repo
+                or metadata.encoder_revision != call.encoder.revision
+                or metadata.encoder_variant != call.encoder.variant
+            ):
+                raise Incompatible("encoder artifact identity does not match index metadata")
+            try:
+                warmup = _normalize(encoder_cache.encode(encoder, "warmup"))
+            except Exception as exc:
+                raise Failed(f"text encoder warmup failed: {exc}") from exc
+            if warmup.shape[1] != metadata.dimension:
+                raise Incompatible(
+                    f"encoder dimension {warmup.shape[1]} does not match index dimension "
+                    f"{metadata.dimension}"
+                )
+        except Exception:
+            encoder_cache.release(encoder)
+            raise
         return _Generation(
             version=call.version,
             metadata=metadata,
             image=image,
             text=text,
             encoder=encoder,
-            encoder_revision=call.encoder.revision,
+            workspace=workspace,
+        )
+
+    def _evict(self, generation: _Generation, *, reason: str) -> None:
+        started = time.perf_counter()
+        identity = encoder_cache.identity(generation.encoder)
+        encoder_cache.release(generation.encoder)
+        generation_workspace.release(generation.workspace)
+        _emit_resource_event(
+            "search_generation_evicted",
+            started=started,
+            version=generation.version,
+            identity=identity,
+            outcome="evicted",
+            reason=reason,
         )
 
 
@@ -455,6 +552,34 @@ def _load_encoder(config: Encoder) -> _TextEncoder:
     return _OnnxEncoder(config)
 
 
+def _rss_bytes() -> int:
+    fields = Path("/proc/self/statm").read_text(encoding="ascii").split()
+    return int(fields[1]) * os.sysconf("SC_PAGE_SIZE")
+
+
+def _emit_resource_event(
+    event: str,
+    *,
+    started: float,
+    version: str,
+    identity: encoder_cache.Identity,
+    outcome: str,
+    **fields: object,
+) -> None:
+    structlog.get_logger().info(
+        event,
+        generation_version=version,
+        encoder_repo=identity.repo,
+        encoder_revision=identity.revision,
+        encoder_variant=identity.variant,
+        encoder_threads=identity.threads,
+        duration_ms=round((time.perf_counter() - started) * 1000, 2),
+        rss_bytes=_rss_bytes(),
+        outcome=outcome,
+        **fields,
+    )
+
+
 def dispatch(resident: Resident, raw: bytes) -> dict:
     call = _CHILD_CALL.validate_json(raw)
     if isinstance(call, StatusCall):
@@ -465,6 +590,8 @@ def dispatch(resident: Resident, raw: bytes) -> dict:
         return resident.switch(call.version).model_dump()
     if isinstance(call, RollbackCall):
         return resident.rollback(call.failed_version).model_dump()
+    if isinstance(call, ClearCall):
+        return resident.clear().model_dump()
     if isinstance(call, QueryCall):
         return resident.query(call.request).model_dump()
     raise Failed(f"unknown search operation: {call!r}")

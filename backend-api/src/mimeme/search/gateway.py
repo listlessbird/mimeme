@@ -2,16 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import uuid
 from pathlib import Path
 from typing import Protocol, TypeVar
 
 import anyio
+import anyio.to_thread
 from pydantic import BaseModel, TypeAdapter, ValidationError
 
 from mimeme import storage
 from mimeme.compute.model import ChildErr, ChildResponse, Role
 from mimeme.compute.supervisor import ChildDead
+from mimeme.search import generation_workspace
 from mimeme.search.error import (
     Error,
     Failed,
@@ -25,6 +26,7 @@ from mimeme.search.error import (
 from mimeme.search.model import (
     Batch,
     CandidateRequest,
+    ClearCall,
     File,
     Load,
     LoadCall,
@@ -66,6 +68,7 @@ class Gateway:
         self._serving_version: str | None = None
         self._retained_version: str | None = None
         self._recovery_lock = asyncio.Lock()
+        self._workspaces: set[Path] = set()
 
     async def query(self, request: CandidateRequest) -> Batch:
         return await self._call(QueryCall(request=request), Batch)
@@ -81,23 +84,29 @@ class Gateway:
         return loaded
 
     async def _load_generation(self, generation: Load, *, recover: bool = True) -> Loaded:
-        root = self._workspace_dir / f"search-{generation.version}-{uuid.uuid4().hex}"
-        await anyio.Path(root).mkdir(parents=True)
+        root = await anyio.to_thread.run_sync(
+            generation_workspace.prepare, self._workspace_dir, generation.version
+        )
+        self._workspaces.add(root)
         paths: dict[str, str] = {}
+        loaded = False
         try:
             for artifact in generation.files:
                 paths[artifact.name] = str(await self._download(root, artifact))
             call = PreparedLoad(
                 version=generation.version,
+                workspace=str(root),
                 paths=paths,
                 encoder=generation.encoder,
                 hnsw_ef_search=generation.hnsw_ef_search,
             )
-            return await self._call(LoadCall(load=call), Loaded, recover=recover)
+            result = await self._call(LoadCall(load=call), Loaded, recover=recover)
+            loaded = True
+            return result
         finally:
-            for artifact in generation.files:
-                await anyio.Path(root / artifact.name).unlink(missing_ok=True)
-            await anyio.Path(root).rmdir()
+            if not loaded:
+                await anyio.to_thread.run_sync(generation_workspace.discard, root)
+                self._workspaces.discard(root)
 
     async def switch(self, version: str) -> Status:
         status = await self._call(SwitchCall(version=version), Status)
@@ -111,7 +120,12 @@ class Gateway:
 
     async def clear(self) -> Status:
         async with self._recovery_lock:
+            try:
+                await self._call(ClearCall(), Status, recover=False)
+            except Error:
+                pass
             await self._supervisor.restart("search")
+            await self._discard_workspaces()
             self._generations.clear()
             self._serving_version = None
             self._retained_version = None
@@ -185,6 +199,7 @@ class Gateway:
                     return
 
                 await self._supervisor.restart("search")
+                await self._discard_workspaces()
                 retained = self._known_generation(self._retained_version)
                 serving = self._known_generation(self._serving_version)
                 if self._retained_version is not None and retained is None:
@@ -208,3 +223,9 @@ class Gateway:
 
     def _known_generation(self, version: str | None) -> Load | None:
         return self._generations.get(version) if version else None
+
+    async def _discard_workspaces(self) -> None:
+        workspaces = tuple(self._workspaces)
+        for root in workspaces:
+            await anyio.to_thread.run_sync(generation_workspace.discard, root)
+        self._workspaces.clear()

@@ -148,7 +148,11 @@ async def _abort(task: asyncio.Future) -> None:
 
 
 def _emit_completed(
-    log, activity_name: str, job_id: str, result: Result, started: float  # noqa: ANN001
+    log,
+    activity_name: str,
+    job_id: str,
+    result: Result,
+    started: float,  # noqa: ANN001
 ) -> None:
     emit_activity_event(
         log=log,

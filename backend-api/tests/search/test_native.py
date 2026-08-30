@@ -9,6 +9,7 @@ import pytest
 
 from mimeme import search
 from mimeme.compute.search import Resident
+from mimeme.search import generation_workspace
 from mimeme.search.model import PreparedLoad
 
 
@@ -25,9 +26,9 @@ def _generation(
     *,
     broken: bool = False,
     duplicate_mapping: bool = False,
+    revision: str = "rev-1",
 ) -> PreparedLoad:
-    root = tmp_path / version
-    root.mkdir()
+    root = generation_workspace.prepare(tmp_path, version)
     image_vectors = np.array([[1.0, 0.0], [0.8, 0.2], [0.0, 1.0]], dtype=np.float32)
     faiss.normalize_L2(image_vectors)
     image = faiss.IndexFlatIP(2)
@@ -53,16 +54,17 @@ def _generation(
         "faiss_version": "1.13.2",
         "onnxruntime_version": "1.27.0",
         "encoder_repo": "test/encoder",
-        "encoder_revision": "rev-1",
+        "encoder_revision": revision,
         "encoder_variant": "model.onnx",
     }
     (root / "metadata.json").write_text(json.dumps(metadata))
     (root / "text_metadata.json").write_text(json.dumps({**metadata, "kind": "text"}))
     return PreparedLoad(
         version=version,
+        workspace=str(root),
         paths={path.name: str(path) for path in root.iterdir()},
         encoder=search.Encoder(
-            repo="test/encoder", revision="rev-1", variant="model.onnx", threads=1
+            repo="test/encoder", revision=revision, variant="model.onnx", threads=1
         ),
     )
 
@@ -168,3 +170,148 @@ def test_hybrid_first_page_keeps_legacy_requested_k_fusion(tmp_path: Path) -> No
     )
 
     assert [hit.image_id for hit in first.candidates] == [1]
+
+
+def test_equivalent_generations_share_encoder_and_release_replaced_workspaces(
+    tmp_path: Path,
+) -> None:
+    constructions = 0
+
+    def factory(_: search.Encoder) -> _Encoder:
+        nonlocal constructions
+        constructions += 1
+        return _Encoder()
+
+    resident = Resident(encoder_factory=factory)
+    first = _generation(tmp_path, "v1")
+    second = _generation(tmp_path, "v2")
+    third = _generation(tmp_path, "v3")
+
+    resident.load(first)
+    resident.switch("v1")
+    resident.load(second)
+    resident.switch("v2")
+    resident.load(third)
+    resident.switch("v3")
+
+    assert constructions == 1
+    assert not Path(first.workspace).exists()
+    assert Path(second.workspace).exists()
+    assert Path(third.workspace).exists()
+    batch = resident.query(search.CandidateRequest(query=search.Query(text="cat"), count=1))
+    assert [candidate.image_id for candidate in batch.candidates] == [1]
+
+
+def test_candidate_replacement_rollback_and_clear_release_each_workspace(
+    tmp_path: Path,
+) -> None:
+    resident = _resident()
+    first = _generation(tmp_path, "v1")
+    replaced = _generation(tmp_path, "replaced")
+    second = _generation(tmp_path, "v2")
+    pending = _generation(tmp_path, "pending")
+
+    resident.load(first)
+    resident.load(replaced)
+    assert not Path(first.workspace).exists()
+    resident.switch("replaced")
+    resident.load(second)
+    resident.switch("v2")
+    resident.load(pending)
+    resident.rollback("v2")
+
+    assert not Path(pending.workspace).exists()
+    assert resident.status().serving_version == "replaced"
+    resident.clear()
+    assert not Path(replaced.workspace).exists()
+    assert not Path(second.workspace).exists()
+    assert resident.status().ready is False
+
+
+def test_failed_load_releases_workspace_and_encoder_reference(tmp_path: Path) -> None:
+    constructions = 0
+
+    def factory(_: search.Encoder) -> _Encoder:
+        nonlocal constructions
+        constructions += 1
+        return _Encoder()
+
+    resident = Resident(encoder_factory=factory)
+    broken = _generation(tmp_path, "v1", broken=True)
+    with pytest.raises(search.Incompatible):
+        resident.load(broken)
+    assert not Path(broken.workspace).exists()
+
+    valid = _generation(tmp_path, "v1")
+    resident.load(valid)
+    assert constructions == 1
+
+
+def test_failed_encoder_construction_can_be_retried(tmp_path: Path) -> None:
+    attempts = 0
+
+    def factory(_: search.Encoder) -> _Encoder:
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise RuntimeError("construction failed")
+        return _Encoder()
+
+    resident = Resident(encoder_factory=factory)
+    failed = _generation(tmp_path, "v1")
+    with pytest.raises(search.Failed, match="text encoder load failed"):
+        resident.load(failed)
+    assert not Path(failed.workspace).exists()
+
+    resident.load(_generation(tmp_path, "v1"))
+    assert attempts == 2
+
+
+def test_distinct_encoder_identity_constructs_a_new_session(tmp_path: Path) -> None:
+    constructions = 0
+
+    def factory(_: search.Encoder) -> _Encoder:
+        nonlocal constructions
+        constructions += 1
+        return _Encoder()
+
+    resident = Resident(encoder_factory=factory)
+    resident.load(_generation(tmp_path, "v1"))
+    resident.switch("v1")
+    resident.load(_generation(tmp_path, "v2", revision="rev-2"))
+
+    assert constructions == 2
+
+
+def test_lifecycle_events_have_numeric_resources_and_no_query_text(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events: list[tuple[str, dict[str, object]]] = []
+
+    class Logger:
+        def info(self, event: str, **fields: object) -> None:
+            events.append((event, fields))
+
+    monkeypatch.setattr("mimeme.compute.search.structlog.get_logger", lambda: Logger())
+    resident = _resident()
+    resident.load(_generation(tmp_path, "v1"))
+    resident.switch("v1")
+    resident.load(_generation(tmp_path, "v2"))
+    resident.switch("v2")
+    resident.rollback("v2")
+    resident.clear()
+
+    assert {event for event, _ in events} >= {
+        "search_generation_load",
+        "search_generation_switch",
+        "search_generation_rollback",
+        "search_generation_evicted",
+    }
+    for _, fields in events:
+        assert isinstance(fields["duration_ms"], (int, float))
+        assert fields["duration_ms"] >= 0
+        assert isinstance(fields["rss_bytes"], int)
+        assert fields["rss_bytes"] >= 0
+        assert fields["generation_version"]
+        assert fields["encoder_revision"]
+        assert "query" not in fields
