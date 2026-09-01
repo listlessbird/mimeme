@@ -77,6 +77,25 @@ class DocumentFile(_Frozen):
     projection_version: Literal[1] = 1
 
 
+class Bm25File(_Frozen):
+    name: Literal["bm25.sqlite3"] = "bm25.sqlite3"
+    key: str = Field(min_length=1)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    length: int = Field(gt=0)
+    count: int = Field(ge=0)
+    schema_version: Literal[1] = 1
+    projection_version: Literal[1] = 1
+    tokenizer: Literal["porter unicode61"] = "porter unicode61"
+    weights: tuple[float, float, float, float, float, float, float]
+    sqlite_version: str = Field(pattern=r"^\d+\.\d+\.\d+$")
+
+    @model_validator(mode="after")
+    def _supported_weights(self) -> Self:
+        if self.weights != (4, 4, 4, 2, 2, 2, 1):
+            raise ValueError("BM25 field weights are incompatible")
+        return self
+
+
 class Build(_Frozen):
     job_id: str = Field(min_length=1)
     version: str = Field(min_length=1)
@@ -88,6 +107,7 @@ class Build(_Frozen):
     encoder: Encoder
     embeddings: list[Embedding]
     documents: DocumentFile | None = None
+    bm25: Bm25File | None = None
     planned_reads: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
@@ -129,6 +149,7 @@ class Manifest(_Frozen):
     text_count: int | None = Field(default=None, ge=0)
     files: list[File]
     documents: DocumentFile | None = None
+    bm25: Bm25File | None = None
     complete_key: str = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -156,6 +177,18 @@ class Manifest(_Frozen):
             raise ValueError("document artifact must use its generation prefix")
         if self.documents is not None and self.documents.count != self.image_count:
             raise ValueError("document count must match image count")
+        if self.bm25 is not None and self.bm25.key != f"{prefix}{self.bm25.name}":
+            raise ValueError("BM25 artifact must use its generation prefix")
+        if self.bm25 is not None and self.bm25.count != self.image_count:
+            raise ValueError("BM25 document count must match image count")
+        if self.bm25 is not None and self.documents is None:
+            raise ValueError("BM25 requires the canonical document artifact")
+        if (
+            self.bm25 is not None
+            and self.documents is not None
+            and self.bm25.projection_version != self.documents.projection_version
+        ):
+            raise ValueError("BM25 and document projection versions must match")
         return self
 
 
@@ -196,6 +229,7 @@ class BuildPlan(_Frozen):
     encoder: Encoder
     embeddings_key: str = Field(min_length=1)
     documents: DocumentFile | None = None
+    bm25: Bm25File | None = None
     num_embeddings: int = Field(ge=0)
     planned_reads: int = Field(default=0, ge=0)
 

@@ -111,6 +111,55 @@ def test_manifest_v2_requires_matching_document_artifact() -> None:
         )
 
 
+def test_manifest_bm25_matches_documents_and_generation() -> None:
+    files = [
+        index.File(name="index.faiss", key="indexes/v2/index.faiss", sha256="0" * 64, length=4),
+        index.File(name="mapping.json", key="indexes/v2/mapping.json", sha256="1" * 64, length=4),
+        index.File(name="metadata.json", key="indexes/v2/metadata.json", sha256="2" * 64, length=4),
+    ]
+    document = index.DocumentFile(
+        key="indexes/v2/documents.jsonl.zst",
+        sha256="3" * 64,
+        content_sha256="4" * 64,
+        length=10,
+        count=1,
+    )
+    bm25 = index.Bm25File(
+        key="indexes/v2/bm25.sqlite3",
+        sha256="5" * 64,
+        length=4096,
+        count=1,
+        weights=(4, 4, 4, 2, 2, 2, 1),
+        sqlite_version="3.40.1",
+    )
+    values = {
+        "format_version": 2,
+        "version": "v2",
+        "target_generation": 2,
+        "model": "test/embed",
+        "index_type": "flat",
+        "encoder": index.Encoder(repo="test/encoder", revision="rev", variant="model.onnx"),
+        "dimension": 2,
+        "image_count": 1,
+        "files": files,
+        "documents": document,
+        "bm25": bm25,
+        "complete_key": "indexes/v2/complete.json",
+    }
+
+    manifest = index.Manifest.model_validate(values)
+    assert manifest.bm25 == bm25
+
+    with pytest.raises(ValidationError, match="BM25 document count must match image count"):
+        index.Manifest.model_validate({**values, "bm25": bm25.model_copy(update={"count": 2})})
+    with pytest.raises(ValidationError, match="BM25 artifact must use its generation prefix"):
+        index.Manifest.model_validate(
+            {**values, "bm25": bm25.model_copy(update={"key": "indexes/v3/bm25.sqlite3"})}
+        )
+    with pytest.raises(ValidationError, match="BM25 field weights are incompatible"):
+        index.Bm25File.model_validate({**bm25.model_dump(), "weights": [1] * 7})
+
+
 def test_state_machine_rejects_invalid_activation_transition() -> None:
     state = index.State(job_id="rebuild-1")
 

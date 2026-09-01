@@ -106,6 +106,7 @@ class Status(_Frozen):
     encoder_repo: str | None = None
     encoder_revision: str | None = None
     encoder_variant: str | None = None
+    bm25_available: bool = False
     detail: str | None = None
 
 
@@ -129,9 +130,29 @@ class Encoder(_Frozen):
     threads: int = Field(ge=1)
 
 
+class Bm25File(_Frozen):
+    name: Literal["bm25.sqlite3"] = "bm25.sqlite3"
+    key: str = Field(min_length=1)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    length: int = Field(gt=0)
+    count: int = Field(ge=0)
+    schema_version: Literal[1] = 1
+    projection_version: Literal[1] = 1
+    tokenizer: Literal["porter unicode61"] = "porter unicode61"
+    weights: tuple[float, float, float, float, float, float, float]
+    sqlite_version: str = Field(pattern=r"^\d+\.\d+\.\d+$")
+
+    @model_validator(mode="after")
+    def _supported_weights(self) -> Self:
+        if self.weights != (4, 4, 4, 2, 2, 2, 1):
+            raise ValueError("BM25 field weights are incompatible")
+        return self
+
+
 class Load(_Frozen):
     version: str = Field(min_length=1)
     files: list[File]
+    bm25: Bm25File | None = None
     encoder: Encoder
     hnsw_ef_search: int = Field(default=128, ge=1)
 
@@ -147,6 +168,9 @@ class Load(_Frozen):
         present = text.intersection(names)
         if present and present != text:
             raise ValueError("text index generation is incomplete")
+        prefix = f"indexes/{self.version}/"
+        if self.bm25 is not None and self.bm25.key != f"{prefix}{self.bm25.name}":
+            raise ValueError("BM25 artifact must use its generation prefix")
         return self
 
 
@@ -154,8 +178,17 @@ class PreparedLoad(_Frozen):
     version: str
     workspace: str
     paths: dict[str, str]
+    bm25: Bm25File | None = None
     encoder: Encoder
     hnsw_ef_search: int = Field(default=128, ge=1)
+
+    @model_validator(mode="after")
+    def _complete_workspace(self) -> Self:
+        if self.bm25 is not None and self.bm25.name not in self.paths:
+            raise ValueError("BM25 generation artifact is missing")
+        if self.bm25 is None and "bm25.sqlite3" in self.paths:
+            raise ValueError("BM25 workspace path requires a generation descriptor")
+        return self
 
 
 class Loaded(_Frozen):
@@ -164,6 +197,7 @@ class Loaded(_Frozen):
     dimension: int = Field(gt=0)
     image_count: int = Field(ge=0)
     text_count: int | None = Field(default=None, ge=0)
+    bm25_count: int | None = Field(default=None, ge=0)
     faiss_version: str
     onnxruntime_version: str
     encoder_revision: str

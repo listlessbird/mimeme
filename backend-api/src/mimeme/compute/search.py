@@ -15,7 +15,8 @@ import structlog
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from mimeme.compute import encoder_cache
-from mimeme.search import generation_workspace
+from mimeme.index import bm25
+from mimeme.search import fusion, generation_workspace, recipe, retriever
 from mimeme.search.error import Failed, Incompatible, Loading, NotFound, Stale, Unavailable
 from mimeme.search.model import (
     Batch,
@@ -124,6 +125,7 @@ class _Generation:
         metadata: _Metadata,
         image: _Index,
         text: _Index | None,
+        lexical: bm25.Index | None,
         encoder: encoder_cache.Lease,
         workspace: generation_workspace.Workspace,
     ) -> None:
@@ -131,6 +133,7 @@ class _Generation:
         self.metadata = metadata
         self.image = image
         self.text = text
+        self.lexical = lexical
         self.encoder = encoder
         self.workspace = workspace
 
@@ -143,15 +146,25 @@ class _Cursor:
         query: str,
         candidates: list[Candidate],
         offset: int,
-        rank_k: int,
-        max_rank: int,
+        definition: recipe.Definition,
     ) -> None:
         self.version = version
         self.query = query
         self.candidates = candidates
         self.offset = offset
-        self.rank_k = rank_k
-        self.max_rank = max_rank
+        self.definition = definition
+
+
+class _VectorRetriever:
+    def __init__(self, retriever_id: recipe.RetrieverId, index: _Index) -> None:
+        self.id = retriever_id
+        self._index = index
+
+    def search(self, context: np.ndarray, *, depth: int) -> list[retriever.Scored]:
+        return [
+            retriever.Scored(image_id=image_id, score=score)
+            for image_id, score in self._index.search(context, depth)
+        ]
 
 
 class Resident:
@@ -173,6 +186,7 @@ class Resident:
             encoder_repo=active.metadata.encoder_repo if active else None,
             encoder_revision=(encoder_cache.identity(active.encoder).revision if active else None),
             encoder_variant=active.metadata.encoder_variant if active else None,
+            bm25_available=active.lexical is not None if active else False,
             detail=None if active else "no index generation is serving",
         )
 
@@ -191,6 +205,7 @@ class Resident:
                 dimension=generation.metadata.dimension,
                 image_count=generation.image.size,
                 text_count=generation.text.size if generation.text else None,
+                bm25_count=call.bm25.count if call.bm25 is not None else None,
                 faiss_version=generation.metadata.faiss_version,
                 onnxruntime_version=generation.metadata.onnxruntime_version,
                 encoder_revision=identity.revision,
@@ -284,10 +299,14 @@ class Resident:
             raise Unavailable("search index not loaded")
         fingerprint = request.query.model_dump_json()
         if request.cursor is None:
-            rank_k = min(request.count, self._max_rank(active, request))
-            candidates = self._rank(active, request, rank_k)
+            available: set[recipe.RetrieverId] = {"siglip_image"}
+            if active.text is not None:
+                available.add("siglip_text")
+            if active.lexical is not None:
+                available.add("bm25")
+            definition = recipe.resolve(request.query.recipe_id, available=available)
+            candidates = self._rank(active, request, definition)
             offset = 0
-            max_rank = self._max_rank(active, request)
         else:
             state = self._cursors.pop(request.cursor, None)
             if state is None:
@@ -296,19 +315,10 @@ class Resident:
                 raise Stale("search cursor does not match the active query")
             candidates = state.candidates
             offset = state.offset
-            rank_k = state.rank_k
-            max_rank = state.max_rank
-
-        if offset + request.count > len(candidates) and rank_k < max_rank:
-            rank_k = min(max_rank, rank_k + request.count)
-            expanded = self._rank(active, request, rank_k)
-            emitted_ids = {candidate.image_id for candidate in candidates[:offset]}
-            candidates = candidates[:offset] + [
-                candidate for candidate in expanded if candidate.image_id not in emitted_ids
-            ]
+            definition = state.definition
 
         end = min(len(candidates), offset + request.count)
-        exhausted = end >= len(candidates) and rank_k >= max_rank
+        exhausted = end >= len(candidates)
         cursor: str | None = None
         if not exhausted:
             cursor = uuid.uuid4().hex
@@ -319,8 +329,7 @@ class Resident:
                 query=fingerprint,
                 candidates=candidates,
                 offset=end,
-                rank_k=rank_k,
-                max_rank=max_rank,
+                definition=definition,
             )
         return Batch(
             candidates=candidates[offset:end],
@@ -329,12 +338,12 @@ class Resident:
             version=active.version,
         )
 
-    def _max_rank(self, generation: _Generation, request: CandidateRequest) -> int:
-        if request.query.mode == "hybrid" and generation.text is not None:
-            return max(generation.image.size, generation.text.size)
-        return generation.image.size
-
-    def _rank(self, generation: _Generation, request: CandidateRequest, k: int) -> list[Candidate]:
+    def _rank(
+        self,
+        generation: _Generation,
+        request: CandidateRequest,
+        definition: recipe.Definition,
+    ) -> list[Candidate]:
         query = request.query
         if query.similar_image_id is not None:
             vector = generation.image.vector(query.similar_image_id)
@@ -342,21 +351,53 @@ class Resident:
                 raise NotFound(f"image {query.similar_image_id} is not in the active index")
             ranked = [
                 pair
-                for pair in generation.image.search(vector, k + 1)
+                for pair in generation.image.search(vector, definition.candidate_depth + 1)
                 if pair[0] != query.similar_image_id
-            ][:k]
+            ][: definition.candidate_depth]
+            return [Candidate(image_id=image_id, score=score) for image_id, score in ranked]
         else:
             assert query.text is not None
             try:
                 vector = encoder_cache.encode(generation.encoder, query.text)
             except Exception as exc:
                 raise Failed(f"query encoding failed: {exc}") from exc
-            image = generation.image.search(vector, k)
-            if query.mode == "hybrid" and generation.text is not None:
-                ranked = _rrf(image, generation.text.search(vector, k))
-            else:
-                ranked = image
-        return [Candidate(image_id=image_id, score=score) for image_id, score in ranked]
+            indexes = {
+                "siglip_image": generation.image,
+                "siglip_text": generation.text,
+            }
+            rankings: list[list[retriever.Scored]] = []
+            for retriever_id in definition.retrievers:
+                if retriever_id == "bm25":
+                    assert generation.lexical is not None
+                    rankings.append(
+                        [
+                            retriever.Scored(image_id=image_id, score=-float(rank))
+                            for rank, image_id in enumerate(
+                                bm25.query(
+                                    generation.lexical,
+                                    query.text,
+                                    depth=definition.candidate_depth,
+                                ),
+                                start=1,
+                            )
+                        ]
+                    )
+                    continue
+                index = indexes[retriever_id]
+                assert index is not None
+                rankings.append(
+                    _VectorRetriever(retriever_id, index).search(
+                        vector,
+                        depth=definition.candidate_depth,
+                    )
+                )
+            if len(rankings) == 1:
+                return [Candidate(image_id=item.image_id, score=item.score) for item in rankings[0]]
+            fused = fusion.rrf(
+                [[item.image_id for item in ranking] for ranking in rankings],
+                k=definition.rrf_k,
+            )
+            return [Candidate(image_id=item.image_id, score=item.score) for item in fused]
 
     def _read_generation(self, call: PreparedLoad) -> _Generation:
         paths = {name: Path(path) for name, path in call.paths.items()}
@@ -417,9 +458,25 @@ class Resident:
                 hnsw_ef_search=call.hnsw_ef_search,
             )
 
+        lexical = None
+        if call.bm25 is not None:
+            path = paths.get(call.bm25.name)
+            if path is None:
+                raise Incompatible("BM25 generation artifact is missing")
+            try:
+                lexical = bm25.open(
+                    path,
+                    count=call.bm25.count,
+                    sqlite_version=call.bm25.sqlite_version,
+                )
+            except Exception as exc:
+                raise Incompatible(f"BM25 generation is invalid: {exc}") from exc
+
         try:
             encoder = encoder_cache.acquire(self._encoders, call.encoder)
         except Exception as exc:
+            if lexical is not None:
+                bm25.close(lexical)
             raise Failed(f"text encoder load failed: {exc}") from exc
         try:
             source_model = encoder_cache.source_model(encoder)
@@ -444,6 +501,8 @@ class Resident:
                     f"{metadata.dimension}"
                 )
         except Exception:
+            if lexical is not None:
+                bm25.close(lexical)
             encoder_cache.release(encoder)
             raise
         return _Generation(
@@ -451,6 +510,7 @@ class Resident:
             metadata=metadata,
             image=image,
             text=text,
+            lexical=lexical,
             encoder=encoder,
             workspace=workspace,
         )
@@ -458,6 +518,8 @@ class Resident:
     def _evict(self, generation: _Generation, *, reason: str) -> None:
         started = time.perf_counter()
         identity = encoder_cache.identity(generation.encoder)
+        if generation.lexical is not None:
+            bm25.close(generation.lexical)
         encoder_cache.release(generation.encoder)
         generation_workspace.release(generation.workspace)
         _emit_resource_event(
@@ -498,17 +560,6 @@ def _normalize(vector: np.ndarray) -> np.ndarray:
     if not np.all(np.isfinite(query)) or np.any(norm == 0):
         raise Incompatible("query encoder returned an invalid vector")
     return query / norm
-
-
-def _rrf(
-    image: list[tuple[int, float]], text: list[tuple[int, float]], *, k: int = 60
-) -> list[tuple[int, float]]:
-    scores: dict[int, float] = {}
-    for rank, (image_id, _) in enumerate(image, start=1):
-        scores[image_id] = scores.get(image_id, 0.0) + 1 / (rank + k)
-    for rank, (image_id, _) in enumerate(text, start=1):
-        scores[image_id] = scores.get(image_id, 0.0) + 1 / (rank + k)
-    return sorted(scores.items(), key=lambda pair: pair[1], reverse=True)
 
 
 class _OnnxEncoder:

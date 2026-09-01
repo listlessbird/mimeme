@@ -6,6 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from mimeme import search
+from mimeme.search.model import PreparedLoad
 
 
 def test_query_accepts_text_and_similar_searches() -> None:
@@ -51,4 +52,51 @@ def test_batch_rejects_duplicate_candidate_ids() -> None:
             ],
             exhausted=True,
             version="v1",
+        )
+
+
+def test_load_requires_bm25_to_use_its_generation_prefix() -> None:
+    files = [
+        search.File(name="index.faiss", key="indexes/v2/index.faiss", sha256="0" * 64),
+        search.File(name="mapping.json", key="indexes/v2/mapping.json", sha256="1" * 64),
+        search.File(name="metadata.json", key="indexes/v2/metadata.json", sha256="2" * 64),
+    ]
+    encoder = search.Encoder(repo="test/encoder", revision="rev", variant="model.onnx", threads=1)
+    bm25 = search.Bm25File(
+        key="indexes/other/bm25.sqlite3",
+        sha256="3" * 64,
+        length=4096,
+        count=1,
+        weights=(4, 4, 4, 2, 2, 2, 1),
+        sqlite_version="3.40.1",
+    )
+
+    with pytest.raises(ValidationError, match="BM25 artifact must use its generation prefix"):
+        search.Load(version="v2", files=files, bm25=bm25, encoder=encoder)
+
+
+def test_prepared_load_requires_matching_bm25_descriptor_and_path() -> None:
+    encoder = search.Encoder(repo="test/encoder", revision="rev", variant="model.onnx", threads=1)
+    paths = {
+        "index.faiss": "/tmp/index.faiss",
+        "mapping.json": "/tmp/mapping.json",
+        "metadata.json": "/tmp/metadata.json",
+    }
+    bm25 = search.Bm25File(
+        key="indexes/v2/bm25.sqlite3",
+        sha256="3" * 64,
+        length=4096,
+        count=1,
+        weights=(4, 4, 4, 2, 2, 2, 1),
+        sqlite_version="3.40.1",
+    )
+
+    with pytest.raises(ValidationError, match="BM25 generation artifact is missing"):
+        PreparedLoad(version="v2", workspace="/tmp/v2", paths=paths, bm25=bm25, encoder=encoder)
+    with pytest.raises(ValidationError, match="requires a generation descriptor"):
+        PreparedLoad(
+            version="v2",
+            workspace="/tmp/v2",
+            paths={**paths, "bm25.sqlite3": "/tmp/bm25.sqlite3"},
+            encoder=encoder,
         )

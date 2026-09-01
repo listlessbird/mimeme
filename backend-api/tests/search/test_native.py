@@ -9,7 +9,9 @@ import pytest
 
 from mimeme import search
 from mimeme.compute.search import Resident
+from mimeme.index import bm25
 from mimeme.search import generation_workspace
+from mimeme.search.document import SearchDocument
 from mimeme.search.model import PreparedLoad
 
 
@@ -27,6 +29,7 @@ def _generation(
     broken: bool = False,
     duplicate_mapping: bool = False,
     revision: str = "rev-1",
+    corrupt_bm25: bool = False,
 ) -> PreparedLoad:
     root = generation_workspace.prepare(tmp_path, version)
     image_vectors = np.array([[1.0, 0.0], [0.8, 0.2], [0.0, 1.0]], dtype=np.float32)
@@ -59,10 +62,29 @@ def _generation(
     }
     (root / "metadata.json").write_text(json.dumps(metadata))
     (root / "text_metadata.json").write_text(json.dumps({**metadata, "kind": "text"}))
+    bm25_built = bm25.build(
+        root / "bm25.sqlite3",
+        [
+            SearchDocument(image_id=1, titles=("cat",)),
+            SearchDocument(image_id=2, titles=("ordinary",)),
+            SearchDocument(image_id=3, ocr_texts=("quokka exact phrase",)),
+        ],
+    )
+    if corrupt_bm25:
+        (root / "bm25.sqlite3").write_bytes(b"not sqlite")
     return PreparedLoad(
         version=version,
         workspace=str(root),
         paths={path.name: str(path) for path in root.iterdir()},
+        bm25=search.Bm25File(
+            key=f"indexes/{version}/bm25.sqlite3",
+            sha256=bm25_built.sha256,
+            length=bm25_built.length,
+            count=bm25_built.count,
+            tokenizer=bm25.TOKENIZER,
+            weights=bm25.WEIGHTS,
+            sqlite_version=bm25_built.sqlite_version,
+        ),
         encoder=search.Encoder(
             repo="test/encoder", revision=revision, variant="model.onnx", threads=1
         ),
@@ -101,6 +123,18 @@ def test_failed_load_keeps_the_active_generation_serving(tmp_path: Path) -> None
 
     assert resident.status().serving_version == "v1"
     assert resident.status().candidate_version is None
+
+
+def test_corrupt_bm25_keeps_the_active_generation_serving(tmp_path: Path) -> None:
+    resident = _resident()
+    resident.load(_generation(tmp_path, "v1"))
+    resident.switch("v1")
+
+    with pytest.raises(search.Incompatible, match="BM25 generation is invalid"):
+        resident.load(_generation(tmp_path, "v2", corrupt_bm25=True))
+
+    assert resident.status().serving_version == "v1"
+    assert resident.status().bm25_available is True
 
 
 def test_load_rejects_duplicate_stable_image_ids(tmp_path: Path) -> None:
@@ -157,7 +191,7 @@ def test_cursor_returns_the_next_stable_candidate_batch(tmp_path: Path) -> None:
     assert second.exhausted is True
 
 
-def test_hybrid_first_page_keeps_legacy_requested_k_fusion(tmp_path: Path) -> None:
+def test_hybrid_first_page_uses_fixed_recipe_depth(tmp_path: Path) -> None:
     resident = _resident()
     resident.load(_generation(tmp_path, "v1"))
     resident.switch("v1")
@@ -169,7 +203,53 @@ def test_hybrid_first_page_keeps_legacy_requested_k_fusion(tmp_path: Path) -> No
         )
     )
 
-    assert [hit.image_id for hit in first.candidates] == [1]
+    assert [hit.image_id for hit in first.candidates] == [2]
+
+
+def test_bm25_recipe_promotes_an_exact_ocr_match(tmp_path: Path) -> None:
+    resident = _resident()
+    resident.load(_generation(tmp_path, "v1"))
+    resident.switch("v1")
+
+    image = resident.query(
+        search.CandidateRequest(
+            query=search.Query(text="quokka", recipe_id="image_only"),
+            count=2,
+        )
+    )
+    result = resident.query(
+        search.CandidateRequest(
+            query=search.Query(text="quokka", recipe_id="image_bm25"),
+            count=10,
+        )
+    )
+
+    assert 3 not in [candidate.image_id for candidate in image.candidates]
+    assert result.candidates[0].image_id == 3
+
+
+def test_recipe_fails_when_its_text_retriever_is_unavailable(tmp_path: Path) -> None:
+    resident = _resident()
+    generation = _generation(tmp_path, "v1")
+    generation = generation.model_copy(
+        update={
+            "paths": {
+                name: path
+                for name, path in generation.paths.items()
+                if not name.startswith("text_")
+            }
+        }
+    )
+    resident.load(generation)
+    resident.switch("v1")
+
+    with pytest.raises(search.recipe.UnavailableRetriever, match="siglip_text"):
+        resident.query(
+            search.CandidateRequest(
+                query=search.Query(text="cat", recipe_id="image_siglip_text"),
+                count=10,
+            )
+        )
 
 
 def test_equivalent_generations_share_encoder_and_release_replaced_workspaces(
@@ -198,6 +278,8 @@ def test_equivalent_generations_share_encoder_and_release_replaced_workspaces(
     assert not Path(first.workspace).exists()
     assert Path(second.workspace).exists()
     assert Path(third.workspace).exists()
+    assert (Path(second.workspace) / "bm25.sqlite3").exists()
+    assert (Path(third.workspace) / "bm25.sqlite3").exists()
     batch = resident.query(search.CandidateRequest(query=search.Query(text="cat"), count=1))
     assert [candidate.image_id for candidate in batch.candidates] == [1]
 

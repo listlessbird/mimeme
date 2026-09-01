@@ -8,7 +8,7 @@ from tests.support.storage import Memory
 from mimeme import index, storage
 from mimeme.compute.index import build
 from mimeme.compute.model import ChildOk
-from mimeme.index import documents, pack
+from mimeme.index import bm25, documents, pack
 from mimeme.index.gateway import Gateway
 from mimeme.search.document import SearchDocument
 
@@ -51,6 +51,22 @@ async def test_gateway_owns_transfer_and_publishes_completeness_last(tmp_path) -
         version="v2-g3-rebuild-1",
         documents=[SearchDocument(image_id=1)],
     )
+    bm25_path = tmp_path / "bm25.sqlite3"
+    built_bm25 = bm25.build(bm25_path, [SearchDocument(image_id=1)])
+    bm25_file = index.Bm25File(
+        key="indexes/v2-g3-rebuild-1/bm25.sqlite3",
+        sha256=built_bm25.sha256,
+        length=built_bm25.length,
+        count=built_bm25.count,
+        weights=bm25.WEIGHTS,
+        sqlite_version=built_bm25.sqlite_version,
+    )
+    await artifacts.put_bytes(
+        storage.Object(bm25_file.key),
+        bm25_path.read_bytes(),
+        content_type="application/vnd.sqlite3",
+    )
+    bm25_path.unlink()
     artifacts.writes.clear()
     gateway = Gateway(_Calls(), artifacts=artifacts, workspace_dir=tmp_path)
 
@@ -65,12 +81,14 @@ async def test_gateway_owns_transfer_and_publishes_completeness_last(tmp_path) -
             encoder=index.Encoder(repo="test/encoder", revision="rev", variant="model.onnx"),
             embeddings=[index.Embedding(image_id=1, image_key="embeddings/1.npy")],
             documents=document_file,
+            bm25=bm25_file,
         )
     )
 
     assert result.manifest is not None
     assert result.manifest.format_version == 2
     assert result.manifest.documents == document_file
+    assert result.manifest.bm25 == bm25_file
     assert artifacts.writes[-1] == result.manifest.complete_key
     assert await artifacts.stat(storage.Object(result.manifest.complete_key)) is not None
     assert not list(tmp_path.iterdir())

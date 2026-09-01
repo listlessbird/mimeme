@@ -1,5 +1,3 @@
-"""Closed, versioned retrieval recipes and legacy name resolution."""
-
 from __future__ import annotations
 
 from typing import Literal
@@ -8,9 +6,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from mimeme.search.error import Invalid, Unavailable
 
-RecipeId = Literal["image_only", "image_siglip_text"]
-RecipeName = Literal["image", "hybrid", "image_only", "image_siglip_text"]
-RetrieverId = Literal["siglip_image", "siglip_text"]
+RecipeId = Literal["image_only", "image_siglip_text", "image_bm25"]
+RecipeName = Literal["image", "hybrid", "image_only", "image_siglip_text", "image_bm25"]
+RetrieverId = Literal["siglip_image", "siglip_text", "bm25"]
 
 
 class UnknownRecipe(Invalid):
@@ -19,6 +17,15 @@ class UnknownRecipe(Invalid):
 
 class UnavailableRetriever(Unavailable):
     pass
+
+
+class Bm25Settings(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    schema_version: Literal[1] = 1
+    projection_version: Literal[1] = 1
+    tokenizer: Literal["porter unicode61"] = "porter unicode61"
+    weights: tuple[float, float, float, float, float, float, float]
 
 
 class Definition(BaseModel):
@@ -30,13 +37,15 @@ class Definition(BaseModel):
     retrievers: tuple[RetrieverId, ...] = Field(min_length=1)
     candidate_depth: int = Field(ge=1, le=1000)
     rrf_k: int = Field(ge=1)
+    bm25: Bm25Settings | None = None
 
 
-_ALIASES: dict[RecipeName, RecipeId] = {
+_ALIASES: dict[str, RecipeId] = {
     "image": "image_only",
     "hybrid": "image_siglip_text",
     "image_only": "image_only",
     "image_siglip_text": "image_siglip_text",
+    "image_bm25": "image_bm25",
 }
 
 _DEFINITIONS: dict[RecipeId, Definition] = {
@@ -54,12 +63,20 @@ _DEFINITIONS: dict[RecipeId, Definition] = {
         candidate_depth=1000,
         rrf_k=60,
     ),
+    "image_bm25": Definition(
+        id="image_bm25",
+        label="Image and BM25",
+        retrievers=("siglip_image", "bm25"),
+        candidate_depth=1000,
+        rrf_k=60,
+        bm25=Bm25Settings(weights=(4, 4, 4, 2, 2, 2, 1)),
+    ),
 }
 
 
 def id_of(name: str) -> RecipeId:
     try:
-        return _ALIASES[name]  # type: ignore[index]
+        return _ALIASES[name]
     except KeyError as exc:
         raise UnknownRecipe(f"unknown search recipe: {name}") from exc
 

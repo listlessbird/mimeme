@@ -17,6 +17,7 @@ from mimeme.search.error import (
 )
 from mimeme.search.model import (
     Batch,
+    Bm25File,
     Candidate,
     CandidateRequest,
     Encoder,
@@ -47,6 +48,7 @@ def create(settings: Settings, http: httpx.AsyncClient) -> Client:
 __all__ = [
     "Activation",
     "Batch",
+    "Bm25File",
     "Candidate",
     "CandidateRequest",
     "Client",

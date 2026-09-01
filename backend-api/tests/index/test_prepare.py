@@ -12,7 +12,7 @@ from tests.factories import (
 from tests.job.conftest import SavepointDb
 from tests.support.storage import Memory
 
-from mimeme import index
+from mimeme import index, storage
 from mimeme.config import Settings
 from mimeme.db.schema import JobStatus, JobType, ProcessingStatus
 from mimeme.index import ops, rule
@@ -65,6 +65,9 @@ class TestTextPresence:
 
         assert prepared.build is not None
         build = await ops.load_build(store, prepared.build)
+        assert prepared.build.bm25 is not None
+        assert build.bm25 == prepared.build.bm25
+        assert await store.stat(storage.Object(prepared.build.bm25.key)) is not None
         by_key = {item.image_key: item.text_key for item in build.embeddings}
         assert by_key == {
             "embeddings/present.npy": "embeddings/present_text.npy",

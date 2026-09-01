@@ -25,6 +25,7 @@ from mimeme.search.error import (
 )
 from mimeme.search.model import (
     Batch,
+    Bm25File,
     CandidateRequest,
     ClearCall,
     File,
@@ -93,10 +94,13 @@ class Gateway:
         try:
             for artifact in generation.files:
                 paths[artifact.name] = str(await self._download(root, artifact))
+            if generation.bm25 is not None:
+                paths[generation.bm25.name] = str(await self._download(root, generation.bm25))
             call = PreparedLoad(
                 version=generation.version,
                 workspace=str(root),
                 paths=paths,
+                bm25=generation.bm25,
                 encoder=generation.encoder,
                 hnsw_ef_search=generation.hnsw_ef_search,
             )
@@ -133,7 +137,7 @@ class Gateway:
             self._remember_status(status)
             return status
 
-    async def _download(self, root: Path, artifact: File) -> Path:
+    async def _download(self, root: Path, artifact: File | Bm25File) -> Path:
         target = root / artifact.name
         digest = hashlib.sha256()
         try:

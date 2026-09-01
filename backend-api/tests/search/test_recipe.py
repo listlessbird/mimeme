@@ -15,6 +15,7 @@ def test_legacy_names_resolve_to_versioned_definitions() -> None:
         "retrievers": ("siglip_image", "siglip_text"),
         "candidate_depth": 1000,
         "rrf_k": 60,
+        "bm25": None,
     }
 
 
@@ -29,4 +30,7 @@ def test_recipe_list_is_closed_and_stable() -> None:
     assert [definition.id for definition in recipe.all()] == [
         "image_only",
         "image_siglip_text",
+        "image_bm25",
     ]
+    assert recipe.resolve("image_bm25").retrievers == ("siglip_image", "bm25")
+    assert recipe.resolve("image_bm25").bm25 == recipe.Bm25Settings(weights=(4, 4, 4, 2, 2, 2, 1))

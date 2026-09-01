@@ -2,20 +2,24 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import tempfile
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
+import anyio
 from pydantic import ValidationError
 
 from mimeme import inference, search, storage
 from mimeme.config import Settings
 from mimeme.db import Db
 from mimeme.db.schema import Job, JobStatus, JobType
-from mimeme.index import documents, pack, rule
+from mimeme.index import bm25, documents, pack, rule
 from mimeme.index.client import Client
 from mimeme.index.model import (
     Activated,
     ActivateInput,
     Backfilled,
+    Bm25File,
     Build,
     BuildPlan,
     EmbeddingManifest,
@@ -31,6 +35,7 @@ from mimeme.index.model import (
 from mimeme.index.store import Store
 from mimeme.job.model import ClaimOwnership, StateMissing
 from mimeme.job.store import Store as JobStore
+from mimeme.search import document
 
 _MANIFEST_MAX = 1024 * 1024
 _PLAN_MAX = 256 * 1024 * 1024
@@ -60,6 +65,7 @@ async def load_build(artifacts: storage.Store, plan: BuildPlan) -> Build:
         encoder=plan.encoder,
         embeddings=manifest.embeddings,
         documents=plan.documents,
+        bm25=plan.bm25,
         planned_reads=plan.planned_reads,
     )
 
@@ -153,6 +159,11 @@ async def prepare(
         version=version,
         documents=snapshot.documents,
     )
+    bm25_file = await _publish_bm25(
+        artifacts,
+        version=version,
+        documents=await documents.verify(artifacts, document_file),
+    )
     key = plan_key(version)
     await artifacts.put_bytes(
         storage.Object(key),
@@ -184,6 +195,7 @@ async def prepare(
             ),
             embeddings_key=key,
             documents=document_file,
+            bm25=bm25_file,
             num_embeddings=len(snapshot.embeddings),
             planned_reads=planned_reads,
         ),
@@ -329,7 +341,48 @@ async def validate(artifacts: storage.Store, expected: Manifest) -> Manifest:
         if info.checksum is not None and info.checksum.value != actual.documents.sha256:
             raise ValueError(f"document artifact checksum mismatch: {actual.documents.key}")
         await documents.verify(artifacts, actual.documents)
+    if actual.bm25 is not None:
+        info = await artifacts.stat(storage.Object(actual.bm25.key))
+        if info is None or info.length != actual.bm25.length:
+            raise ValueError(f"BM25 artifact is missing or has wrong length: {actual.bm25.key}")
+        if info.checksum is not None and info.checksum.value != actual.bm25.sha256:
+            raise ValueError(f"BM25 artifact checksum mismatch: {actual.bm25.key}")
     return actual
+
+
+async def _publish_bm25(
+    artifacts: storage.Store,
+    *,
+    version: str,
+    documents: list[document.SearchDocument],
+) -> Bm25File:
+    with tempfile.TemporaryDirectory(prefix="mimeme-bm25-") as directory:
+        path = Path(directory) / "bm25.sqlite3"
+        built = await asyncio.to_thread(bm25.build, path, documents)
+
+        async def chunks():  # noqa: ANN202
+            async with await anyio.open_file(path, "rb") as handle:
+                while chunk := await handle.read(1024 * 1024):
+                    yield chunk
+
+        descriptor = Bm25File(
+            key=f"indexes/{version}/bm25.sqlite3",
+            sha256=built.sha256,
+            length=built.length,
+            count=built.count,
+            projection_version=document.PROJECTION_VERSION,
+            tokenizer=bm25.TOKENIZER,
+            weights=bm25.WEIGHTS,
+            sqlite_version=built.sqlite_version,
+        )
+        await artifacts.put(
+            storage.Object(descriptor.key),
+            chunks(),
+            length=descriptor.length,
+            content_type="application/vnd.sqlite3",
+            checksum=storage.Checksum(value=descriptor.sha256),
+        )
+        return descriptor
 
 
 async def collect(
@@ -398,6 +451,11 @@ def _load(manifest: Manifest) -> search.Load:
         files=[
             search.File(name=file.name, key=file.key, sha256=file.sha256) for file in manifest.files
         ],
+        bm25=(
+            search.Bm25File.model_validate(manifest.bm25.model_dump())
+            if manifest.bm25 is not None
+            else None
+        ),
         encoder=search.Encoder(
             repo=manifest.encoder.repo,
             revision=manifest.encoder.revision,

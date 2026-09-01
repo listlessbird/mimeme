@@ -132,6 +132,7 @@ class Gateway:
                 text_count=built.text_count,
                 files=files,
                 documents=request.documents,
+                bm25=request.bm25,
                 complete_key=f"indexes/{built.version}/complete.json",
             )
             await meter.put_bytes(
