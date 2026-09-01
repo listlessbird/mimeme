@@ -63,7 +63,6 @@ class Annotation(_Frozen):
 class Item(_Frozen):
     image_id: int
     media_key: str
-    text: str = ""
     sha256: str
     dataset: str | None = None
 
@@ -76,7 +75,6 @@ class Batch(_Frozen):
 class Embedding(_Frozen):
     image_id: int
     image_embedding_key: str
-    text_embedding_key: str
     model: str
     dimension: int
 
@@ -123,26 +121,9 @@ class Timeout(Error):
     pass
 
 
-_TEXT_SUFFIX = "_text.npy"
-
-
 def embedding_prefix(model: str) -> str:
     return f"embeddings/{model.replace('/', '_')}/"
 
 
 def image_embedding_key(*, sha256: str, model: str, dataset: str | None) -> str:
     return f"{embedding_prefix(model)}{dataset or 'api-ingested'}/{sha256}.npy"
-
-
-def text_embedding_key(image_key: str) -> str:
-    return image_key.replace(".npy", _TEXT_SUFFIX)
-
-
-def is_text_embedding_key(key: str) -> bool:
-    return key.endswith(_TEXT_SUFFIX)
-
-
-def image_embedding_key_of(text_key: str) -> str:
-    if not is_text_embedding_key(text_key):
-        raise ValueError(f"not a text embedding key: {text_key}")
-    return text_key.removesuffix(_TEXT_SUFFIX) + ".npy"

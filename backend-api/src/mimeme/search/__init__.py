@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from mimeme.search import fusion, recipe
 from mimeme.search.activation import activate, reconcile
 from mimeme.search.client import Activation, Client
 from mimeme.search.error import (
@@ -16,8 +17,10 @@ from mimeme.search.error import (
 )
 from mimeme.search.model import (
     Batch,
+    Bm25File,
     Candidate,
     CandidateRequest,
+    DenseIndex,
     Encoder,
     File,
     Load,
@@ -46,8 +49,10 @@ def create(settings: Settings, http: httpx.AsyncClient) -> Client:
 __all__ = [
     "Activation",
     "Batch",
+    "Bm25File",
     "Candidate",
     "CandidateRequest",
+    "DenseIndex",
     "Client",
     "Encoder",
     "Error",
@@ -70,6 +75,8 @@ __all__ = [
     "Unavailable",
     "activate",
     "create",
+    "fusion",
+    "recipe",
     "reconcile",
     "run",
 ]

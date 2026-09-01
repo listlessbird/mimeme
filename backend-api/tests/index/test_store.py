@@ -26,8 +26,10 @@ class _Activation:
     def __init__(self) -> None:
         self.serving: str | None = None
         self.candidate: str | None = None
+        self.loaded: list[search.Load] = []
 
     async def load(self, generation: search.Load) -> search.Loaded:
+        self.loaded.append(generation)
         self.candidate = generation.version
         return search.Loaded(
             version=generation.version,
@@ -98,7 +100,6 @@ async def test_prepare_claims_and_freezes_object_reference_snapshot_atomically(
         index.Embedding(
             image_id=build.embeddings[0].image_id,
             image_key="embeddings/one.npy",
-            text_key="embeddings/one_text.npy",
         )
     ]
     assert (await job_ops.find_exn(index_db, job_id)).status is JobStatus.RUNNING
@@ -184,6 +185,63 @@ async def test_startup_reconciliation_fails_loudly_on_a_corrupt_manifest(
         assert await Store(session).active_version() == "v-corrupt"
 
 
+async def test_startup_reconciliation_loads_the_selected_active_generation(
+    index_db: SavepointDb, run_sync_seed
+) -> None:
+    version = "v2-g5-selected"
+
+    def seed(session: Session) -> None:
+        create_index_build(session=session, version=version, is_active=True)
+
+    await run_sync_seed(seed)
+    artifacts = Memory()
+    digest = storage.Checksum.of(b"data").value
+    manifest = index.Manifest(
+        version=version,
+        target_generation=5,
+        model="test/embed",
+        index_type="flat",
+        encoder=index.Encoder(repo="encoder", revision="rev", variant="model.onnx"),
+        dimension=2,
+        image_count=1,
+        files=[
+            index.File(
+                name=name,
+                key=f"indexes/{version}/{name}",
+                sha256=digest,
+                length=4,
+            )
+            for name in (
+                "index.faiss",
+                "mapping.json",
+                "metadata.json",
+                "text_index.faiss",
+                "text_mapping.json",
+                "text_metadata.json",
+            )
+        ],
+        complete_key=f"indexes/{version}/complete.json",
+    )
+    for file in manifest.files:
+        await artifacts.put_bytes(storage.Object(file.key), b"data", content_type="x")
+    await artifacts.put_bytes(
+        storage.Object(manifest.complete_key),
+        manifest.model_dump_json().encode(),
+        content_type="application/json",
+    )
+    remote = _Activation()
+
+    status = await ops.reconcile(index_db, artifacts, remote)
+
+    assert status is not None and status.serving_version == version
+    assert [generation.version for generation in remote.loaded] == [version]
+    assert [file.name for file in remote.loaded[0].files] == [
+        "index.faiss",
+        "mapping.json",
+        "metadata.json",
+    ]
+
+
 async def test_activation_commit_is_atomic_and_releases_the_claim(
     index_db: SavepointDb, run_sync_seed
 ) -> None:
@@ -231,7 +289,7 @@ async def test_activation_commit_is_atomic_and_releases_the_claim(
     assert (await job_ops.find_exn(index_db, job_id)).status is JobStatus.COMPLETED
 
 
-async def test_activation_retry_confirms_existing_db_and_compute_state(
+async def test_activation_retry_preserves_remote_generations_and_confirms_state(
     index_db: SavepointDb, run_sync_seed
 ) -> None:
     def seed(session: Session) -> str:
@@ -276,6 +334,12 @@ async def test_activation_retry_confirms_existing_db_and_compute_state(
         manifest.model_dump_json().encode(),
         content_type="application/json",
     )
+    retained = [
+        storage.Object("indexes/v2-g1-previous/complete.json"),
+        storage.Object("indexes/v2-g2-active/complete.json"),
+    ]
+    for obj in retained:
+        await artifacts.put_bytes(obj, b"retained", content_type="application/json")
     input = index.ActivateInput(
         job_id=job_id,
         target_generation=3,
@@ -288,4 +352,5 @@ async def test_activation_retry_confirms_existing_db_and_compute_state(
 
     assert first.version == second.version == manifest.version
     assert remote.serving == manifest.version
+    assert all([await artifacts.stat(obj) is not None for obj in retained])
     assert (await job_ops.find_exn(index_db, job_id)).status is JobStatus.COMPLETED

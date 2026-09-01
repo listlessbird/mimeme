@@ -194,9 +194,7 @@ def create_app(settings: Settings) -> FastAPI:
         return jobs.submit(job_id, spec)
 
     @app.get("/v1/jobs/{job_id}", response_model=JobState)
-    async def get_job(
-        job_id: str, wait_s: Annotated[float, Query(ge=0, le=30)] = 0
-    ) -> JobState:
+    async def get_job(job_id: str, wait_s: Annotated[float, Query(ge=0, le=30)] = 0) -> JobState:
         jobs: Jobs = app.state.jobs
         state = await jobs.wait(job_id, wait_s) if wait_s > 0 else jobs.get(job_id)
         if state is None:

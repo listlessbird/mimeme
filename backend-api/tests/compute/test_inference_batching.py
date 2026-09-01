@@ -123,16 +123,14 @@ def test_embed_encodes_all_items_in_two_model_batches(tmp_path: Path) -> None:
                 EmbedCallItem(
                     image_id=index,
                     path=str(path),
-                    text=f"text {index}",
                     image_out=str(tmp_path / f"image-{index}.npy"),
-                    text_out=str(tmp_path / f"text-{index}.npy"),
                 )
                 for index, path in enumerate(paths)
             ]
         )
     )
 
-    assert calls == [(3, 0), (0, 3)]
+    assert calls == [(3, 0)]
     assert all(item.ok for item in reply.items)
     assert reply.telemetry is not None
     assert reply.telemetry.embed_batch_size == 3
@@ -162,22 +160,18 @@ def test_embed_excludes_invalid_images_from_the_model_batch(tmp_path: Path) -> N
                 EmbedCallItem(
                     image_id=1,
                     path=str(valid),
-                    text="valid",
                     image_out=str(tmp_path / "valid-image.npy"),
-                    text_out=str(tmp_path / "valid-text.npy"),
                 ),
                 EmbedCallItem(
                     image_id=2,
                     path=str(invalid),
-                    text="invalid",
                     image_out=str(tmp_path / "invalid-image.npy"),
-                    text_out=str(tmp_path / "invalid-text.npy"),
                 ),
             ]
         )
     )
 
-    assert calls == [1, 1]
+    assert calls == [1]
     assert [item.ok for item in reply.items] == [True, False]
 
 
@@ -204,14 +198,12 @@ def test_embed_chunks_model_batches_at_the_configured_limit(tmp_path: Path) -> N
                 EmbedCallItem(
                     image_id=index,
                     path=str(path),
-                    text=f"text {index}",
                     image_out=str(tmp_path / f"image-{index}.npy"),
-                    text_out=str(tmp_path / f"text-{index}.npy"),
                 )
                 for index, path in enumerate(paths)
             ]
         )
     )
 
-    assert calls == [(2, 0), (0, 2), (2, 0), (0, 2), (1, 0), (0, 1)]
+    assert calls == [(2, 0), (2, 0), (1, 0)]
     assert all(item.ok for item in reply.items)

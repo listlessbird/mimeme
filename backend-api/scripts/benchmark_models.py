@@ -141,7 +141,6 @@ def main() -> None:
                 }
             )
 
-        captions: list[str] = []
         annotation_entries = (
             [] if args.skip_annotations else entries[: args.annotation_limit or len(entries)]
         )
@@ -149,7 +148,6 @@ def main() -> None:
             started = _start()
             reply = models.annotate(AnnotateCall(path=entry["path"]))
             elapsed, allocated, reserved = _finish(started)
-            captions.append(" ".join(part for part in (reply.caption, reply.ocr_text) if part))
             rows.append(
                 {
                     "operation": "annotation",
@@ -187,13 +185,7 @@ def main() -> None:
                     EmbedCallItem(
                         image_id=offset + index,
                         path=entry["path"],
-                        text=(
-                            captions[offset + index]
-                            if offset + index < len(captions)
-                            else "meme image"
-                        ),
                         image_out=str(output_dir / f"{offset + index}-image.npy"),
-                        text_out=str(output_dir / f"{offset + index}-text.npy"),
                     )
                     for index, entry in enumerate(chunk)
                 ]

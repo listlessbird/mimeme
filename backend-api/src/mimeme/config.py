@@ -178,6 +178,7 @@ class SearchConfig(BaseSettings):
     encoder_revision: str = "092dc08370b1a01d69c78067051b124881a95407"
     encoder_variant: str = "text_model_int8.onnx"
     encoder_threads: int = 4
+    bge_encoder_threads: int = Field(default=2, ge=1)
     hnsw_ef_search: int = 128
 
 
@@ -197,8 +198,8 @@ class IndexConfig(BaseSettings):
     rebuild_settle_minutes: int = 10
     rebuild_max_stale_hours: int = 6
     reconcile_interval_s: float = 30.0
-    retain_versions: int = 5
     build_threads: int = 2
+    bge_batch_size: int = Field(default=128, ge=1)
     shard_rows: int = 1_500
     seal_max_shards: int = 50
     seal_min_rows: int = 100

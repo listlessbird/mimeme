@@ -16,6 +16,7 @@ from mimeme.db.schema import (
     IngestURL,
     Job,
     JobType,
+    Processing,
     ProcessingStatus,
     SourceItem,
     SourceMedia,
@@ -25,7 +26,9 @@ from mimeme.db.schema import (
 )
 from mimeme.ingest.model import ItemRef, RemoteUrl, restore
 from mimeme.job import rule as job_rule
+from mimeme.job.store import Store as JobStore
 from mimeme.media import Urls
+from mimeme.search import document
 from mimeme.source.model import (
     DiscoveredItem,
     DiscoveredMedia,
@@ -264,6 +267,7 @@ class Store:
         now = datetime.datetime.now(datetime.UTC)
         queued: list[tuple[DiscoveredMedia, int, int]] = []
         candidate_urls = {media.media_url for item in items for media in item.media}
+        search_documents_changed = False
         urls_seen_by_other_sources = (
             set(
                 (
@@ -292,6 +296,13 @@ class Store:
                 json.dumps(facts, sort_keys=True, separators=(",", ":")).encode()
             ).hexdigest()
             facts_changed = row is not None and row.known_facts_sha256 != facts_hash
+            projected_changed = row is not None and document.project(
+                1,
+                sources=(document.source_facts(row.title, row.known_facts),),
+            ) != document.project(
+                1,
+                sources=(document.source_facts(item.title, facts),),
+            )
             if row is None:
                 row = SourceItem(
                     source_id=source_id,
@@ -307,6 +318,8 @@ class Store:
             row.raw_metadata = item.raw_metadata
             row.last_seen_at = now
             await self._session.flush()
+            if projected_changed and await self._has_searchable_link(row.id):
+                search_documents_changed = True
 
             existing = {
                 media.external_media_id: media
@@ -340,7 +353,24 @@ class Store:
         if run is not None:
             run.discovered_count = len(items)
             await self._session.flush()
+        if search_documents_changed:
+            await JobStore(self._session).mark_dirty(reason="source_facts_changed")
         return queued
+
+    async def _has_searchable_link(self, source_item_id: int) -> bool:
+        return bool(
+            await self._session.scalar(
+                select(IngestURL.id)
+                .join(Processing, Processing.image_id == IngestURL.image_id)
+                .where(
+                    IngestURL.source_item_id == source_item_id,
+                    Processing.embed_status == ProcessingStatus.DONE,
+                    Processing.embed_s3_key.is_not(None),
+                    Processing.embed_s3_key != "",
+                )
+                .limit(1)
+            )
+        )
 
     async def create_ingest_job(
         self,

@@ -48,7 +48,6 @@ class InferenceTelemetry(_Frozen):
     ocr_ms: float | None = None
     siglip_preprocess_ms: float | None = None
     siglip_image_ms: float | None = None
-    siglip_text_ms: float | None = None
     embed_batch_size: int | None = None
     gpu_peak_allocated_mb: float | None = None
     gpu_peak_reserved_mb: float | None = None
@@ -67,9 +66,7 @@ class AnnotateReply(_Frozen):
 class EmbedCallItem(_Frozen):
     image_id: int
     path: str
-    text: str
     image_out: str
-    text_out: str
 
 
 class EmbedCall(_Frozen):
@@ -118,10 +115,8 @@ class AnnotateSpec(_Frozen):
 class EmbedSpecItem(_Frozen):
     image_id: int
     media_key: str
-    text: str
     sha256: str
     image_key: str
-    text_key: str
 
 
 class EmbedSpec(_Frozen):
@@ -144,7 +139,6 @@ class EmbedResultItem(_Frozen):
     image_id: int
     ok: bool
     image_key: str | None = None
-    text_key: str | None = None
     model: str | None = None
     dimension: int | None = None
     error: str | None = None

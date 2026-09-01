@@ -32,6 +32,7 @@ def test_exact_temporal_contract_names_and_poll_bounds() -> None:
     assert Activities.prepare.__temporal_activity_definition.name == "mimeme.index.prepare.v2"
     assert Activities.seal.__temporal_activity_definition.name == "mimeme.index.seal.v2"
     assert Activities.build.__temporal_activity_definition.name == "mimeme.index.build.v2"
+    assert Activities.encode_bge.__temporal_activity_definition.name == "mimeme.index.encode-bge.v1"
     assert Activities.activate.__temporal_activity_definition.name == "mimeme.index.activate.v2"
     assert rule.workflow_id("abc") == "rebuild-index-v2-abc"
     assert rule.SCHEDULE_ID == "search-index-rebuild-v2"
@@ -39,7 +40,7 @@ def test_exact_temporal_contract_names_and_poll_bounds() -> None:
     assert rule.HEARTBEAT_TIMEOUT_S == 30
 
 
-async def test_workflow_runs_three_coarse_retry_units_in_order() -> None:
+async def test_workflow_runs_coarse_retry_units_in_order() -> None:
     calls: list[str] = []
     build = _build()
 
@@ -58,6 +59,11 @@ async def test_workflow_runs_three_coarse_retry_units_in_order() -> None:
         calls.append("build")
         return index.Result(outcome="empty")
 
+    @activity.defn(name=rule.BGE_ACTIVITY)
+    async def encode_bge(request: index.BuildPlan) -> index.BuildPlan:
+        calls.append("bge")
+        return request
+
     @activity.defn(name=rule.ACTIVATE_ACTIVITY)
     async def activate(_: index.ActivateInput) -> index.Activated:
         calls.append("activate")
@@ -70,7 +76,7 @@ async def test_workflow_runs_three_coarse_retry_units_in_order() -> None:
             env.client,
             task_queue=rule.TASK_QUEUE,
             workflows=[RebuildWorkflow],
-            activities=[prepare, seal, run_build, activate],
+            activities=[prepare, seal, encode_bge, run_build, activate],
         ):
             result = await env.client.execute_workflow(
                 RebuildWorkflow.run,
@@ -85,7 +91,7 @@ async def test_workflow_runs_three_coarse_retry_units_in_order() -> None:
             )
 
     assert result.outcome == "empty"
-    assert calls == ["prepare", "seal", "prepare", "build", "activate"]
+    assert calls == ["prepare", "seal", "prepare", "bge", "build", "activate"]
 
 
 async def test_scheduled_busy_claim_exits_without_history_growth() -> None:

@@ -18,10 +18,8 @@ def test_build_contract_is_bounded_to_object_references() -> None:
         dimension=2,
         encoder=index.Encoder(repo="test/encoder", revision="rev", variant="model.onnx"),
         embeddings=[
-            index.Embedding(image_id=10, image_key="embeddings/10.npy", text_key=None),
-            index.Embedding(
-                image_id=11, image_key="embeddings/11.npy", text_key="embeddings/11_text.npy"
-            ),
+            index.Embedding(image_id=10, image_key="embeddings/10.npy"),
+            index.Embedding(image_id=11, image_key="embeddings/11.npy"),
         ],
     )
 
@@ -65,6 +63,139 @@ def test_complete_manifest_requires_generation_artifacts_and_own_prefix() -> Non
             files=[files[0].model_copy(update={"key": "indexes/other/index.faiss"}), *files[1:]],
             complete_key="indexes/v2/complete.json",
         )
+
+
+def test_manifest_compatibility_accepts_v1_and_v2_but_rejects_v0() -> None:
+    image_files = [
+        index.File(name=name, key=f"indexes/legacy/{name}", sha256="0" * 64, length=4)
+        for name in ("index.faiss", "mapping.json", "metadata.json")
+    ]
+    legacy_text_files = [
+        index.File(name=name, key=f"indexes/legacy/{name}", sha256="1" * 64, length=4)
+        for name in ("text_index.faiss", "text_mapping.json", "text_metadata.json")
+    ]
+    base = {
+        "version": "legacy",
+        "target_generation": 1,
+        "model": "test/embed",
+        "index_type": "flat",
+        "encoder": index.Encoder(repo="test/encoder", revision="rev", variant="model.onnx"),
+        "dimension": 2,
+        "image_count": 1,
+        "text_count": 1,
+        "files": [*image_files, *legacy_text_files],
+        "complete_key": "indexes/legacy/complete.json",
+    }
+
+    assert index.Manifest.model_validate({**base, "format_version": 1}).format_version == 1
+    document = index.DocumentFile(
+        key="indexes/legacy/documents.jsonl.zst",
+        sha256="2" * 64,
+        content_sha256="3" * 64,
+        length=10,
+        count=1,
+    )
+    assert (
+        index.Manifest.model_validate(
+            {**base, "format_version": 2, "documents": document}
+        ).format_version
+        == 2
+    )
+    with pytest.raises(ValidationError):
+        index.Manifest.model_validate({**base, "format_version": 0})
+
+
+def test_manifest_v2_requires_matching_document_artifact() -> None:
+    files = [
+        index.File(name="index.faiss", key="indexes/v2/index.faiss", sha256="0" * 64, length=4),
+        index.File(name="mapping.json", key="indexes/v2/mapping.json", sha256="1" * 64, length=4),
+        index.File(name="metadata.json", key="indexes/v2/metadata.json", sha256="2" * 64, length=4),
+    ]
+    document = index.DocumentFile(
+        key="indexes/v2/documents.jsonl.zst",
+        sha256="3" * 64,
+        content_sha256="4" * 64,
+        length=10,
+        count=1,
+    )
+
+    manifest = index.Manifest(
+        format_version=2,
+        version="v2",
+        target_generation=2,
+        model="test/embed",
+        index_type="flat",
+        encoder=index.Encoder(repo="test/encoder", revision="rev", variant="model.onnx"),
+        dimension=2,
+        image_count=1,
+        files=files,
+        documents=document,
+        complete_key="indexes/v2/complete.json",
+    )
+
+    assert index.Manifest.model_validate_json(manifest.model_dump_json()) == manifest
+    with pytest.raises(ValidationError, match="requires a document artifact"):
+        index.Manifest(
+            format_version=2,
+            version="v2",
+            target_generation=2,
+            model="test/embed",
+            index_type="flat",
+            encoder=index.Encoder(repo="test/encoder", revision="rev", variant="model.onnx"),
+            dimension=2,
+            image_count=1,
+            files=files,
+            complete_key="indexes/v2/complete.json",
+        )
+
+
+def test_manifest_bm25_matches_documents_and_generation() -> None:
+    files = [
+        index.File(name="index.faiss", key="indexes/v2/index.faiss", sha256="0" * 64, length=4),
+        index.File(name="mapping.json", key="indexes/v2/mapping.json", sha256="1" * 64, length=4),
+        index.File(name="metadata.json", key="indexes/v2/metadata.json", sha256="2" * 64, length=4),
+    ]
+    document = index.DocumentFile(
+        key="indexes/v2/documents.jsonl.zst",
+        sha256="3" * 64,
+        content_sha256="4" * 64,
+        length=10,
+        count=1,
+    )
+    bm25 = index.Bm25File(
+        key="indexes/v2/bm25.sqlite3",
+        sha256="5" * 64,
+        length=4096,
+        count=1,
+        weights=(4, 4, 4, 2, 2, 2, 1),
+        sqlite_version="3.40.1",
+    )
+    values = {
+        "format_version": 2,
+        "version": "v2",
+        "target_generation": 2,
+        "model": "test/embed",
+        "index_type": "flat",
+        "encoder": index.Encoder(repo="test/encoder", revision="rev", variant="model.onnx"),
+        "dimension": 2,
+        "image_count": 1,
+        "files": files,
+        "documents": document,
+        "bm25": bm25,
+        "complete_key": "indexes/v2/complete.json",
+    }
+
+    manifest = index.Manifest.model_validate(values)
+    assert manifest.bm25 == bm25
+
+    with pytest.raises(ValidationError, match="BM25 document count must match image count"):
+        index.Manifest.model_validate({**values, "bm25": bm25.model_copy(update={"count": 2})})
+    with pytest.raises(ValidationError, match="BM25 artifact must use its generation prefix"):
+        index.Manifest.model_validate(
+            {**values, "bm25": bm25.model_copy(update={"key": "indexes/v3/bm25.sqlite3"})}
+        )
+    with pytest.raises(ValidationError, match="BM25 field weights are incompatible"):
+        index.Bm25File.model_validate({**bm25.model_dump(), "weights": [1] * 7})
 
 
 def test_state_machine_rejects_invalid_activation_transition() -> None:

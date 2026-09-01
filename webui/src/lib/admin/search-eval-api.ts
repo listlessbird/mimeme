@@ -14,7 +14,10 @@ export type SearchEvalRun = Schemas["RunView"];
 export type SearchEvalComparison = Schemas["Comparison"];
 export type SearchEvalIntent = Schemas["Intent"];
 export type SearchEvalQuerySource = Schemas["QuerySource"];
-export type SearchEvalRunMode = Schemas["RunMode"];
+/** Frozen retrieval recipe returned by the evaluation API. */
+export type SearchEvalRecipe = Schemas["Definition"];
+/** Closed recipe identifier accepted by evaluation operations. */
+export type SearchEvalRecipeId = SearchEvalRecipe["id"];
 
 /** Intents supported by the first Core Search query set. */
 export const SEARCH_EVAL_INTENTS: ReadonlyArray<SearchEvalIntent> = [
@@ -32,7 +35,12 @@ const createQueryInput = z.object({
 	source: z.enum(["human", "production", "synthetic"]),
 });
 
+const recipeId = z.enum(["image_only", "image_bm25", "image_bge", "image_bm25_bge"]);
 const queryIdInput = z.object({ queryId: z.number().int().positive() });
+const poolQueryInput = z.object({
+	queryId: z.number().int().positive(),
+	recipeIds: z.array(recipeId).min(1),
+});
 const judgmentInput = z.object({
 	queryId: z.number().int().positive(),
 	imageId: z.number().int().positive(),
@@ -71,14 +79,15 @@ export const disableSearchEvalQuery = createServerFn({ method: "POST" })
 		),
 	);
 
-/** Pool the current image and hybrid top twenty for one query. */
+/** Pool selected recipe results for one query. */
 export const poolSearchEvalQuery = createServerFn({ method: "POST" })
 	.middleware([adminGuard])
-	.inputValidator(queryIdInput)
+	.inputValidator(poolQueryInput)
 	.handler(({ data, context }) =>
 		callAdmin<Schemas["PoolResult"]>("pool_search_eval_query", context.adminHeaders, (client) =>
 			client.POST("/search-evals/queries/{query_id}/pool", {
 				params: { path: { query_id: data.queryId } },
+				body: { recipe_ids: data.recipeIds },
 			}),
 		),
 	);
@@ -153,13 +162,18 @@ export const clearSearchEvalJudgment = createServerFn({ method: "POST" })
 		),
 	);
 
-/** Execute the active query set against one current search mode. */
-export const createSearchEvalRun = createServerFn({ method: "POST" })
+/** Execute selected recipes against one frozen evaluation snapshot. */
+export const createSearchEvalExperiment = createServerFn({ method: "POST" })
 	.middleware([adminGuard])
-	.inputValidator(z.object({ mode: z.enum(["image", "hybrid"]) }))
+	.inputValidator(z.object({ recipeIds: z.array(recipeId).min(1) }))
 	.handler(({ data, context }) =>
-		callAdmin<SearchEvalRun>("create_search_eval_run", context.adminHeaders, (client) =>
-			client.POST("/search-evals/runs", { body: data }),
+		callAdmin<Schemas["ExperimentView"]>(
+			"create_search_eval_experiment",
+			context.adminHeaders,
+			(client) =>
+				client.POST("/search-evals/experiments", {
+					body: { recipe_ids: data.recipeIds },
+				}),
 		),
 	);
 

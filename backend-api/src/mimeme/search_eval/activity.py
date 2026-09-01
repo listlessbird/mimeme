@@ -51,7 +51,7 @@ class Activities:
                 activity.heartbeat({"query_id": query.id, "outcome": "already_recorded"})
                 continue
             page = await search.run(
-                search.Query(text=query.text, mode=input.mode, limit=10),
+                search.Query(text=query.text, recipe_id=input.recipe_id, limit=10),
                 client=self._env.search,
                 rows=SqlRows(self._env.db),
                 media_urls=self._env.media_urls,
@@ -61,7 +61,7 @@ class Activities:
                     self._env.db,
                     run_id=input.run_id,
                     query_id=query.id,
-                    mode=input.mode,
+                    recipe_id=input.recipe_id,
                     expected_index_version=input.index_version,
                     page=page,
                 )

@@ -7,6 +7,7 @@ from temporalio.contrib.pydantic import pydantic_data_converter
 from temporalio.testing import WorkflowEnvironment
 from temporalio.worker import Worker
 
+from mimeme import search
 from mimeme.search_eval import rule
 from mimeme.search_eval.activity import Activities
 from mimeme.search_eval.model import (
@@ -42,7 +43,8 @@ async def test_run_workflow_retrieves_sequential_batches_then_scores() -> None:
         calls.append("prepare")
         return PreparedRun(
             run_id=input.run_id,
-            mode="hybrid",
+            recipe_id="image_bm25_bge",
+            recipe=search.recipe.resolve("image_bm25_bge"),
             index_version="index-v1",
             queries=queries,
         )

@@ -81,7 +81,6 @@ class FakeInference:
                     embedding=inference.Embedding(
                         image_id=item.image_id,
                         image_embedding_key=key,
-                        text_embedding_key=inference.text_embedding_key(key),
                         model=self.embed_model,
                         dimension=self.dimension,
                     )

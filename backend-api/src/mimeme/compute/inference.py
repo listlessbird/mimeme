@@ -293,7 +293,6 @@ class Models:
         timing = {
             "siglip_preprocess_ms": 0.0,
             "siglip_image_ms": 0.0,
-            "siglip_text_ms": 0.0,
         }
         for offset in range(0, len(prepared), batch_size):
             chunk = prepared[offset : offset + batch_size]
@@ -302,11 +301,6 @@ class Models:
                 image_feats = self._encode(
                     images=[image for _, _, image in chunk], texts=None, telemetry=timing
                 )
-                text_feats = self._encode(
-                    images=None,
-                    texts=[item.text for _, item, _ in chunk],
-                    telemetry=timing,
-                )
             except Exception as exc:
                 for index, item, _ in chunk:
                     items[index] = EmbedReplyItem(image_id=item.image_id, ok=False, error=str(exc))
@@ -314,7 +308,6 @@ class Models:
                 for row, (index, item, _) in enumerate(chunk):
                     try:
                         _save_npy(Path(item.image_out), image_feats[row])
-                        _save_npy(Path(item.text_out), text_feats[row])
                         items[index] = EmbedReplyItem(
                             image_id=item.image_id,
                             ok=True,
@@ -335,7 +328,6 @@ class Models:
                 image_decode_ms=round(image_decode_ms, 2),
                 siglip_preprocess_ms=round(timing["siglip_preprocess_ms"], 2),
                 siglip_image_ms=round(timing["siglip_image_ms"], 2),
-                siglip_text_ms=round(timing["siglip_text_ms"], 2),
                 embed_batch_size=forward_batch_size,
                 gpu_peak_allocated_mb=peak_allocated,
                 gpu_peak_reserved_mb=peak_reserved,

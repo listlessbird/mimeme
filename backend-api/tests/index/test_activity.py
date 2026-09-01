@@ -85,11 +85,7 @@ async def test_build_activity_marks_invalid_input_non_retryable(monkeypatch) -> 
     async def fail(*args, **kwargs) -> None:  # noqa: ANN002, ANN003
         return None
 
-    async def cleanup(*args, **kwargs) -> None:  # noqa: ANN002, ANN003
-        return None
-
     monkeypatch.setattr(index_activity.index, "fail", fail)
-    monkeypatch.setattr(index_activity.index, "cleanup_incomplete", cleanup)
     env = _Env(index=_Invalid())
     plan = await _seed(env.artifacts)
     with pytest.raises(ApplicationError) as raised:
@@ -145,12 +141,8 @@ async def test_seal_activity_retries_before_giving_up_the_claim(monkeypatch) -> 
     async def fail(db, *, job_id: str, error: str, cancelled: bool) -> None:  # noqa: ANN001
         released.append(job_id)
 
-    async def cleanup(*args, **kwargs) -> None:  # noqa: ANN002, ANN003
-        return None
-
     monkeypatch.setattr(index_activity.index, "seal", unreachable)
     monkeypatch.setattr(index_activity.index, "fail", fail)
-    monkeypatch.setattr(index_activity.index, "cleanup_incomplete", cleanup)
     request = index.SealInput(job_id="rebuild-activity", model="test/embed")
 
     first = ActivityEnvironment()

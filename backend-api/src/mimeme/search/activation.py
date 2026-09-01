@@ -21,6 +21,7 @@ async def _with_retry[T](operation: Callable[[], Awaitable[T]]) -> T:
             if attempt == _RETRY_ATTEMPTS - 1:
                 raise
             await asyncio.sleep(_RETRY_BASE_DELAY_S * 2**attempt)
+    raise AssertionError("retry loop exhausted")
 
 
 async def activate(generation: Load, *, activation: Activation, commit: Commit) -> Status:

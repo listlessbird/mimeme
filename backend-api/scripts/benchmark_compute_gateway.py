@@ -144,7 +144,6 @@ async def _main() -> None:
             "ocr_ms",
             "siglip_preprocess_ms",
             "siglip_image_ms",
-            "siglip_text_ms",
             "artifact_upload_ms",
             "duration_ms",
         )

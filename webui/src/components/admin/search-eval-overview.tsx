@@ -44,7 +44,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { adminErrorMessage } from "@/lib/admin/api";
 import {
 	createSearchEvalQuery,
-	createSearchEvalRun,
+	createSearchEvalExperiment,
 	disableSearchEvalQuery,
 	poolSearchEvalQuery,
 	SEARCH_EVAL_INTENTS,
@@ -55,7 +55,8 @@ import {
 	type SearchEvalQuery,
 	type SearchEvalQuerySource,
 	type SearchEvalRun,
-	type SearchEvalRunMode,
+	type SearchEvalRecipe,
+	type SearchEvalRecipeId,
 } from "@/lib/admin/search-eval-api";
 import { cn } from "@/lib/utils";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -301,13 +302,14 @@ function ViewRunsButton() {
 function QueriesWorkspace({ data }: { data: OverviewData }) {
 	const queryClient = useQueryClient();
 	const activeQueries = data.queries.filter((query) => query.status === "active");
+	const recipeIds = data.recipes.map((recipe) => recipe.id);
 	const pool = useMutation({
-		mutationFn: (queryId: number) => poolSearchEvalQuery({ data: { queryId } }),
+		mutationFn: (queryId: number) => poolSearchEvalQuery({ data: { queryId, recipeIds } }),
 		onSuccess: () => queryClient.invalidateQueries({ queryKey: OVERVIEW_QUERY_KEY }),
 	});
 	const refreshAll = useMutation({
 		mutationFn: (queryIds: ReadonlyArray<number>) =>
-			Promise.all(queryIds.map((queryId) => poolSearchEvalQuery({ data: { queryId } }))),
+			Promise.all(queryIds.map((queryId) => poolSearchEvalQuery({ data: { queryId, recipeIds } }))),
 		onSuccess: () => queryClient.invalidateQueries({ queryKey: OVERVIEW_QUERY_KEY }),
 	});
 	const disable = useMutation({
@@ -501,7 +503,7 @@ function RunsWorkspace({ data }: { data: OverviewData }) {
 				title="Evaluation runs"
 				description="Each run measures the currently served search system against a frozen benchmark revision."
 			>
-				<NewEvaluationDialog disabled={Boolean(activeRun)} />
+				<NewEvaluationDialog disabled={Boolean(activeRun)} recipes={data.recipes} />
 			</WorkspaceHeading>
 
 			{activeRun ? <RunProgress run={activeRun} /> : null}
@@ -535,7 +537,7 @@ function RunsWorkspace({ data }: { data: OverviewData }) {
 					</CardContent>
 				</Card>
 			) : (
-				<RunsEmpty />
+				<RunsEmpty recipes={data.recipes} />
 			)}
 
 			{baseline.error ? (
@@ -545,7 +547,7 @@ function RunsWorkspace({ data }: { data: OverviewData }) {
 	);
 }
 
-function RunsEmpty() {
+function RunsEmpty({ recipes }: { recipes: ReadonlyArray<SearchEvalRecipe> }) {
 	return (
 		<Empty className="min-h-72 border">
 			<EmptyMedia variant="icon">
@@ -558,7 +560,7 @@ function RunsEmpty() {
 				</EmptyDescription>
 			</EmptyHeader>
 			<EmptyContent>
-				<NewEvaluationDialog disabled={false} />
+				<NewEvaluationDialog disabled={false} recipes={recipes} />
 			</EmptyContent>
 		</Empty>
 	);
@@ -637,7 +639,7 @@ function RunStateDetail({ run }: { run: SearchEvalRun }) {
 function RunIdentity({ run }: { run: SearchEvalRun }) {
 	return (
 		<div className="min-w-0">
-			<p className="font-medium capitalize">{run.mode} search</p>
+			<p className="font-medium">{run.recipe.label}</p>
 			<p className="mt-1 truncate text-xs text-muted-foreground">
 				Index {run.index_version ?? "unknown"} · Run {run.id.slice(0, 7)} · Snapshot{" "}
 				{run.snapshot_id.slice(0, 7)}
@@ -709,12 +711,20 @@ function RunProgress({ run }: { run: SearchEvalRun }) {
 	);
 }
 
-function NewEvaluationDialog({ disabled }: { disabled: boolean }) {
+function NewEvaluationDialog({
+	disabled,
+	recipes,
+}: {
+	disabled: boolean;
+	recipes: ReadonlyArray<SearchEvalRecipe>;
+}) {
 	const queryClient = useQueryClient();
 	const [open, setOpen] = useState(false);
-	const [mode, setMode] = useState<SearchEvalRunMode>("hybrid");
+	const [recipeIds, setRecipeIds] = useState<ReadonlyArray<SearchEvalRecipeId>>(() =>
+		recipes.map((recipe) => recipe.id),
+	);
 	const run = useMutation({
-		mutationFn: () => createSearchEvalRun({ data: { mode } }),
+		mutationFn: () => createSearchEvalExperiment({ data: { recipeIds: [...recipeIds] } }),
 		onSuccess: async () => {
 			setOpen(false);
 			await queryClient.invalidateQueries({ queryKey: OVERVIEW_QUERY_KEY });
@@ -735,18 +745,24 @@ function NewEvaluationDialog({ disabled }: { disabled: boolean }) {
 				</DialogHeader>
 				<FieldGroup>
 					<Field>
-						<FieldLabel id="evaluation-search-mode">Search mode</FieldLabel>
+						<FieldLabel id="evaluation-search-recipes">Recipes</FieldLabel>
 						<ToggleGroup
-							aria-labelledby="evaluation-search-mode"
+							aria-labelledby="evaluation-search-recipes"
 							variant="outline"
-							value={[mode]}
-							onValueChange={([value]) => {
-								if (value === "image" || value === "hybrid") setMode(value);
+							value={[...recipeIds]}
+							onValueChange={(values) => {
+								const selected = new Set(values);
+								setRecipeIds(
+									recipes.flatMap((recipe) => (selected.has(recipe.id) ? [recipe.id] : [])),
+								);
 							}}
-							className="grid w-full grid-cols-2"
+							className="grid w-full grid-cols-2 sm:grid-cols-5"
 						>
-							<ToggleGroupItem value="image">Image</ToggleGroupItem>
-							<ToggleGroupItem value="hybrid">Hybrid</ToggleGroupItem>
+							{recipes.map((recipe) => (
+								<ToggleGroupItem key={recipe.id} value={recipe.id}>
+									{recipe.label}
+								</ToggleGroupItem>
+							))}
 						</ToggleGroup>
 					</Field>
 				</FieldGroup>
@@ -754,13 +770,13 @@ function NewEvaluationDialog({ disabled }: { disabled: boolean }) {
 					<MutationError error={run.error} fallback="Unable to start the evaluation. Try again." />
 				) : null}
 				<DialogFooter>
-					<Button disabled={run.isPending} onClick={() => run.mutate()}>
+					<Button disabled={run.isPending || recipeIds.length === 0} onClick={() => run.mutate()}>
 						{run.isPending ? (
 							<Spinner data-icon="inline-start" />
 						) : (
 							<Play data-icon="inline-start" />
 						)}
-						Run {mode} evaluation
+						Run {recipeIds.length} {recipeIds.length === 1 ? "recipe" : "recipes"}
 					</Button>
 				</DialogFooter>
 			</DialogContent>

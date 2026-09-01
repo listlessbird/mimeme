@@ -5,12 +5,27 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from mimeme.search import recipe
+
 type Intent = Literal["reaction", "situation", "visual", "template", "quote", "conceptual"]
 type QuerySource = Literal["human", "production", "synthetic"]
 type QueryStatus = Literal["active", "disabled"]
 type RunMode = Literal["image", "hybrid"]
 type RunStatus = Literal["queued", "running", "needs_judgments", "complete", "failed", "cancelled"]
 type RunPhase = Literal["preparing", "searching", "calculating_metrics", "finalizing"]
+type ArchivedRecipeId = recipe.RecipeId | Literal["image_siglip_text"]
+
+
+class ArchivedDefinition(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: ArchivedRecipeId
+    version: Literal[1] = 1
+    label: str = Field(min_length=1)
+    retrievers: tuple[str, ...] = Field(min_length=1)
+    candidate_depth: int = Field(ge=1, le=1000)
+    rrf_k: int = Field(ge=1)
+    bm25: recipe.Bm25Settings | None = None
 
 
 class WorkflowInput(BaseModel):
@@ -37,7 +52,8 @@ class PreparedRun(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     run_id: str
-    mode: RunMode
+    recipe_id: recipe.RecipeId
+    recipe: recipe.Definition
     index_version: str
     queries: list[QuerySpec]
 
@@ -46,7 +62,8 @@ class RetrievalBatch(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     run_id: str
-    mode: RunMode
+    recipe_id: recipe.RecipeId
+    recipe: recipe.Definition
     index_version: str
     queries: list[QuerySpec]
 
@@ -111,6 +128,9 @@ class RunView(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     id: str
+    experiment_id: str | None
+    recipe_id: ArchivedRecipeId
+    recipe: ArchivedDefinition
     mode: RunMode
     status: RunStatus
     phase: RunPhase | None
@@ -127,6 +147,16 @@ class RunView(BaseModel):
     completed_at: datetime | None
 
 
+class ExperimentView(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str
+    snapshot_id: str
+    index_version: str | None
+    recipes: tuple[ArchivedDefinition, ...]
+    runs: list[RunView]
+
+
 class Overview(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -137,6 +167,7 @@ class Overview(BaseModel):
     candidate_count: int = Field(ge=0)
     judgment_count: int = Field(ge=0)
     unjudged_count: int = Field(ge=0)
+    recipes: tuple[recipe.Definition, ...]
 
 
 class PoolResult(BaseModel):
@@ -146,6 +177,7 @@ class PoolResult(BaseModel):
     candidate_count: int
     added_count: int
     index_version: str
+    batch_id: str
 
 
 class JudgmentSave(BaseModel):

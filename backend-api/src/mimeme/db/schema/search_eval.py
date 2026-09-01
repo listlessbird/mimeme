@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     SmallInteger,
@@ -55,6 +56,38 @@ class SearchEvalPoolCandidate(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+
+class SearchEvalPoolBatch(Base):
+    __tablename__ = "search_eval_pool_batches"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    index_version: Mapped[str] = mapped_column(String(50), nullable=False)
+    recipe_definitions: Mapped[list[dict]] = mapped_column(JSON, nullable=False)
+    query_ids: Mapped[list[int]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class SearchEvalPoolSource(Base):
+    __tablename__ = "search_eval_pool_sources"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["query_id", "image_id"],
+            ["search_eval_pool_candidates.query_id", "search_eval_pool_candidates.image_id"],
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("rank >= 1", name="ck_search_eval_pool_sources_rank"),
+    )
+
+    batch_id: Mapped[str] = mapped_column(
+        ForeignKey("search_eval_pool_batches.id", ondelete="CASCADE"), primary_key=True
+    )
+    query_id: Mapped[int] = mapped_column(primary_key=True)
+    image_id: Mapped[int] = mapped_column(primary_key=True)
+    recipe_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    rank: Mapped[int] = mapped_column(SmallInteger, nullable=False)
 
 
 class SearchEvalJudgment(Base):
@@ -115,10 +148,15 @@ class SearchEvalRun(Base):
     )
 
     id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    experiment_id: Mapped[str | None] = mapped_column(
+        ForeignKey("search_eval_experiments.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     snapshot_id: Mapped[str] = mapped_column(
         ForeignKey("search_eval_snapshots.id", ondelete="RESTRICT"), nullable=False
     )
     mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    recipe_id: Mapped[str] = mapped_column(String(32), nullable=False)
+    recipe_definition: Mapped[dict] = mapped_column(JSON, nullable=False)
     status: Mapped[str] = mapped_column(String(24), nullable=False, default="queued")
     phase: Mapped[str | None] = mapped_column(String(32), nullable=True)
     workflow_id: Mapped[str | None] = mapped_column(String(256), unique=True, nullable=True)
@@ -138,6 +176,20 @@ class SearchEvalRun(Base):
     )
     completed_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+
+class SearchEvalExperiment(Base):
+    __tablename__ = "search_eval_experiments"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    snapshot_id: Mapped[str] = mapped_column(
+        ForeignKey("search_eval_snapshots.id", ondelete="RESTRICT"), nullable=False
+    )
+    index_version: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    recipe_definitions: Mapped[list[dict]] = mapped_column(JSON, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
 

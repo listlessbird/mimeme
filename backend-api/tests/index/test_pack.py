@@ -77,7 +77,7 @@ class _BuildCalls:
 
 class _FailingUpload(Memory):
     async def put(self, obj, body, **kwargs):  # noqa: ANN001, ANN003, ANN202
-        if obj.key.endswith("/text/000000-0000.npy"):
+        if obj.key.endswith("/image/000000-0000.npy"):
             raise storage.Unavailable("upload interrupted")
         return await super().put(obj, body, **kwargs)
 
@@ -100,7 +100,7 @@ def _npy(vector: np.ndarray) -> bytes:
 
 
 async def _seed_corpus(
-    db: SavepointDb, run_sync_seed, artifacts: Memory, *, count: int, text: bool = True
+    db: SavepointDb, run_sync_seed, artifacts: Memory, *, count: int
 ) -> list[str]:
     keys = [f"{_PREFIX}/api-ingested/{position:04d}.npy" for position in range(count)]
 
@@ -112,7 +112,6 @@ async def _seed_corpus(
             processing.embed_model = _MODEL
             processing.embed_dim = _DIM
             processing.embed_s3_key = key
-            processing.embed_text_present = text
             session.flush()
 
     await run_sync_seed(seed)
@@ -120,12 +119,6 @@ async def _seed_corpus(
         await artifacts.put_bytes(
             storage.Object(key), _npy(_vector(position)), content_type="application/octet-stream"
         )
-        if text:
-            await artifacts.put_bytes(
-                storage.Object(key.replace(".npy", "_text.npy")),
-                _npy(_vector(position + 100)),
-                content_type="application/octet-stream",
-            )
     return keys
 
 
@@ -162,9 +155,8 @@ async def test_a_model_can_only_ever_have_one_open_shard(index_db: SavepointDb) 
             )
 
 
-def test_locate_puts_the_two_families_under_one_coordinate() -> None:
-    assert pack.locate(_MODEL, 7, 0, text=False) == f"{_PREFIX}/shards/image/000007-0000.npy"
-    assert pack.locate(_MODEL, 7, 3, text=True) == f"{_PREFIX}/shards/text/000007-0003.npy"
+def test_locate_puts_the_image_shard_under_its_coordinate() -> None:
+    assert pack.locate(_MODEL, 7, 0) == f"{_PREFIX}/shards/image/000007-0000.npy"
 
 
 async def test_plan_absorbs_every_row_leaving_the_remainder_as_one_open_shard(
@@ -215,10 +207,10 @@ async def test_a_later_plan_appends_to_the_open_shard_at_the_next_generation(
     assert (appended.number, appended.seq) == (1, 1)
     assert (appended.first_row, appended.base_rows) == (1, 1)
     assert appended.sealed is True
-    assert appended.base_image_key == pack.locate(_MODEL, 1, 0, text=False)
+    assert appended.base_image_key == pack.locate(_MODEL, 1, 0)
 
 
-async def test_a_growing_corpus_keeps_the_tail_at_one_object_per_family(
+async def test_a_growing_corpus_keeps_every_shard_generation_for_rollback(
     index_db: SavepointDb, run_sync_seed, tmp_path
 ) -> None:
     artifacts = Memory()
@@ -238,7 +230,6 @@ async def test_a_growing_corpus_keeps_the_tail_at_one_object_per_family(
                 processing.embed_model = _MODEL
                 processing.embed_dim = _DIM
                 processing.embed_s3_key = f"{_PREFIX}/api-ingested/{position:04d}.npy"
-                processing.embed_text_present = True
                 session.flush()
 
         await run_sync_seed(seed)
@@ -247,11 +238,6 @@ async def test_a_growing_corpus_keeps_the_tail_at_one_object_per_family(
             await artifacts.put_bytes(
                 storage.Object(key),
                 _npy(_vector(position)),
-                content_type="application/octet-stream",
-            )
-            await artifacts.put_bytes(
-                storage.Object(key.replace(".npy", "_text.npy")),
-                _npy(_vector(position + 100)),
                 content_type="application/octet-stream",
             )
 
@@ -264,18 +250,13 @@ async def test_a_growing_corpus_keeps_the_tail_at_one_object_per_family(
 
     assert len(snapshot.embeddings) == 10
     assert all(item.sealed for item in snapshot.embeddings)
-    assert pack.reads(snapshot.embeddings) == 2
+    assert pack.reads(snapshot.embeddings) == 1
 
     live = {key for key in artifacts._objects if "/shards/" in key}  # noqa: SLF001
-    assert live == {
-        pack.locate(_MODEL, 0, 4, text=False),
-        pack.locate(_MODEL, 0, 4, text=True),
-        pack.locate(_MODEL, 0, 3, text=False),
-        pack.locate(_MODEL, 0, 3, text=True),
-    }
+    assert live == {pack.locate(_MODEL, 0, seq) for seq in range(5)}
 
 
-async def test_sealed_rows_reproduce_the_individual_objects_byte_for_byte(
+async def test_sealed_rows_reproduce_the_individual_image_objects_byte_for_byte(
     index_db: SavepointDb, run_sync_seed, tmp_path
 ) -> None:
     artifacts = Memory()
@@ -290,45 +271,14 @@ async def test_sealed_rows_reproduce_the_individual_objects_byte_for_byte(
             await artifacts.read_bytes(storage.Object(target.shards[0].image_key), max_bytes=10**6)
         )
     )
-    texts = np.load(
-        io.BytesIO(
-            await artifacts.read_bytes(storage.Object(target.shards[0].text_key), max_bytes=10**6)
-        )
-    )
-    assert images.shape == texts.shape == (4, _DIM)
-    assert images.dtype == texts.dtype == np.float32
+    assert images.shape == (4, _DIM)
+    assert images.dtype == np.float32
     for row, key in enumerate(keys):
         original = np.load(
             io.BytesIO(await artifacts.read_bytes(storage.Object(key), max_bytes=10**6))
         )
-        original_text = np.load(
-            io.BytesIO(
-                await artifacts.read_bytes(
-                    storage.Object(key.replace(".npy", "_text.npy")), max_bytes=10**6
-                )
-            )
-        )
         assert images[row].tobytes() == original.tobytes()
-        assert texts[row].tobytes() == original_text.tobytes()
     assert await _positions(index_db) == {key: (0, row) for row, key in enumerate(keys)}
-
-
-async def test_a_missing_text_vector_becomes_a_zero_row(
-    index_db: SavepointDb, run_sync_seed, tmp_path
-) -> None:
-    artifacts = Memory()
-    await _seed_corpus(index_db, run_sync_seed, artifacts, count=2, text=False)
-    await _seal(index_db, artifacts, tmp_path, shard_rows=2)
-
-    texts = np.load(
-        io.BytesIO(
-            await artifacts.read_bytes(
-                storage.Object(pack.locate(_MODEL, 0, 0, text=True)), max_bytes=10**6
-            )
-        )
-    )
-    assert texts.shape == (2, _DIM)
-    assert not texts.any()
 
 
 async def test_sealing_is_idempotent_and_never_reseals_a_recorded_shard(
@@ -458,11 +408,11 @@ async def test_a_sealed_rebuild_matches_the_unsealed_one_it_replaces(
         (0, 2, 0),
         (1, 0, 0),
     ]
-    assert loose.build.planned_reads == 8
-    assert sealed.build.planned_reads == 4
+    assert loose.build.planned_reads == 4
+    assert sealed.build.planned_reads == 2
     assert before.manifest is not None and after.manifest is not None
-    assert (before.manifest.image_count, before.manifest.text_count) == (4, 4)
-    assert (after.manifest.image_count, after.manifest.text_count) == (4, 4)
+    assert before.manifest.image_count == after.manifest.image_count == 4
+    assert before.manifest.text_count is after.manifest.text_count is None
     assert before.manifest.dimension == after.manifest.dimension
     for name in ("index.faiss", "mapping.json"):
         assert _sha(before.manifest, name) == _sha(after.manifest, name)

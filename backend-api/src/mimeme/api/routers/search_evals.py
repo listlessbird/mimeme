@@ -9,8 +9,10 @@ from mimeme.api.deps import DbDep, EnvDep, SearchDep, UrlsDep
 from mimeme.api.models.errors import error_responses
 from mimeme.api.models.search_evals import (
     AddSearchEvalCandidateRequest,
+    CreateSearchEvalExperimentRequest,
     CreateSearchEvalQueryRequest,
     CreateSearchEvalRunRequest,
+    PoolSearchEvalQueryRequest,
     SaveSearchEvalJudgmentRequest,
 )
 from mimeme.search_eval import model as eval_model
@@ -66,10 +68,15 @@ async def pool_query(
     search_client: SearchDep,
     media_urls: UrlsDep,
     query_id: int,
+    body: PoolSearchEvalQueryRequest | None = None,
 ) -> eval_model.PoolResult:
     try:
         return await search_eval.pool_query(
-            db, query_id, client=search_client, media_urls=media_urls
+            db,
+            query_id,
+            client=search_client,
+            media_urls=media_urls,
+            recipe_ids=body.recipe_ids if body is not None else None,
         )
     except (search_eval.NotFound, search_eval.Conflict) as exc:
         raise _http_error(exc) from exc
@@ -150,7 +157,19 @@ async def create_run(
     body: CreateSearchEvalRunRequest,
 ) -> eval_model.RunView:
     try:
-        return await eval_submit.submit_run(env, mode=body.mode)
+        return await eval_submit.submit_run(env, recipe_id=body.recipe_id)
+    except (search_eval.Conflict, search_eval.Incomplete) as exc:
+        raise _http_error(exc) from exc
+
+
+@router.post("/experiments", response_model=eval_model.ExperimentView, status_code=202)
+async def create_experiment(
+    _auth: AdminRequired,
+    env: EnvDep,
+    body: CreateSearchEvalExperimentRequest,
+) -> eval_model.ExperimentView:
+    try:
+        return await eval_submit.submit_experiment(env, recipe_ids=body.recipe_ids)
     except (search_eval.Conflict, search_eval.Incomplete) as exc:
         raise _http_error(exc) from exc
 

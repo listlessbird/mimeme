@@ -7,6 +7,7 @@ from typing import Any
 import modal
 
 from mimeme import release
+from mimeme.inference import bge
 from mimeme.inference.client import Progress
 from mimeme.inference.model import (
     ANNOTATION_CONTRACT_VERSION,
@@ -20,7 +21,6 @@ from mimeme.inference.model import (
     Ok,
     Unavailable,
     image_embedding_key,
-    text_embedding_key,
 )
 
 
@@ -31,6 +31,7 @@ class Modal:
         self._poll = poll_interval_s
         self._vision: Any = None
         self._embedding: Any = None
+        self._bge: Any = None
         self._release_info: Any = None
 
     def _vision_cls(self) -> Any:
@@ -43,10 +44,16 @@ class Modal:
             self._embedding = modal.Cls.from_name(self._app_name, "EmbeddingService")
         return self._embedding
 
+    def _bge_cls(self) -> Any:
+        if self._bge is None:
+            self._bge = modal.Cls.from_name(self._app_name, "BgeService")
+        return self._bge
+
     async def ready(self) -> bool:
         try:
             self._vision_cls()
             self._embedding_cls()
+            self._bge_cls()
             if self._release_info is None:
                 self._release_info = modal.Function.from_name(self._app_name, "release_info")
             info = await self._release_info.remote.aio()
@@ -82,10 +89,8 @@ class Modal:
                 {
                     "image_id": item.image_id,
                     "media_key": item.media_key,
-                    "text": item.text,
                     "sha256": item.sha256,
                     "image_key": image_key,
-                    "text_key": text_embedding_key(image_key),
                 }
             )
         instance = self._embedding_cls()()
@@ -100,7 +105,6 @@ class Modal:
                         embedding=Embedding(
                             image_id=entry["image_id"],
                             image_embedding_key=entry["image_key"],
-                            text_embedding_key=entry["text_key"],
                             model=entry["model"],
                             dimension=entry["dimension"],
                         )
@@ -111,6 +115,19 @@ class Modal:
                     Failed(image_id=entry["image_id"], error=entry.get("error") or "embed failed")
                 )
         return BatchResult(items=out)
+
+    async def embed_bge(
+        self, batch: bge.EncodeBatch, *, progress: Progress | None = None
+    ) -> bge.EncodedBatch:
+        instance = self._bge_cls()()
+        raw = await self._call(
+            instance.encode_batch,
+            progress,
+            batch=batch.model_dump(mode="json"),
+        )
+        result = bge.EncodedBatch.model_validate(raw)
+        bge.validate_result(batch, result)
+        return result
 
     async def _call(self, method: Any, progress: Progress | None, **kwargs: Any) -> dict:
         try:

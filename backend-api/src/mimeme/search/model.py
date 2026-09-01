@@ -3,7 +3,9 @@ from __future__ import annotations
 import math
 from typing import Annotated, Literal, Self
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from mimeme.search import recipe
 
 
 class _Frozen(BaseModel):
@@ -13,9 +15,31 @@ class _Frozen(BaseModel):
 class Query(_Frozen):
     text: str | None = Field(default=None, max_length=200)
     similar_image_id: int | None = Field(default=None, gt=0)
-    mode: Literal["image", "hybrid"] = "image"
+    recipe_id: recipe.RecipeId = Field(
+        default="image_bm25_bge",
+        validation_alias=AliasChoices("recipe_id", "mode"),
+    )
     limit: int = Field(default=20, ge=1, le=100)
     offset: int = Field(default=0, ge=0)
+
+    @field_validator("recipe_id", mode="before")
+    @classmethod
+    def _resolve_recipe(cls, value: object) -> recipe.RecipeId:
+        if not isinstance(value, str):
+            raise ValueError("recipe ID must be a string")
+        return recipe.id_of(value)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_similar_recipe(cls, value: object) -> object:
+        if (
+            isinstance(value, dict)
+            and value.get("similar_image_id") is not None
+            and "recipe_id" not in value
+            and "mode" not in value
+        ):
+            return {**value, "recipe_id": "image_only"}
+        return value
 
     @model_validator(mode="after")
     def _one_input(self) -> Self:
@@ -24,9 +48,13 @@ class Query(_Frozen):
                 raise ValueError("text must not be blank")
         if (self.text is None) == (self.similar_image_id is None):
             raise ValueError("provide exactly one of text or similar_image_id")
-        if self.similar_image_id is not None and self.mode != "image":
-            raise ValueError("similar search only supports image mode")
+        if self.similar_image_id is not None and self.recipe_id != "image_only":
+            raise ValueError("similar search only supports the image-only recipe")
         return self
+
+    @property
+    def mode(self) -> Literal["image", "hybrid"]:
+        return "image" if self.recipe_id == "image_only" else "hybrid"
 
 
 class Candidate(_Frozen):
@@ -90,6 +118,8 @@ class Status(_Frozen):
     encoder_repo: str | None = None
     encoder_revision: str | None = None
     encoder_variant: str | None = None
+    bm25_available: bool = False
+    bge_available: bool = False
     detail: str | None = None
 
 
@@ -98,9 +128,9 @@ class File(_Frozen):
         "index.faiss",
         "mapping.json",
         "metadata.json",
-        "text_index.faiss",
-        "text_mapping.json",
-        "text_metadata.json",
+        "bge_index.faiss",
+        "bge_mapping.json",
+        "bge_metadata.json",
     ]
     key: str = Field(min_length=1)
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -113,9 +143,52 @@ class Encoder(_Frozen):
     threads: int = Field(ge=1)
 
 
+class DenseIndex(_Frozen):
+    retriever: Literal["bge"]
+    model: Literal["BAAI/bge-small-en-v1.5"]
+    dimension: Literal[384]
+    encoder: Encoder
+    document_content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    projection_version: Literal[1]
+    render_version: Literal[1]
+    count: int = Field(ge=0)
+    files: tuple[File, File, File]
+
+    @model_validator(mode="after")
+    def _complete(self) -> Self:
+        if {file.name for file in self.files} != {
+            "bge_index.faiss",
+            "bge_mapping.json",
+            "bge_metadata.json",
+        }:
+            raise ValueError("BGE dense index is incomplete")
+        return self
+
+
+class Bm25File(_Frozen):
+    name: Literal["bm25.sqlite3"] = "bm25.sqlite3"
+    key: str = Field(min_length=1)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    length: int = Field(gt=0)
+    count: int = Field(ge=0)
+    schema_version: Literal[1] = 1
+    projection_version: Literal[1] = 1
+    tokenizer: Literal["porter unicode61"] = "porter unicode61"
+    weights: tuple[float, float, float, float, float, float, float]
+    sqlite_version: str = Field(pattern=r"^\d+\.\d+\.\d+$")
+
+    @model_validator(mode="after")
+    def _supported_weights(self) -> Self:
+        if self.weights != (4, 4, 4, 2, 2, 2, 1):
+            raise ValueError("BM25 field weights are incompatible")
+        return self
+
+
 class Load(_Frozen):
     version: str = Field(min_length=1)
     files: list[File]
+    bm25: Bm25File | None = None
+    dense: list[DenseIndex] = []
     encoder: Encoder
     hnsw_ef_search: int = Field(default=128, ge=1)
 
@@ -127,18 +200,36 @@ class Load(_Frozen):
         required = {"index.faiss", "mapping.json", "metadata.json"}
         if not required.issubset(names):
             raise ValueError("image index generation is incomplete")
-        text = {"text_index.faiss", "text_mapping.json", "text_metadata.json"}
-        present = text.intersection(names)
-        if present and present != text:
-            raise ValueError("text index generation is incomplete")
+        prefix = f"indexes/{self.version}/"
+        if self.bm25 is not None and self.bm25.key != f"{prefix}{self.bm25.name}":
+            raise ValueError("BM25 artifact must use its generation prefix")
+        dense_ids = [item.retriever for item in self.dense]
+        if len(dense_ids) != len(set(dense_ids)):
+            raise ValueError("dense retriever IDs must be unique")
+        files_by_name = {file.name: file for file in self.files}
+        if any(files_by_name.get(file.name) != file for item in self.dense for file in item.files):
+            raise ValueError("dense index files must belong to the generation")
         return self
 
 
 class PreparedLoad(_Frozen):
     version: str
+    workspace: str
     paths: dict[str, str]
+    bm25: Bm25File | None = None
+    dense: list[DenseIndex] = []
     encoder: Encoder
     hnsw_ef_search: int = Field(default=128, ge=1)
+
+    @model_validator(mode="after")
+    def _complete_workspace(self) -> Self:
+        if self.bm25 is not None and self.bm25.name not in self.paths:
+            raise ValueError("BM25 generation artifact is missing")
+        if self.bm25 is None and "bm25.sqlite3" in self.paths:
+            raise ValueError("BM25 workspace path requires a generation descriptor")
+        if any(file.name not in self.paths for item in self.dense for file in item.files):
+            raise ValueError("dense generation artifact is missing")
+        return self
 
 
 class Loaded(_Frozen):
@@ -146,7 +237,8 @@ class Loaded(_Frozen):
     embed_model: str
     dimension: int = Field(gt=0)
     image_count: int = Field(ge=0)
-    text_count: int | None = Field(default=None, ge=0)
+    bm25_count: int | None = Field(default=None, ge=0)
+    dense_counts: dict[Literal["bge"], int] = {}
     faiss_version: str
     onnxruntime_version: str
     encoder_revision: str
@@ -190,7 +282,11 @@ class RollbackCall(_Frozen):
     failed_version: str
 
 
+class ClearCall(_Frozen):
+    op: Literal["search.clear"] = "search.clear"
+
+
 ChildCall = Annotated[
-    StatusCall | QueryCall | LoadCall | SwitchCall | RollbackCall,
+    StatusCall | QueryCall | LoadCall | SwitchCall | RollbackCall | ClearCall,
     Field(discriminator="op"),
 ]

@@ -103,7 +103,6 @@ async def test_embed_builds_keys_and_maps() -> None:
                             "image_id": 1,
                             "ok": True,
                             "image_key": "e/1.npy",
-                            "text_key": "e/1_text.npy",
                             "model": "google/siglip2",
                             "dimension": 768,
                         },
@@ -116,8 +115,8 @@ async def test_embed_builds_keys_and_maps() -> None:
     adapter = _adapter(handler)
     batch = Batch(
         items=[
-            Item(image_id=1, media_key="images/1.jpg", text="t", sha256="abc", dataset="ds"),
-            Item(image_id=2, media_key="images/2.jpg", text="t", sha256="def"),
+            Item(image_id=1, media_key="images/1.jpg", sha256="abc", dataset="ds"),
+            Item(image_id=2, media_key="images/2.jpg", sha256="def"),
         ]
     )
     result = await adapter.embed(batch)
@@ -126,6 +125,7 @@ async def test_embed_builds_keys_and_maps() -> None:
     spec = seen["spec"]
     assert isinstance(spec, dict)
     assert spec["items"][0]["image_key"] == "embeddings/google_siglip2/ds/abc.npy"
+    assert "text_key" not in spec["items"][0]
 
 
 async def test_failed_job_raises() -> None:

@@ -3,7 +3,9 @@ from __future__ import annotations
 from tests.support.storage import Memory
 
 from mimeme import index, storage
-from mimeme.index.ops import cleanup_incomplete, validate
+from mimeme.index import documents
+from mimeme.index.ops import validate
+from mimeme.search.document import SearchDocument
 
 
 def _manifest(version: str) -> index.Manifest:
@@ -38,14 +40,23 @@ async def test_validation_requires_published_manifest_and_every_artifact() -> No
     assert await validate(artifacts, manifest) == manifest
 
 
-async def test_partial_generation_cleanup_never_deletes_protected_or_complete_output() -> None:
+async def test_validation_reads_and_hashes_v2_documents() -> None:
     artifacts = Memory()
-    partial = storage.Object("indexes/partial/index.faiss")
-    await artifacts.put_bytes(partial, b"data", content_type="x")
-    await cleanup_incomplete(artifacts, version="partial", protect=set())
-    assert await artifacts.stat(partial) is None
+    legacy = _manifest("v2-documents")
+    document_file = await documents.publish(
+        artifacts,
+        version=legacy.version,
+        documents=[SearchDocument(image_id=1, titles=("Alias",))],
+    )
+    manifest = index.Manifest.model_validate(
+        {**legacy.model_dump(), "format_version": 2, "documents": document_file}
+    )
+    for file in manifest.files:
+        await artifacts.put_bytes(storage.Object(file.key), b"data", content_type="x")
+    await artifacts.put_bytes(
+        storage.Object(manifest.complete_key),
+        manifest.model_dump_json().encode(),
+        content_type="application/json",
+    )
 
-    protected = storage.Object("indexes/active/index.faiss")
-    await artifacts.put_bytes(protected, b"data", content_type="x")
-    await cleanup_incomplete(artifacts, version="active", protect={"active"})
-    assert await artifacts.stat(protected) is not None
+    assert await validate(artifacts, manifest) == manifest

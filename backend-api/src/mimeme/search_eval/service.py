@@ -15,8 +15,11 @@ from mimeme.db import Db
 from mimeme.db.schema import (
     Annotation,
     SearchEvalBaseline,
+    SearchEvalExperiment,
     SearchEvalJudgment,
+    SearchEvalPoolBatch,
     SearchEvalPoolCandidate,
+    SearchEvalPoolSource,
     SearchEvalQuery,
     SearchEvalQueryExecution,
     SearchEvalResult,
@@ -29,8 +32,10 @@ from mimeme.media import Urls
 from mimeme.search.rows import SqlRows
 from mimeme.search_eval.metrics import Metrics, calculate
 from mimeme.search_eval.model import (
+    ArchivedDefinition,
     CandidateView,
     Comparison,
+    ExperimentView,
     Intent,
     JudgmentSave,
     JudgmentWorkspace,
@@ -43,7 +48,6 @@ from mimeme.search_eval.model import (
     QueryView,
     RankedImage,
     RunMetricsView,
-    RunMode,
     RunView,
     WorkflowResult,
 )
@@ -150,8 +154,14 @@ async def _run_view(db: Db, row: SearchEvalRun) -> RunView:
     if row.score_snapshot_id is not None:
         async with db.read_session() as session:
             score = await session.get(SearchEvalScore, (row.id, row.score_snapshot_id))
+    definition = ArchivedDefinition.model_validate(row.recipe_definition)
+    if definition.id != row.recipe_id:
+        raise RuntimeError("Search eval recipe snapshot does not match its ID")
     return RunView(
         id=row.id,
+        experiment_id=row.experiment_id,
+        recipe_id=definition.id,
+        recipe=definition,
         mode=row.mode,
         status=row.status,
         phase=row.phase,
@@ -190,6 +200,7 @@ async def get_overview(db: Db) -> Overview:
         candidate_count=candidates,
         judgment_count=judgments,
         unjudged_count=max(0, candidates - judgments),
+        recipes=search.recipe.all(),
     )
 
 
@@ -222,16 +233,24 @@ async def pool_query(
     *,
     client: search.Client,
     media_urls: Urls,
+    recipe_ids: tuple[search.recipe.RecipeId, ...] | None = None,
 ) -> PoolResult:
     async with db.read_session() as session:
         query_row = await session.get(SearchEvalQuery, query_id)
     if query_row is None:
         raise NotFound("Query not found")
 
-    pages: dict[RunMode, search.Page] = {}
-    for mode in ("image", "hybrid"):
-        pages[mode] = await search.run(
-            search.Query(text=query_row.text, mode=mode, limit=20),
+    definitions = (
+        search.recipe.all()
+        if recipe_ids is None
+        else tuple(search.recipe.resolve(recipe_id) for recipe_id in dict.fromkeys(recipe_ids))
+    )
+    if not definitions:
+        raise Conflict("Select at least one recipe for the pool")
+    pages: dict[search.recipe.RecipeId, search.Page] = {}
+    for definition in definitions:
+        pages[definition.id] = await search.run(
+            search.Query(text=query_row.text, recipe_id=definition.id, limit=20),
             client=client,
             rows=SqlRows(db),
             media_urls=media_urls,
@@ -243,11 +262,22 @@ async def pool_query(
     assert version is not None
 
     ranks = {
-        mode: {result.id: rank for rank, result in enumerate(page.results, 1)}
-        for mode, page in pages.items()
+        recipe_id: {result.id: rank for rank, result in enumerate(page.results, 1)}
+        for recipe_id, page in pages.items()
     }
-    image_ids = set(ranks["image"]) | set(ranks["hybrid"])
+    image_ids = set().union(*(set(recipe_ranks) for recipe_ranks in ranks.values()))
+    batch_id = uuid.uuid4().hex
     async with db.write_session() as session:
+        session.add(
+            SearchEvalPoolBatch(
+                id=batch_id,
+                index_version=version,
+                recipe_definitions=[
+                    definition.model_dump(mode="json") for definition in definitions
+                ],
+                query_ids=[query_id],
+            )
+        )
         existing = {
             row.image_id: row
             for row in (
@@ -265,9 +295,18 @@ async def pool_query(
                 row = SearchEvalPoolCandidate(query_id=query_id, image_id=image_id)
                 session.add(row)
                 added += 1
-            row.image_rank = ranks["image"].get(image_id)
-            row.hybrid_rank = ranks["hybrid"].get(image_id)
         await session.flush()
+        for recipe_id, recipe_ranks in ranks.items():
+            for image_id, rank in recipe_ranks.items():
+                session.add(
+                    SearchEvalPoolSource(
+                        batch_id=batch_id,
+                        query_id=query_id,
+                        image_id=image_id,
+                        recipe_id=recipe_id,
+                        rank=rank,
+                    )
+                )
         count = await session.scalar(
             select(func.count())
             .select_from(SearchEvalPoolCandidate)
@@ -278,6 +317,7 @@ async def pool_query(
         candidate_count=count or 0,
         added_count=added,
         index_version=version,
+        batch_id=batch_id,
     )
 
 
@@ -519,7 +559,32 @@ async def get_run(db: Db, run_id: str) -> RunView:
     return await _run_view(db, row)
 
 
-async def create_run(db: Db, *, run_id: str, mode: RunMode, workflow_id: str) -> RunView:
+async def create_run(
+    db: Db,
+    *,
+    run_id: str,
+    recipe_id: search.recipe.RecipeId,
+    workflow_id: str,
+) -> RunView:
+    experiment = await create_experiment(
+        db,
+        experiment_id=uuid.uuid4().hex,
+        runs=[(run_id, recipe_id, workflow_id)],
+    )
+    return experiment.runs[0]
+
+
+async def create_experiment(
+    db: Db,
+    *,
+    experiment_id: str,
+    runs: list[tuple[str, search.recipe.RecipeId, str]],
+) -> ExperimentView:
+    if not runs:
+        raise Incomplete("Select at least one recipe for the experiment")
+    recipe_ids = [recipe_id for _, recipe_id, _ in runs]
+    if len(recipe_ids) != len(set(recipe_ids)):
+        raise Conflict("An experiment cannot run the same recipe twice")
     async with db.read_session() as session:
         active = await session.scalar(
             select(func.count())
@@ -529,21 +594,46 @@ async def create_run(db: Db, *, run_id: str, mode: RunMode, workflow_id: str) ->
     if active:
         raise Conflict("Another search evaluation is already running")
     snapshot = await _snapshot(db)
-    row = SearchEvalRun(
-        id=run_id,
-        snapshot_id=snapshot.id,
-        mode=mode,
-        status="queued",
-        phase="preparing",
-        workflow_id=workflow_id,
-        progress_completed=0,
-        progress_total=snapshot.query_count,
-        release_id=release.ID,
-    )
+    definitions = tuple(search.recipe.resolve(recipe_id) for recipe_id in recipe_ids)
+    rows = [
+        SearchEvalRun(
+            id=run_id,
+            experiment_id=experiment_id,
+            snapshot_id=snapshot.id,
+            mode="image" if definition.id == "image_only" else "hybrid",
+            recipe_id=definition.id,
+            recipe_definition=definition.model_dump(mode="json"),
+            status="queued",
+            phase="preparing",
+            workflow_id=workflow_id,
+            progress_completed=0,
+            progress_total=snapshot.query_count,
+            release_id=release.ID,
+        )
+        for (run_id, _, workflow_id), definition in zip(runs, definitions, strict=True)
+    ]
     async with db.write_session() as session:
-        session.add(row)
+        session.add(
+            SearchEvalExperiment(
+                id=experiment_id,
+                snapshot_id=snapshot.id,
+                recipe_definitions=[
+                    definition.model_dump(mode="json") for definition in definitions
+                ],
+            )
+        )
+        session.add_all(rows)
         await session.flush()
-    return await _run_view(db, row)
+    views = [await _run_view(db, row) for row in rows]
+    return ExperimentView(
+        id=experiment_id,
+        snapshot_id=snapshot.id,
+        index_version=None,
+        recipes=tuple(
+            ArchivedDefinition.model_validate(definition.model_dump()) for definition in definitions
+        ),
+        runs=views,
+    )
 
 
 async def queue_rescore(db: Db, run_id: str, *, workflow_id: str) -> RunView:
@@ -573,8 +663,16 @@ async def prepare_run(db: Db, run_id: str, *, index_version: str) -> PreparedRun
             raise Conflict("The search index changed before the run resumed")
         snapshot = await session.get(SearchEvalSnapshot, row.snapshot_id)
         assert snapshot is not None
-        if row.mode not in ("image", "hybrid"):
-            raise RuntimeError(f"Invalid search eval mode: {row.mode}")
+        definition = search.recipe.Definition.model_validate(row.recipe_definition)
+        if definition.id != row.recipe_id:
+            raise RuntimeError("Search eval recipe snapshot does not match its ID")
+        experiment = await session.get(
+            SearchEvalExperiment, row.experiment_id, with_for_update=True
+        )
+        assert experiment is not None
+        if experiment.index_version is not None and experiment.index_version != index_version:
+            raise Conflict("The search index changed before the experiment finished")
+        experiment.index_version = index_version
         row.status = "running"
         row.phase = "searching"
         row.index_version = index_version
@@ -585,7 +683,8 @@ async def prepare_run(db: Db, run_id: str, *, index_version: str) -> PreparedRun
         ]
         return PreparedRun(
             run_id=row.id,
-            mode=row.mode,
+            recipe_id=definition.id,
+            recipe=definition,
             index_version=index_version,
             queries=queries,
         )
@@ -596,7 +695,7 @@ async def record_query(
     *,
     run_id: str,
     query_id: int,
-    mode: RunMode,
+    recipe_id: search.recipe.RecipeId,
     expected_index_version: str,
     page: search.Page,
 ) -> bool:
@@ -611,6 +710,18 @@ async def record_query(
             raise NotFound("Run not found")
         if row.index_version != expected_index_version:
             raise Conflict("The eval run index version does not match retrieval")
+        if row.recipe_id != recipe_id:
+            raise Conflict("The eval run recipe does not match retrieval")
+
+        batch_id = uuid.uuid4().hex
+        session.add(
+            SearchEvalPoolBatch(
+                id=batch_id,
+                index_version=expected_index_version,
+                recipe_definitions=[row.recipe_definition],
+                query_ids=[query_id],
+            )
+        )
 
         session.add(
             SearchEvalQueryExecution(
@@ -634,10 +745,16 @@ async def record_query(
             if candidate is None:
                 candidate = SearchEvalPoolCandidate(query_id=query_id, image_id=result.id)
                 session.add(candidate)
-            if mode == "image":
-                candidate.image_rank = rank
-            else:
-                candidate.hybrid_rank = rank
+            await session.flush()
+            session.add(
+                SearchEvalPoolSource(
+                    batch_id=batch_id,
+                    query_id=query_id,
+                    image_id=result.id,
+                    recipe_id=recipe_id,
+                    rank=rank,
+                )
+            )
         completed = await session.scalar(
             select(func.count())
             .select_from(SearchEvalQueryExecution)

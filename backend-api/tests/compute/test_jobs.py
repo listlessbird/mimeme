@@ -102,7 +102,6 @@ class FakeSupervisor:
                 items.append(EmbedReplyItem(image_id=item.image_id, ok=False, error="bad image"))
                 continue
             Path(item.image_out).write_bytes(b"IMG")
-            Path(item.text_out).write_bytes(b"TXT")
             items.append(
                 EmbedReplyItem(image_id=item.image_id, ok=True, model="siglip", dimension=768)
             )
@@ -111,7 +110,6 @@ class FakeSupervisor:
             image_decode_ms=2,
             siglip_preprocess_ms=3,
             siglip_image_ms=4,
-            siglip_text_ms=5,
             embed_batch_size=len(call.items),
             gpu_peak_allocated_mb=100,
             gpu_peak_reserved_mb=120,
@@ -181,18 +179,14 @@ async def test_embed_job_uploads_and_preserves_order(tmp_path: Path) -> None:
             EmbedSpecItem(
                 image_id=1,
                 media_key="images/1.jpg",
-                text="t1",
                 sha256="s1",
                 image_key="e/1.npy",
-                text_key="e/1_text.npy",
             ),
             EmbedSpecItem(
                 image_id=2,
                 media_key="images/2.jpg",
-                text="t2",
                 sha256="s2",
                 image_key="e/2.npy",
-                text_key="e/2_text.npy",
             ),
         ],
     )
@@ -204,7 +198,7 @@ async def test_embed_job_uploads_and_preserves_order(tmp_path: Path) -> None:
     ids = [item["image_id"] for item in state.result["items"]]
     assert ids == [1, 2]
     assert artifacts.objects["e/1.npy"] == b"IMG"
-    assert artifacts.objects["e/2_text.npy"] == b"TXT"
+    assert set(artifacts.objects) == {"e/1.npy", "e/2.npy"}
 
 
 async def test_embed_emits_one_wide_gpu_timing_event(tmp_path: Path) -> None:
@@ -217,10 +211,8 @@ async def test_embed_emits_one_wide_gpu_timing_event(tmp_path: Path) -> None:
             EmbedSpecItem(
                 image_id=1,
                 media_key="images/1.jpg",
-                text="t1",
                 sha256="s1",
                 image_key="e/1.npy",
-                text_key="e/1_text.npy",
             )
         ],
     )
@@ -262,10 +254,8 @@ async def test_embed_s3_io_is_concurrent_and_globally_bounded(tmp_path: Path) ->
             EmbedSpecItem(
                 image_id=image_id,
                 media_key=media_key,
-                text=f"t{image_id}",
                 sha256=f"s{image_id}",
                 image_key=f"e/{image_id}.npy",
-                text_key=f"e/{image_id}_text.npy",
             )
         )
 
@@ -290,18 +280,14 @@ async def test_embed_partial_failure(tmp_path: Path) -> None:
             EmbedSpecItem(
                 image_id=1,
                 media_key="images/1.jpg",
-                text="t",
                 sha256="s1",
                 image_key="e/1.npy",
-                text_key="e/1_text.npy",
             ),
             EmbedSpecItem(
                 image_id=2,
                 media_key="images/2.jpg",
-                text="t",
                 sha256="s2",
                 image_key="e/2.npy",
-                text_key="e/2_text.npy",
             ),
         ],
     )

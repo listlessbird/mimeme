@@ -191,9 +191,7 @@ class Jobs:
             return EmbedCallItem(
                 image_id=item.image_id,
                 path=str(path),
-                text=item.text,
                 image_out=str(workspace.path(f"img_{index}.npy")),
-                text_out=str(workspace.path(f"txt_{index}.npy")),
             )
 
         call_items = await asyncio.gather(
@@ -223,16 +221,11 @@ class Jobs:
                 )
             call_item = call_by_id[reply_item.image_id]
             image_bytes = Path(call_item.image_out).read_bytes()
-            text_bytes = Path(call_item.text_out).read_bytes()
-            await asyncio.gather(
-                self._put_artifact(spec_item.image_key, image_bytes),
-                self._put_artifact(spec_item.text_key, text_bytes),
-            )
+            await self._put_artifact(spec_item.image_key, image_bytes)
             return EmbedResultItem(
                 image_id=reply_item.image_id,
                 ok=True,
                 image_key=spec_item.image_key,
-                text_key=spec_item.text_key,
                 model=reply_item.model,
                 dimension=reply_item.dimension,
             )

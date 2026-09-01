@@ -15,7 +15,6 @@ from mimeme.inference.model import (
     Item,
     Ok,
     image_embedding_key,
-    text_embedding_key,
 )
 
 
@@ -37,7 +36,6 @@ async def test_batch_result_roundtrip_and_projections() -> None:
                 embedding=Embedding(
                     image_id=1,
                     image_embedding_key="e/1.npy",
-                    text_embedding_key="e/1_text.npy",
                     model="m",
                     dimension=768,
                 )
@@ -63,14 +61,13 @@ def test_unknown_fields_rejected() -> None:
 
 
 def test_batch_item_discriminated_union() -> None:
-    batch = Batch(items=[Item(image_id=1, media_key="k", sha256="s", text="t")])
+    batch = Batch(items=[Item(image_id=1, media_key="k", sha256="s")])
     assert batch.items[0].dataset is None
 
 
 def test_embedding_key_rules() -> None:
     key = image_embedding_key(sha256="abc", model="google/siglip2", dataset=None)
     assert key == "embeddings/google_siglip2/api-ingested/abc.npy"
-    assert text_embedding_key(key) == "embeddings/google_siglip2/api-ingested/abc_text.npy"
 
 
 def test_module_exports_client_interface() -> None:

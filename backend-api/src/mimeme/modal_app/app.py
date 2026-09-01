@@ -190,7 +190,6 @@ class EmbeddingService:
         self._is_siglip2 = "siglip2" in self.model_name.lower()
         self._is_naflex = "naflex" in self.model_name.lower()
         self._has_image = hasattr(self.model, "get_image_features")
-        self._has_text = hasattr(self.model, "get_text_features")
 
     def _to_device(self, inputs: dict) -> dict:
         import torch
@@ -218,22 +217,6 @@ class EmbeddingService:
                 self.model.get_image_features(**inputs) if self._has_image else self.model(**inputs)
             )
         return _to_numpy(feats, kind="image")
-
-    def _encode_texts(self, texts: list[str]) -> Any:
-        import torch
-
-        if self._is_siglip2:
-            inputs = self.processor(
-                text=texts, return_tensors="pt", padding="max_length", max_length=64
-            )
-        else:
-            inputs = self.processor(text=texts, return_tensors="pt", padding="max_length")
-        inputs = self._to_device(inputs)
-        with torch.no_grad():
-            feats = (
-                self.model.get_text_features(**inputs) if self._has_text else self.model(**inputs)
-            )
-        return _to_numpy(feats, kind="text")
 
     @modal.method()
     async def embed_batch(self, items: list[dict], model: str) -> dict:
@@ -264,7 +247,6 @@ class EmbeddingService:
             if prepared:
                 try:
                     img_feats = self._encode_images([pil for _, _, pil in prepared])
-                    txt_feats = self._encode_texts([item["text"] for _, item, _ in prepared])
                 except Exception as exc:
                     for index, item, _ in prepared:
                         results[index] = {
@@ -280,16 +262,10 @@ class EmbeddingService:
                                 _npy_bytes(np, img_feats[row]),
                                 content_type="application/octet-stream",
                             )
-                            await artifacts.put_bytes(
-                                storage.Object(item["text_key"]),
-                                _npy_bytes(np, txt_feats[row]),
-                                content_type="application/octet-stream",
-                            )
                             results[index] = {
                                 "image_id": item["image_id"],
                                 "ok": True,
                                 "image_key": item["image_key"],
-                                "text_key": item["text_key"],
                                 "model": model,
                                 "dimension": int(img_feats.shape[-1]),
                             }
@@ -304,6 +280,63 @@ class EmbeddingService:
         finally:
             await artifacts.close()
             await media.close()
+
+
+@app.cls(
+    image=gpu_image,
+    gpu="T4",
+    volumes={HF_CACHE_DIR: hf_cache},
+    scaledown_window=30,
+)
+class BgeService:
+    @modal.enter()
+    def load_model(self) -> None:
+        import torch
+        from transformers import AutoModel, AutoTokenizer
+
+        from mimeme.inference import bge
+
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            bge.SOURCE_MODEL,
+            revision=bge.SOURCE_REVISION,
+        )
+        self._model = (
+            AutoModel.from_pretrained(
+                bge.SOURCE_MODEL,
+                revision=bge.SOURCE_REVISION,
+                torch_dtype=torch.float16,
+            )
+            .eval()
+            .to("cuda")
+        )
+
+    @modal.method()
+    def encode_batch(self, batch: dict) -> dict:
+        import torch
+
+        from mimeme.inference import bge
+
+        request = bge.EncodeBatch.model_validate(batch)
+        encoded = self._tokenizer(
+            [item.text for item in request.items],
+            padding=True,
+            truncation=True,
+            max_length=bge.MAX_LENGTH,
+            return_tensors="pt",
+        )
+        encoded = {name: value.to("cuda") for name, value in encoded.items()}
+        with torch.no_grad():
+            hidden = self._model(**encoded).last_hidden_state
+            vectors = torch.nn.functional.normalize(hidden[:, 0], p=2, dim=1)
+        result = bge.EncodedBatch(
+            document_content_sha256=request.document_content_sha256,
+            export=request.export,
+            items=tuple(
+                bge.Vector(image_id=item.image_id, values=tuple(float(value) for value in vector))
+                for item, vector in zip(request.items, vectors.float().cpu().tolist(), strict=True)
+            ),
+        )
+        return result.model_dump(mode="json")
 
 
 def _npy_bytes(np: Any, array: Any) -> bytes:

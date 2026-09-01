@@ -12,7 +12,7 @@ from tests.factories import (
 from tests.job.conftest import SavepointDb
 from tests.support.storage import Memory
 
-from mimeme import index
+from mimeme import index, storage
 from mimeme.config import Settings
 from mimeme.db.schema import JobStatus, JobType, ProcessingStatus
 from mimeme.index import ops, rule
@@ -47,8 +47,8 @@ def _embedded(session: Session, *, key: str, text_present: bool | None) -> None:
     session.flush()
 
 
-class TestTextPresence:
-    async def test_absent_and_unresolved_rows_carry_no_text_reference(
+class TestImageEmbeddings:
+    async def test_legacy_text_presence_does_not_change_the_image_snapshot(
         self, index_db: SavepointDb, run_sync_seed
     ) -> None:
         def seed(session: Session) -> str:
@@ -65,12 +65,14 @@ class TestTextPresence:
 
         assert prepared.build is not None
         build = await ops.load_build(store, prepared.build)
-        by_key = {item.image_key: item.text_key for item in build.embeddings}
-        assert by_key == {
-            "embeddings/present.npy": "embeddings/present_text.npy",
-            "embeddings/absent.npy": None,
-            "embeddings/unresolved.npy": None,
-        }
+        assert prepared.build.bm25 is not None
+        assert build.bm25 == prepared.build.bm25
+        assert await store.stat(storage.Object(prepared.build.bm25.key)) is not None
+        assert [item.image_key for item in build.embeddings] == [
+            "embeddings/present.npy",
+            "embeddings/absent.npy",
+            "embeddings/unresolved.npy",
+        ]
 
     async def test_planned_reads_counts_one_object_per_referenced_vector(
         self, index_db: SavepointDb, run_sync_seed
@@ -86,7 +88,7 @@ class TestTextPresence:
         prepared = await ops.prepare(index_db, Memory(), Settings(), _request(job_id))
 
         assert prepared.build is not None
-        assert prepared.build.planned_reads == 3
+        assert prepared.build.planned_reads == 2
 
 
 class TestSettleWindow:
@@ -226,4 +228,4 @@ class TestReadCount:
 
         assert prepared.decision == "build"
         assert prepared.build is not None
-        assert prepared.build.planned_reads == 6
+        assert prepared.build.planned_reads == 3

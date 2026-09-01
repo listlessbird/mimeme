@@ -124,9 +124,7 @@ async def _listing(fetcher: Fetcher, cfg: FlipConfig) -> list[TemplateRef]:
     return refs
 
 
-async def _template(
-    fetcher: Fetcher, ref: TemplateRef, cfg: FlipConfig
-) -> DiscoveredItem | None:
+async def _template(fetcher: Fetcher, ref: TemplateRef, cfg: FlipConfig) -> DiscoveredItem | None:
     hot = Selector(await fetcher.html(ref.url), url=ref.url)
     aliases = _aliases(hot)
     candidates: dict[str, MediaCandidate] = {}
@@ -280,9 +278,7 @@ def _aliases(page: Selector) -> list[str]:
     element = page.css(".alt-names").first
     if element is None:
         return []
-    value = re.sub(
-        r"^aka:\s*", "", _clean(element.get_all_text(strip=True)), flags=re.IGNORECASE
-    )
+    value = re.sub(r"^aka:\s*", "", _clean(element.get_all_text(strip=True)), flags=re.IGNORECASE)
     return [alias.strip() for alias in value.split(",") if alias.strip()]
 
 

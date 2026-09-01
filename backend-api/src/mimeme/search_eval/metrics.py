@@ -7,7 +7,6 @@ import ir_measures
 from ir_measures import RR, Judged, P, Success, nDCG
 from pydantic import BaseModel, ConfigDict, Field
 
-# Provider details stay in this adapter. Callers only use Mimeme's named metrics.
 _NDCG_10 = nDCG(gains={0: 0, 1: 1, 2: 3, 3: 7}) @ 10
 _PRECISION_5 = P(rel=2) @ 5
 _SUCCESS_5 = Success(rel=2) @ 5

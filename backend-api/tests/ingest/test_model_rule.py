@@ -106,11 +106,6 @@ class TestRule:
     def test_http_status_classification(self, status: int, terminal: bool) -> None:
         assert rule.is_terminal_http_status(status) is terminal
 
-    def test_compose_embedding_text(self) -> None:
-        assert rule.compose_embedding_text("cap", "ocr") == "cap ocr"
-        assert rule.compose_embedding_text(None, "ocr") == "ocr"
-        assert rule.compose_embedding_text(None, None) == ""
-
     def test_staging_keys(self) -> None:
         assert rule.staging_key(7) == "uploads/ingest-staging/7"
         assert rule.upload_staging_key("cat.PNG", token="tok").startswith("uploads/staging/tok")

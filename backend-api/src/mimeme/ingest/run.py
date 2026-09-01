@@ -43,8 +43,6 @@ class _PendingEmbedding:
     input: Input
     image_id: int
     media_key: str
-    text: str
-    text_sha256: str
     sha256: str
     outcome: Outcome
     duplicate_reason: DuplicateReason | None
@@ -225,9 +223,7 @@ async def _resolve(
                 resolved = None
 
     if resolved is not None:
-        return await _duplicate(
-            env, input, resolved[0], resolved[1], context, timings=timings
-        )
+        return await _duplicate(env, input, resolved[0], resolved[1], context, timings=timings)
     return await _complete_new(
         env,
         input,
@@ -253,7 +249,7 @@ async def _complete_new(
     similar_image_id: int | None,
     phash_distance: int | None,
 ) -> Result | _PendingEmbedding:
-    embedding = await _annotate_and_prepare_embedding(
+    needs_embedding = await _annotate_and_prepare_embedding(
         env,
         input,
         image_id=image_id,
@@ -261,19 +257,14 @@ async def _complete_new(
         sha256=sha256,
         do_annotation=True,
         do_embedding=True,
-        caption=None,
-        ocr_text=None,
         context=context,
         timings=timings,
     )
-    if embedding is not None:
-        text, text_sha256 = embedding
+    if needs_embedding:
         return _PendingEmbedding(
             input=input,
             image_id=image_id,
             media_key=media_key,
-            text=text,
-            text_sha256=text_sha256,
             sha256=sha256,
             outcome="processed",
             duplicate_reason=None,
@@ -310,32 +301,22 @@ async def _duplicate(
         view.caption_context_sha256 != context_hash
         or view.caption_prompt_version != inference.CAPTION_PROMPT_VERSION
     )
-    desired_text = rule.compose_search_text(context, view.existing_caption, view.existing_ocr_text)
-    facts_changed = context is not None and (
-        view.embed_text_sha256 != rule.text_sha256(desired_text)
-        or view.embed_recipe_version != rule.EMBED_RECIPE_VERSION
-    )
-    embedding = await _annotate_and_prepare_embedding(
+    needs_embedding = await _annotate_and_prepare_embedding(
         env,
         input,
         image_id=image_id,
         media_key=view.s3_key,
         sha256=view.sha256,
         do_annotation=view.needs_annotation or caption_context_changed,
-        do_embedding=view.needs_embedding or facts_changed or caption_context_changed,
-        caption=view.existing_caption,
-        ocr_text=view.existing_ocr_text,
+        do_embedding=view.needs_embedding,
         context=context,
         timings=timings,
     )
-    if embedding is not None:
-        text, text_sha256 = embedding
+    if needs_embedding:
         return _PendingEmbedding(
             input=input,
             image_id=image_id,
             media_key=view.s3_key,
-            text=text,
-            text_sha256=text_sha256,
             sha256=view.sha256,
             outcome="duplicate",
             duplicate_reason=reason,
@@ -367,11 +348,9 @@ async def _annotate_and_prepare_embedding(
     sha256: str,
     do_annotation: bool,
     do_embedding: bool,
-    caption: str | None,
-    ocr_text: str | None,
     context,
     timings: dict[str, float],
-) -> tuple[str, str] | None:
+) -> bool:
     if do_annotation:
         await job_ops.record_stage(env.db, input.item_id, IngestStage.ANNOTATING)
         annotation_started = perf_counter()
@@ -391,13 +370,9 @@ async def _annotate_and_prepare_embedding(
                 inference.CAPTION_PROMPT_VERSION if context is not None else None
             ),
         )
-        caption, ocr_text = annotation.caption, annotation.ocr_text
-
     if do_embedding:
         await job_ops.record_stage(env.db, input.item_id, IngestStage.EMBEDDING)
-        text = rule.compose_search_text(context, caption, ocr_text)
-        return text, rule.text_sha256(text)
-    return None
+    return do_embedding
 
 
 async def _annotate(env: Deps, image_id: int, media_key: str, context) -> inference.Annotation:
@@ -411,9 +386,7 @@ async def _annotate(env: Deps, image_id: int, media_key: str, context) -> infere
         raise InvalidImage(f"annotate failed: {exc}") from exc
 
 
-async def _embed_pending(
-    env: Deps, pending: list[_PendingEmbedding]
-) -> list[Result]:
+async def _embed_pending(env: Deps, pending: list[_PendingEmbedding]) -> list[Result]:
     if not pending:
         return []
     batch = inference.Batch(
@@ -421,7 +394,6 @@ async def _embed_pending(
             inference.Item(
                 image_id=item.image_id,
                 media_key=item.media_key,
-                text=item.text,
                 sha256=item.sha256,
                 dataset=item.input.dataset,
             )
@@ -434,7 +406,9 @@ async def _embed_pending(
     except (inference.Unavailable, inference.Timeout) as exc:
         raise Retryable(f"embed unavailable: {exc}") from exc
     except inference.Invalid as exc:
-        return [await _fail(env, item.input, InvalidImage(f"embed failed: {exc}")) for item in pending]
+        return [
+            await _fail(env, item.input, InvalidImage(f"embed failed: {exc}")) for item in pending
+        ]
 
     embedding_ms = round((perf_counter() - embedding_started) * 1000, 2)
     embeddings = {item.image_id: item for item in batch_result.results}
@@ -449,9 +423,6 @@ async def _embed_pending(
                 model=embedding.model,
                 dimension=embedding.dimension,
                 image_embedding_key=embedding.image_embedding_key,
-                text_embedding_key=embedding.text_embedding_key,
-                text_sha256=item.text_sha256,
-                recipe_version=rule.EMBED_RECIPE_VERSION,
             )
         await job_ops.mark_item_done(
             env.db,

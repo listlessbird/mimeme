@@ -8,7 +8,7 @@ import structlog
 from temporalio import activity
 from temporalio.exceptions import ApplicationError
 
-from mimeme import search, storage
+from mimeme import inference, search, storage
 from mimeme.config import Settings
 from mimeme.db import Db
 from mimeme.index import ops as index
@@ -33,6 +33,7 @@ class Deps(Protocol):
     artifacts: storage.Store
     settings: Settings
     index: Client
+    inference: inference.Client
     search: search.Activation
 
 
@@ -136,6 +137,7 @@ class Activities:
     async def build(self, request: BuildPlan) -> Result:
         started = time.monotonic()
         log = structlog.get_logger()
+
         async def progress(phase: str, value: float) -> None:
             activity.heartbeat({"phase": phase, "progress": value, "version": request.version})
             try:
@@ -186,6 +188,71 @@ class Activities:
             _raise_terminal(failure, terminal)
             raise
 
+    @activity.defn(name=rule.BGE_ACTIVITY)
+    async def encode_bge(self, request: BuildPlan) -> BuildPlan:
+        started = time.monotonic()
+        log = structlog.get_logger()
+
+        async def progress(phase: str, value: float) -> None:
+            activity.heartbeat({"phase": phase, "progress": value, "version": request.version})
+            try:
+                await job_ops.progress(
+                    self._env.db,
+                    request.job_id,
+                    10 + value * 30,
+                    f"BGE corpus encoding: {phase}",
+                )
+            except Exception:
+                pass
+            if activity.is_cancelled():
+                raise asyncio.CancelledError
+
+        try:
+            result = await index.encode_bge(
+                self._env.artifacts,
+                self._env.inference,
+                self._env.settings,
+                request,
+                progress=progress,
+            )
+            emit_activity_event(
+                log=log,
+                event_name="index_activity_completed",
+                activity_name=rule.BGE_ACTIVITY,
+                started_at=started,
+                outcome="completed",
+                job_id=request.job_id,
+                version=request.version,
+                num_vectors=result.dense_vectors[0].count,
+                dimension=result.dense_vectors[0].dimension,
+            )
+            return result
+        except BaseException as failure:
+            emit_activity_event(
+                log=log,
+                event_name="index_activity_failed",
+                activity_name=rule.BGE_ACTIVITY,
+                started_at=started,
+                outcome="failed",
+                error=str(failure),
+                job_id=request.job_id,
+                version=request.version,
+            )
+            terminal = _terminal(failure)
+            if (
+                isinstance(failure, asyncio.CancelledError)
+                or terminal
+                or activity.info().attempt >= rule.BGE_MAX_ATTEMPTS
+            ):
+                await _bookkeep_failure(
+                    self._env,
+                    request.job_id,
+                    failure,
+                    version=request.version,
+                )
+            _raise_terminal(failure, terminal)
+            raise
+
     @activity.defn(name=rule.ACTIVATE_ACTIVITY)
     async def activate(self, input: ActivateInput) -> Activated:
         started = time.monotonic()
@@ -197,7 +264,6 @@ class Activities:
                 self._env.artifacts,
                 self._env.search,
                 input,
-                retain=self._env.settings.index.retain_versions,
             )
             emit_activity_event(
                 log=log,
@@ -278,10 +344,6 @@ async def _bookkeep_failure(
             )
         except Exception as exc:
             failure_error = exc
-        try:
-            await index.cleanup_incomplete(env.artifacts, version=version, protect=set())
-        except Exception as exc:
-            failure_error = failure_error or exc
         if failure_error is not None:
             raise failure_error
 
