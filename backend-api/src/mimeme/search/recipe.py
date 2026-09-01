@@ -6,9 +6,23 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from mimeme.search.error import Invalid, Unavailable
 
-RecipeId = Literal["image_only", "image_siglip_text", "image_bm25"]
-RecipeName = Literal["image", "hybrid", "image_only", "image_siglip_text", "image_bm25"]
-RetrieverId = Literal["siglip_image", "siglip_text", "bm25"]
+RecipeId = Literal[
+    "image_only",
+    "image_siglip_text",
+    "image_bm25",
+    "image_bge",
+    "image_bm25_bge",
+]
+RecipeName = Literal[
+    "image",
+    "hybrid",
+    "image_only",
+    "image_siglip_text",
+    "image_bm25",
+    "image_bge",
+    "image_bm25_bge",
+]
+RetrieverId = Literal["siglip_image", "siglip_text", "bm25", "bge"]
 
 
 class UnknownRecipe(Invalid):
@@ -46,6 +60,8 @@ _ALIASES: dict[str, RecipeId] = {
     "image_only": "image_only",
     "image_siglip_text": "image_siglip_text",
     "image_bm25": "image_bm25",
+    "image_bge": "image_bge",
+    "image_bm25_bge": "image_bm25_bge",
 }
 
 _DEFINITIONS: dict[RecipeId, Definition] = {
@@ -67,6 +83,21 @@ _DEFINITIONS: dict[RecipeId, Definition] = {
         id="image_bm25",
         label="Image and BM25",
         retrievers=("siglip_image", "bm25"),
+        candidate_depth=1000,
+        rrf_k=60,
+        bm25=Bm25Settings(weights=(4, 4, 4, 2, 2, 2, 1)),
+    ),
+    "image_bge": Definition(
+        id="image_bge",
+        label="Image and BGE",
+        retrievers=("siglip_image", "bge"),
+        candidate_depth=1000,
+        rrf_k=60,
+    ),
+    "image_bm25_bge": Definition(
+        id="image_bm25_bge",
+        label="Image, BM25, and BGE",
+        retrievers=("siglip_image", "bm25", "bge"),
         candidate_depth=1000,
         rrf_k=60,
         bm25=Bm25Settings(weights=(4, 4, 4, 2, 2, 2, 1)),

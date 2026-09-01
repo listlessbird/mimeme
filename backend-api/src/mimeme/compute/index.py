@@ -1,10 +1,9 @@
-"""Blocking NumPy and FAISS construction owned by the index compute child."""
-
 from __future__ import annotations
 
 import hashlib
 import json
 from pathlib import Path
+from typing import Literal
 
 import faiss  # type: ignore[import-untyped]
 import numpy as np
@@ -13,6 +12,8 @@ import onnxruntime as ort
 from mimeme.index.model import (
     Built,
     BuiltFile,
+    Encoder,
+    LocalDense,
     LocalEmbedding,
     LocalMember,
     LocalShard,
@@ -58,6 +59,23 @@ def build(request: PreparedBuild) -> Built:
             )
         )
 
+    dense_counts: dict[Literal["bge"], int] = {}
+    for dense in request.dense:
+        vectors, image_ids = _load_dense(dense)
+        files.extend(
+            _write_kind(
+                root,
+                request=request,
+                vectors=vectors,
+                image_ids=image_ids,
+                kind=dense.retriever,
+                model=dense.model,
+                dimension=dense.dimension,
+                encoder=dense.encoder,
+            )
+        )
+        dense_counts[dense.retriever] = len(image_ids)
+
     return Built(
         version=request.version,
         target_generation=request.target_generation,
@@ -66,6 +84,7 @@ def build(request: PreparedBuild) -> Built:
         dimension=request.dimension,
         image_count=len(image_ids),
         text_count=len(text_ids) or None,
+        dense_counts=dense_counts,
         files=[_describe(path) for path in files],
     )
 
@@ -214,12 +233,17 @@ def _write_kind(
     request: PreparedBuild,
     vectors: np.ndarray,
     image_ids: list[int],
-    kind: str,
+    kind: Literal["image", "text", "bge"],
+    model: str | None = None,
+    dimension: int | None = None,
+    encoder: Encoder | None = None,
 ) -> list[Path]:
-    index = _new_index(request.index_type, request.dimension)
+    resolved_dimension = dimension or request.dimension
+    resolved_encoder = encoder or request.encoder
+    index = _new_index(request.index_type, resolved_dimension)
     if len(image_ids):
         index.add(vectors)  # type: ignore[call-arg]
-    prefix = "text_" if kind == "text" else ""
+    prefix = "" if kind == "image" else f"{kind}_"
     index_path = root / f"{prefix}index.faiss"
     mapping_path = root / f"{prefix}mapping.json"
     metadata_path = root / f"{prefix}metadata.json"
@@ -233,15 +257,15 @@ def _write_kind(
             {
                 "schema_version": 2,
                 "version": request.version,
-                "embed_model": request.model,
-                "dimension": request.dimension,
+                "embed_model": model or request.model,
+                "dimension": resolved_dimension,
                 "metric": "inner_product",
                 "normalized": True,
                 "faiss_version": faiss.__version__,
                 "onnxruntime_version": ort.__version__,
-                "encoder_repo": request.encoder.repo,
-                "encoder_revision": request.encoder.revision,
-                "encoder_variant": request.encoder.variant,
+                "encoder_repo": resolved_encoder.repo,
+                "encoder_revision": resolved_encoder.revision,
+                "encoder_variant": resolved_encoder.variant,
                 "kind": kind,
             },
             sort_keys=True,
@@ -249,6 +273,54 @@ def _write_kind(
         encoding="utf-8",
     )
     return [index_path, mapping_path, metadata_path]
+
+
+def _load_dense(value: LocalDense) -> tuple[np.ndarray, list[int]]:
+    try:
+        metadata = json.loads(Path(value.metadata_path).read_text(encoding="utf-8"))
+    except Exception as exc:
+        raise ValueError(f"invalid {value.retriever} vector metadata: {exc}") from exc
+    expected = {
+        "schema_version": 1,
+        "retriever": value.retriever,
+        "version": value.version,
+        "model": value.model,
+        "dimension": value.dimension,
+        "dtype": "float32",
+        "normalized": True,
+        "count": value.count,
+        "document_content_sha256": value.document_content_sha256,
+        "projection_version": value.projection_version,
+        "render_version": value.render_version,
+    }
+    if any(metadata.get(name) != expected_value for name, expected_value in expected.items()):
+        raise ValueError(f"{value.retriever} vector metadata does not match its descriptor")
+    export = metadata.get("export")
+    if not isinstance(export, dict) or (
+        export.get("source_model") != value.model
+        or export.get("repo") != value.encoder.repo
+        or export.get("revision") != value.encoder.revision
+        or export.get("variant") != value.encoder.variant
+    ):
+        raise ValueError(f"{value.retriever} vector export identity is incompatible")
+    matrix = np.load(value.vectors_path, allow_pickle=False)
+    if matrix.dtype != np.float32 or matrix.shape != (value.count, value.dimension):
+        raise ValueError(f"{value.retriever} vector matrix has an incompatible shape or dtype")
+    if not np.all(np.isfinite(matrix)):
+        raise ValueError(f"{value.retriever} vector matrix contains non-finite values")
+    if value.count and not np.allclose(np.linalg.norm(matrix, axis=1), 1, atol=1e-3):
+        raise ValueError(f"{value.retriever} vector matrix is not normalized")
+    try:
+        raw_mapping = json.loads(Path(value.mapping_path).read_text(encoding="utf-8"))
+        mapping = {int(row): int(image_id) for row, image_id in raw_mapping.items()}
+    except Exception as exc:
+        raise ValueError(f"invalid {value.retriever} vector mapping: {exc}") from exc
+    if set(mapping) != set(range(value.count)):
+        raise ValueError(f"{value.retriever} vector mapping does not cover every row")
+    image_ids = [mapping[row] for row in range(value.count)]
+    if any(image_id <= 0 for image_id in image_ids) or len(image_ids) != len(set(image_ids)):
+        raise ValueError(f"{value.retriever} vector mapping has invalid image IDs")
+    return matrix, image_ids
 
 
 def _new_index(index_type: str, dimension: int):  # noqa: ANN202

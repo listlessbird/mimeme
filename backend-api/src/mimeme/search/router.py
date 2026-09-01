@@ -47,7 +47,14 @@ async def search_text(
     offset: Annotated[int, HttpQuery(ge=0)] = 0,
     mode: Annotated[Literal["hybrid"] | None, HttpQuery()] = None,
     recipe: Annotated[
-        Literal["image_only", "image_siglip_text"] | None,
+        Literal[
+            "image_only",
+            "image_siglip_text",
+            "image_bm25",
+            "image_bge",
+            "image_bm25_bge",
+        ]
+        | None,
         HttpQuery(description="Versioned retrieval recipe"),
     ] = None,
 ) -> search.Page:

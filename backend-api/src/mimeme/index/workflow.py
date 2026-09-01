@@ -10,6 +10,7 @@ with workflow.unsafe.imports_passed_through():
     from mimeme.index.model import (
         Activated,
         ActivateInput,
+        BuildPlan,
         Prepared,
         PrepareInput,
         Result,
@@ -31,6 +32,10 @@ _SEAL_RETRY = RetryPolicy(
 )
 _BUILD_RETRY = RetryPolicy(
     maximum_attempts=rule.BUILD_MAX_ATTEMPTS,
+    maximum_interval=timedelta(minutes=1),
+)
+_BGE_RETRY = RetryPolicy(
+    maximum_attempts=rule.BGE_MAX_ATTEMPTS,
     maximum_interval=timedelta(minutes=1),
 )
 _ACTIVATE_RETRY = RetryPolicy(
@@ -100,9 +105,17 @@ class RebuildWorkflow:
             prepared = resealed
 
         assert prepared.build is not None and prepared.job_id is not None
+        encoded: BuildPlan = await workflow.execute_activity(
+            rule.BGE_ACTIVITY,
+            prepared.build,
+            result_type=BuildPlan,
+            start_to_close_timeout=timedelta(hours=2),
+            heartbeat_timeout=timedelta(seconds=rule.HEARTBEAT_TIMEOUT_S),
+            retry_policy=_BGE_RETRY,
+        )
         result: Result = await workflow.execute_activity(
             rule.BUILD_ACTIVITY,
-            prepared.build,
+            encoded,
             result_type=Result,
             start_to_close_timeout=timedelta(hours=2),
             heartbeat_timeout=timedelta(seconds=rule.HEARTBEAT_TIMEOUT_S),
@@ -112,7 +125,7 @@ class RebuildWorkflow:
             rule.ACTIVATE_ACTIVITY,
             ActivateInput(
                 job_id=prepared.job_id,
-                target_generation=prepared.build.target_generation,
+                target_generation=encoded.target_generation,
                 result=result,
             ),
             result_type=Activated,

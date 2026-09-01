@@ -35,7 +35,13 @@ const createQueryInput = z.object({
 	source: z.enum(["human", "production", "synthetic"]),
 });
 
-const recipeId = z.enum(["image_only", "image_siglip_text", "image_bm25"]);
+const recipeId = z.enum([
+	"image_only",
+	"image_siglip_text",
+	"image_bm25",
+	"image_bge",
+	"image_bm25_bge",
+]);
 const queryIdInput = z.object({ queryId: z.number().int().positive() });
 const poolQueryInput = z.object({
 	queryId: z.number().int().positive(),

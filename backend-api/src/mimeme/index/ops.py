@@ -13,7 +13,7 @@ from mimeme import inference, search, storage
 from mimeme.config import Settings
 from mimeme.db import Db
 from mimeme.db.schema import Job, JobStatus, JobType
-from mimeme.index import bm25, documents, pack, rule
+from mimeme.index import bm25, dense_vectors, documents, pack, rule
 from mimeme.index.client import Client
 from mimeme.index.model import (
     Activated,
@@ -24,6 +24,7 @@ from mimeme.index.model import (
     BuildPlan,
     EmbeddingManifest,
     Encoder,
+    File,
     Manifest,
     Prepared,
     PrepareInput,
@@ -66,6 +67,7 @@ async def load_build(artifacts: storage.Store, plan: BuildPlan) -> Build:
         embeddings=manifest.embeddings,
         documents=plan.documents,
         bm25=plan.bm25,
+        dense_vectors=plan.dense_vectors,
         planned_reads=plan.planned_reads,
     )
 
@@ -237,6 +239,28 @@ async def build(client: Client, request: Build, *, progress=None) -> Result:  # 
     return await client.build(request, progress=progress)
 
 
+async def encode_bge(
+    artifacts: storage.Store,
+    client: inference.Client,
+    settings: Settings,
+    request: BuildPlan,
+    *,
+    progress=None,  # noqa: ANN001
+) -> BuildPlan:
+    if request.documents is None:
+        raise ValueError("BGE corpus encoding requires a document snapshot")
+    descriptor = await dense_vectors.encode_bge(
+        artifacts,
+        client,
+        version=request.version,
+        document_file=request.documents,
+        progress=progress,
+        batch_size=settings.index.bge_batch_size,
+        encoder_threads=settings.search.bge_encoder_threads,
+    )
+    return request.model_copy(update={"dense_vectors": [descriptor]})
+
+
 async def seal(db: Db, client: Client, settings: Settings, input: SealInput) -> Sealed:
     return await pack.seal(
         db,
@@ -347,6 +371,20 @@ async def validate(artifacts: storage.Store, expected: Manifest) -> Manifest:
             raise ValueError(f"BM25 artifact is missing or has wrong length: {actual.bm25.key}")
         if info.checksum is not None and info.checksum.value != actual.bm25.sha256:
             raise ValueError(f"BM25 artifact checksum mismatch: {actual.bm25.key}")
+    for dense in actual.dense:
+        for file in dense.files:
+            info = await artifacts.stat(storage.Object(file.key))
+            if info is None or info.length != file.length:
+                raise ValueError(f"dense artifact is missing or has wrong length: {file.key}")
+            if info.checksum is not None and info.checksum.value != file.sha256:
+                raise ValueError(f"dense artifact checksum mismatch: {file.key}")
+    for vectors in actual.dense_vectors:
+        for blob in vectors.blobs:
+            info = await artifacts.stat(storage.Object(blob.key))
+            if info is None or info.length != blob.length:
+                raise ValueError(f"dense vector artifact is missing or wrong: {blob.key}")
+            if info.checksum is not None and info.checksum.value != blob.sha256:
+                raise ValueError(f"dense vector artifact checksum mismatch: {blob.key}")
     return actual
 
 
@@ -448,14 +486,30 @@ def _version(job_id: str, generation: int) -> str:
 def _load(manifest: Manifest) -> search.Load:
     return search.Load(
         version=manifest.version,
-        files=[
-            search.File(name=file.name, key=file.key, sha256=file.sha256) for file in manifest.files
-        ],
+        files=[_search_file(file) for file in manifest.files],
         bm25=(
             search.Bm25File.model_validate(manifest.bm25.model_dump())
             if manifest.bm25 is not None
             else None
         ),
+        dense=[
+            search.DenseIndex(
+                retriever=item.retriever,
+                model=item.model,
+                dimension=item.dimension,
+                encoder=search.Encoder.model_validate(item.encoder.model_dump()),
+                document_content_sha256=item.document_content_sha256,
+                projection_version=item.projection_version,
+                render_version=item.render_version,
+                count=item.count,
+                files=(
+                    _search_file(item.files[0]),
+                    _search_file(item.files[1]),
+                    _search_file(item.files[2]),
+                ),
+            )
+            for item in manifest.dense
+        ],
         encoder=search.Encoder(
             repo=manifest.encoder.repo,
             revision=manifest.encoder.revision,
@@ -463,6 +517,10 @@ def _load(manifest: Manifest) -> search.Load:
             threads=manifest.encoder.threads,
         ),
     )
+
+
+def _search_file(file: File) -> search.File:
+    return search.File(name=file.name, key=file.key, sha256=file.sha256)
 
 
 async def _activation_matches(db: Db, manifest: Manifest) -> bool:

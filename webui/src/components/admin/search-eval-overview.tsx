@@ -751,16 +751,12 @@ function NewEvaluationDialog({
 							variant="outline"
 							value={[...recipeIds]}
 							onValueChange={(values) => {
+								const selected = new Set(values);
 								setRecipeIds(
-									values.filter(
-										(value): value is SearchEvalRecipeId =>
-											value === "image_only" ||
-											value === "image_siglip_text" ||
-											value === "image_bm25",
-									),
+									recipes.flatMap((recipe) => (selected.has(recipe.id) ? [recipe.id] : [])),
 								);
 							}}
-							className="grid w-full grid-cols-3"
+							className="grid w-full grid-cols-2 sm:grid-cols-5"
 						>
 							{recipes.map((recipe) => (
 								<ToggleGroupItem key={recipe.id} value={recipe.id}>

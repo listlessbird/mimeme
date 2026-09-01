@@ -50,6 +50,7 @@ def registrations(
             index.prepare,
             index.seal,
             index.build,
+            index.encode_bge,
             index.activate,
             search_eval.prepare,
             search_eval.retrieve,

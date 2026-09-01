@@ -13,6 +13,7 @@ from mimeme.compute.model import (
     EmbedSpecItem,
     JobState,
 )
+from mimeme.inference import bge
 from mimeme.inference.client import Progress
 from mimeme.inference.model import (
     Annotation,
@@ -106,6 +107,11 @@ class Local:
                     Failed(image_id=entry.image_id, error=entry.error or "embedding failed")
                 )
         return BatchResult(items=items)
+
+    async def embed_bge(
+        self, batch: bge.EncodeBatch, *, progress: Progress | None = None
+    ) -> bge.EncodedBatch:
+        raise Unavailable("BGE corpus encoding requires the remote inference backend")
 
     async def _drive(self, job_id: str, spec: dict, progress: Progress | None) -> JobState:
         url = f"{self._base}/v1/jobs/{job_id}"

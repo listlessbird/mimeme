@@ -96,6 +96,50 @@ class Bm25File(_Frozen):
         return self
 
 
+class Blob(_Frozen):
+    name: str = Field(min_length=1)
+    key: str = Field(min_length=1)
+    sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    length: int = Field(gt=0)
+
+
+class DenseVectors(_Frozen):
+    retriever: Literal["bge"] = "bge"
+    version: str = Field(min_length=1)
+    model: Literal["BAAI/bge-small-en-v1.5"] = "BAAI/bge-small-en-v1.5"
+    dimension: Literal[384] = 384
+    encoder: Encoder
+    document_content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    projection_version: Literal[1] = 1
+    render_version: Literal[1] = 1
+    count: int = Field(ge=0)
+    vectors: Blob
+    mapping: Blob
+    metadata: Blob
+
+    @model_validator(mode="after")
+    def _owned_by_generation(self) -> Self:
+        prefix = f"indexes/{self.version}/"
+        names = {
+            self.vectors.name: "bge_vectors.npy",
+            self.mapping.name: "bge_vectors_mapping.json",
+            self.metadata.name: "bge_vectors_metadata.json",
+        }
+        if names != {
+            "bge_vectors.npy": "bge_vectors.npy",
+            "bge_vectors_mapping.json": "bge_vectors_mapping.json",
+            "bge_vectors_metadata.json": "bge_vectors_metadata.json",
+        }:
+            raise ValueError("BGE vector artifact names are incompatible")
+        if any(blob.key != f"{prefix}{blob.name}" for blob in self.blobs):
+            raise ValueError("BGE vector artifacts must use their generation prefix")
+        return self
+
+    @property
+    def blobs(self) -> tuple[Blob, Blob, Blob]:
+        return (self.vectors, self.mapping, self.metadata)
+
+
 class Build(_Frozen):
     job_id: str = Field(min_length=1)
     version: str = Field(min_length=1)
@@ -108,6 +152,7 @@ class Build(_Frozen):
     embeddings: list[Embedding]
     documents: DocumentFile | None = None
     bm25: Bm25File | None = None
+    dense_vectors: list[DenseVectors] = []
     planned_reads: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
@@ -127,6 +172,9 @@ ArtifactName = Literal[
     "text_index.faiss",
     "text_mapping.json",
     "text_metadata.json",
+    "bge_index.faiss",
+    "bge_mapping.json",
+    "bge_metadata.json",
 ]
 
 
@@ -135,6 +183,28 @@ class File(_Frozen):
     key: str = Field(min_length=1)
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     length: int = Field(ge=0)
+
+
+class DenseIndex(_Frozen):
+    retriever: Literal["bge"] = "bge"
+    model: Literal["BAAI/bge-small-en-v1.5"] = "BAAI/bge-small-en-v1.5"
+    dimension: Literal[384] = 384
+    encoder: Encoder
+    document_content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    projection_version: Literal[1] = 1
+    render_version: Literal[1] = 1
+    count: int = Field(ge=0)
+    files: tuple[File, File, File]
+
+    @model_validator(mode="after")
+    def _complete(self) -> Self:
+        if {file.name for file in self.files} != {
+            "bge_index.faiss",
+            "bge_mapping.json",
+            "bge_metadata.json",
+        }:
+            raise ValueError("BGE dense index is incomplete")
+        return self
 
 
 class Manifest(_Frozen):
@@ -150,6 +220,8 @@ class Manifest(_Frozen):
     files: list[File]
     documents: DocumentFile | None = None
     bm25: Bm25File | None = None
+    dense_vectors: list[DenseVectors] = []
+    dense: list[DenseIndex] = []
     complete_key: str = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -189,6 +261,37 @@ class Manifest(_Frozen):
             and self.bm25.projection_version != self.documents.projection_version
         ):
             raise ValueError("BM25 and document projection versions must match")
+        dense_retrievers = [item.retriever for item in self.dense]
+        if len(dense_retrievers) != len(set(dense_retrievers)):
+            raise ValueError("dense retriever IDs must be unique")
+        file_by_name = {file.name: file for file in self.files}
+        for item in self.dense:
+            if self.documents is None:
+                raise ValueError("dense indexes require the canonical document artifact")
+            if item.count != self.documents.count:
+                raise ValueError("dense index count must match document count")
+            if item.document_content_sha256 != self.documents.content_sha256:
+                raise ValueError("dense index document checksum does not match the snapshot")
+            if item.projection_version != self.documents.projection_version:
+                raise ValueError("dense index projection does not match the snapshot")
+            if any(file_by_name.get(file.name) != file for file in item.files):
+                raise ValueError("dense index files must belong to the generation file set")
+        vector_retrievers = [item.retriever for item in self.dense_vectors]
+        if vector_retrievers != dense_retrievers:
+            raise ValueError("dense vector and index retrievers must match")
+        for vectors, dense_index in zip(self.dense_vectors, self.dense, strict=True):
+            if vectors.version != self.version:
+                raise ValueError("dense vectors do not belong to this generation")
+            if (
+                vectors.model != dense_index.model
+                or vectors.dimension != dense_index.dimension
+                or vectors.encoder != dense_index.encoder
+                or vectors.document_content_sha256 != dense_index.document_content_sha256
+                or vectors.projection_version != dense_index.projection_version
+                or vectors.render_version != dense_index.render_version
+                or vectors.count != dense_index.count
+            ):
+                raise ValueError("dense vector and index identities do not match")
         return self
 
 
@@ -230,6 +333,7 @@ class BuildPlan(_Frozen):
     embeddings_key: str = Field(min_length=1)
     documents: DocumentFile | None = None
     bm25: Bm25File | None = None
+    dense_vectors: list[DenseVectors] = []
     num_embeddings: int = Field(ge=0)
     planned_reads: int = Field(default=0, ge=0)
 
@@ -335,6 +439,22 @@ class PreparedBuild(_Frozen):
     output_dir: str
     shards: list[LocalShard] = []
     embeddings: list[LocalEmbedding]
+    dense: list[LocalDense] = []
+
+
+class LocalDense(_Frozen):
+    retriever: Literal["bge"]
+    version: str = Field(min_length=1)
+    model: str
+    dimension: int = Field(gt=0)
+    encoder: Encoder
+    document_content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    projection_version: int = Field(ge=1)
+    render_version: int = Field(ge=1)
+    count: int = Field(ge=0)
+    vectors_path: str
+    mapping_path: str
+    metadata_path: str
 
 
 class BuildCall(_Frozen):
@@ -389,6 +509,7 @@ class Built(_Frozen):
     dimension: int = Field(ge=0)
     image_count: int = Field(ge=0)
     text_count: int | None = Field(default=None, ge=0)
+    dense_counts: dict[Literal["bge"], int] = {}
     files: list[BuiltFile]
 
 

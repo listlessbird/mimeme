@@ -101,6 +101,7 @@ class Gateway:
                 workspace=str(root),
                 paths=paths,
                 bm25=generation.bm25,
+                dense=generation.dense,
                 encoder=generation.encoder,
                 hnsw_ef_search=generation.hnsw_ef_search,
             )

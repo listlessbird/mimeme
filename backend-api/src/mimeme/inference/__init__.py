@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from mimeme.inference import bge
 from mimeme.inference.client import Client, Progress
 from mimeme.inference.model import (
     CAPTION_PROMPT_VERSION,
@@ -67,6 +68,7 @@ __all__ = [
     "Progress",
     "Timeout",
     "Unavailable",
+    "bge",
     "create",
     "embedding_prefix",
     "image_embedding_key",

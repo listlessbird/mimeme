@@ -7,6 +7,7 @@ WORKFLOW = "mimeme.index.rebuild.v2"
 PREPARE_ACTIVITY = "mimeme.index.prepare.v2"
 SEAL_ACTIVITY = "mimeme.index.seal.v2"
 BUILD_ACTIVITY = "mimeme.index.build.v2"
+BGE_ACTIVITY = "mimeme.index.encode-bge.v1"
 ACTIVATE_ACTIVITY = "mimeme.index.activate.v2"
 SCHEDULE_ID = "search-index-rebuild-v2"
 HEARTBEAT_TIMEOUT_S = 30
@@ -16,6 +17,7 @@ BUSY_ATTEMPTS_PER_RUN = 20
 PREPARE_MAX_ATTEMPTS = 5
 SEAL_MAX_ATTEMPTS = 2
 BUILD_MAX_ATTEMPTS = 3
+BGE_MAX_ATTEMPTS = 3
 ACTIVATE_MAX_ATTEMPTS = 5
 
 

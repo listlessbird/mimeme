@@ -31,6 +31,8 @@ def test_recipe_list_is_closed_and_stable() -> None:
         "image_only",
         "image_siglip_text",
         "image_bm25",
+        "image_bge",
+        "image_bm25_bge",
     ]
     assert recipe.resolve("image_bm25").retrievers == ("siglip_image", "bm25")
     assert recipe.resolve("image_bm25").bm25 == recipe.Bm25Settings(weights=(4, 4, 4, 2, 2, 2, 1))

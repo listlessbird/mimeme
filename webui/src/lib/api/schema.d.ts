@@ -794,7 +794,7 @@ export interface components {
         /** CreateSearchEvalExperimentRequest */
         CreateSearchEvalExperimentRequest: {
             /** Recipe Ids */
-            recipe_ids: ("image_only" | "image_siglip_text" | "image_bm25")[];
+            recipe_ids: ("image_only" | "image_siglip_text" | "image_bm25" | "image_bge" | "image_bm25_bge")[];
         };
         /** CreateSearchEvalQueryRequest */
         CreateSearchEvalQueryRequest: {
@@ -810,7 +810,7 @@ export interface components {
              * Recipe Id
              * @enum {string}
              */
-            recipe_id: "image_only" | "image_siglip_text" | "image_bm25";
+            recipe_id: "image_only" | "image_siglip_text" | "image_bm25" | "image_bge" | "image_bm25_bge";
         };
         /** CreateSourceRequest */
         CreateSourceRequest: {
@@ -849,7 +849,7 @@ export interface components {
              * Id
              * @enum {string}
              */
-            id: "image_only" | "image_siglip_text" | "image_bm25";
+            id: "image_only" | "image_siglip_text" | "image_bm25" | "image_bge" | "image_bm25_bge";
             /**
              * Version
              * @default 1
@@ -859,7 +859,7 @@ export interface components {
             /** Label */
             label: string;
             /** Retrievers */
-            retrievers: ("siglip_image" | "siglip_text" | "bm25")[];
+            retrievers: ("siglip_image" | "siglip_text" | "bm25" | "bge")[];
             /** Candidate Depth */
             candidate_depth: number;
             /** Rrf K */
@@ -1378,7 +1378,7 @@ export interface components {
         /** PoolSearchEvalQueryRequest */
         PoolSearchEvalQueryRequest: {
             /** Recipe Ids */
-            recipe_ids: ("image_only" | "image_siglip_text" | "image_bm25")[];
+            recipe_ids: ("image_only" | "image_siglip_text" | "image_bm25" | "image_bge" | "image_bm25_bge")[];
         };
         /**
          * ProcessingStatus
@@ -1579,7 +1579,7 @@ export interface components {
              * Recipe Id
              * @enum {string}
              */
-            recipe_id: "image_only" | "image_siglip_text" | "image_bm25";
+            recipe_id: "image_only" | "image_siglip_text" | "image_bm25" | "image_bge" | "image_bm25_bge";
             recipe: components["schemas"]["Definition"];
             mode: components["schemas"]["RunMode"];
             status: components["schemas"]["RunStatus"];
@@ -2057,7 +2057,7 @@ export interface operations {
                 offset?: number;
                 mode?: "hybrid" | null;
                 /** @description Versioned retrieval recipe */
-                recipe?: ("image_only" | "image_siglip_text") | null;
+                recipe?: ("image_only" | "image_siglip_text" | "image_bm25" | "image_bge" | "image_bm25_bge") | null;
             };
             header?: never;
             path?: never;

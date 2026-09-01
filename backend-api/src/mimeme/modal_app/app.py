@@ -306,6 +306,63 @@ class EmbeddingService:
             await media.close()
 
 
+@app.cls(
+    image=gpu_image,
+    gpu="T4",
+    volumes={HF_CACHE_DIR: hf_cache},
+    scaledown_window=30,
+)
+class BgeService:
+    @modal.enter()
+    def load_model(self) -> None:
+        import torch
+        from transformers import AutoModel, AutoTokenizer
+
+        from mimeme.inference import bge
+
+        self._tokenizer = AutoTokenizer.from_pretrained(
+            bge.SOURCE_MODEL,
+            revision=bge.SOURCE_REVISION,
+        )
+        self._model = (
+            AutoModel.from_pretrained(
+                bge.SOURCE_MODEL,
+                revision=bge.SOURCE_REVISION,
+                torch_dtype=torch.float16,
+            )
+            .eval()
+            .to("cuda")
+        )
+
+    @modal.method()
+    def encode_batch(self, batch: dict) -> dict:
+        import torch
+
+        from mimeme.inference import bge
+
+        request = bge.EncodeBatch.model_validate(batch)
+        encoded = self._tokenizer(
+            [item.text for item in request.items],
+            padding=True,
+            truncation=True,
+            max_length=bge.MAX_LENGTH,
+            return_tensors="pt",
+        )
+        encoded = {name: value.to("cuda") for name, value in encoded.items()}
+        with torch.no_grad():
+            hidden = self._model(**encoded).last_hidden_state
+            vectors = torch.nn.functional.normalize(hidden[:, 0], p=2, dim=1)
+        result = bge.EncodedBatch(
+            document_content_sha256=request.document_content_sha256,
+            export=request.export,
+            items=tuple(
+                bge.Vector(image_id=item.image_id, values=tuple(float(value) for value in vector))
+                for item, vector in zip(request.items, vectors.float().cpu().tolist(), strict=True)
+            ),
+        )
+        return result.model_dump(mode="json")
+
+
 def _npy_bytes(np: Any, array: Any) -> bytes:
     buffer = io.BytesIO()
     np.save(buffer, array)

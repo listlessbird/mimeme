@@ -10,6 +10,7 @@ import pytest
 from mimeme import search
 from mimeme.compute.search import Resident
 from mimeme.index import bm25
+from mimeme.inference import bge
 from mimeme.search import generation_workspace
 from mimeme.search.document import SearchDocument
 from mimeme.search.model import PreparedLoad
@@ -22,6 +23,13 @@ class _Encoder:
         return np.array([1.0, 0.0], dtype=np.float32)
 
 
+class _BgeEncoder:
+    source_model = bge.SOURCE_MODEL
+
+    def encode(self, text: str) -> np.ndarray:
+        return np.array([1.0, *([0.0] * (bge.DIMENSION - 1))], dtype=np.float32)
+
+
 def _generation(
     tmp_path: Path,
     version: str,
@@ -30,6 +38,7 @@ def _generation(
     duplicate_mapping: bool = False,
     revision: str = "rev-1",
     corrupt_bm25: bool = False,
+    with_bge: bool = False,
 ) -> PreparedLoad:
     root = generation_workspace.prepare(tmp_path, version)
     image_vectors = np.array([[1.0, 0.0], [0.8, 0.2], [0.0, 1.0]], dtype=np.float32)
@@ -72,6 +81,51 @@ def _generation(
     )
     if corrupt_bm25:
         (root / "bm25.sqlite3").write_bytes(b"not sqlite")
+    dense: list[search.DenseIndex] = []
+    if with_bge:
+        bge_index = faiss.IndexFlatIP(bge.DIMENSION)
+        bge_index.add(np.array([[1.0, *([0.0] * 383)]], dtype=np.float32))
+        faiss.write_index(bge_index, str(root / "bge_index.faiss"))
+        (root / "bge_mapping.json").write_text(json.dumps({"0": 3}))
+        (root / "bge_metadata.json").write_text(
+            json.dumps(
+                {
+                    **metadata,
+                    "embed_model": bge.SOURCE_MODEL,
+                    "dimension": bge.DIMENSION,
+                    "encoder_repo": bge.EXPORT.repo,
+                    "encoder_revision": bge.EXPORT.revision,
+                    "encoder_variant": bge.EXPORT.variant,
+                    "kind": "bge",
+                }
+            )
+        )
+        dense_files = tuple(
+            search.File(
+                name=name,
+                key=f"indexes/{version}/{name}",
+                sha256="a" * 64,
+            )
+            for name in ("bge_index.faiss", "bge_mapping.json", "bge_metadata.json")
+        )
+        dense.append(
+            search.DenseIndex(
+                retriever="bge",
+                model=bge.SOURCE_MODEL,
+                dimension=bge.DIMENSION,
+                encoder=search.Encoder(
+                    repo=bge.EXPORT.repo,
+                    revision=bge.EXPORT.revision,
+                    variant=bge.EXPORT.variant,
+                    threads=2,
+                ),
+                document_content_sha256="a" * 64,
+                projection_version=1,
+                render_version=1,
+                count=1,
+                files=dense_files,  # type: ignore[arg-type]
+            )
+        )
     return PreparedLoad(
         version=version,
         workspace=str(root),
@@ -85,6 +139,7 @@ def _generation(
             weights=bm25.WEIGHTS,
             sqlite_version=bm25_built.sqlite_version,
         ),
+        dense=dense,
         encoder=search.Encoder(
             repo="test/encoder", revision=revision, variant="model.onnx", threads=1
         ),
@@ -92,7 +147,11 @@ def _generation(
 
 
 def _resident() -> Resident:
-    return Resident(encoder_factory=lambda _: _Encoder())
+    return Resident(
+        encoder_factory=lambda config: (
+            _BgeEncoder() if config.repo == bge.EXPORT.repo else _Encoder()
+        )
+    )
 
 
 def test_load_does_not_serve_until_atomic_switch(tmp_path: Path) -> None:
@@ -225,6 +284,22 @@ def test_bm25_recipe_promotes_an_exact_ocr_match(tmp_path: Path) -> None:
     )
 
     assert 3 not in [candidate.image_id for candidate in image.candidates]
+    assert result.candidates[0].image_id == 3
+
+
+def test_bge_recipe_warms_and_queries_its_independent_encoder(tmp_path: Path) -> None:
+    resident = _resident()
+    resident.load(_generation(tmp_path, "v1", with_bge=True))
+    status = resident.switch("v1")
+
+    result = resident.query(
+        search.CandidateRequest(
+            query=search.Query(text="semantic match", recipe_id="image_bge"),
+            count=10,
+        )
+    )
+
+    assert status.bge_available is True
     assert result.candidates[0].image_id == 3
 
 

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
 import anyio
 import structlog
@@ -17,7 +19,9 @@ from mimeme.index.model import (
     Build,
     BuildCall,
     Built,
+    DenseIndex,
     File,
+    LocalDense,
     LocalEmbedding,
     LocalShard,
     Manifest,
@@ -51,6 +55,31 @@ class Gateway:
             if progress is not None:
                 await progress("download", 0.1)
             shards = await _fetch_shards(meter, request, workspace)
+            dense: list[LocalDense] = []
+            for descriptor in request.dense_vectors:
+                paths: dict[str, Path] = {}
+                for blob in descriptor.blobs:
+                    path = workspace.path(blob.name)
+                    await _download(meter, blob.key, path)
+                    if _sha256(path) != blob.sha256 or path.stat().st_size != blob.length:
+                        raise Failed(f"dense vector artifact is corrupt: {blob.key}")
+                    paths[blob.name] = path
+                dense.append(
+                    LocalDense(
+                        retriever=descriptor.retriever,
+                        version=descriptor.version,
+                        model=descriptor.model,
+                        dimension=descriptor.dimension,
+                        encoder=descriptor.encoder,
+                        document_content_sha256=descriptor.document_content_sha256,
+                        projection_version=descriptor.projection_version,
+                        render_version=descriptor.render_version,
+                        count=descriptor.count,
+                        vectors_path=str(paths[descriptor.vectors.name]),
+                        mapping_path=str(paths[descriptor.mapping.name]),
+                        metadata_path=str(paths[descriptor.metadata.name]),
+                    )
+                )
             local: list[LocalEmbedding] = []
             for position, item in enumerate(request.embeddings):
                 if item.sealed:
@@ -95,6 +124,7 @@ class Gateway:
                         output_dir=str(output),
                         shards=shards,
                         embeddings=local,
+                        dense=dense,
                     )
                 )
                 .model_dump_json()
@@ -133,6 +163,8 @@ class Gateway:
                 files=files,
                 documents=request.documents,
                 bm25=request.bm25,
+                dense_vectors=request.dense_vectors,
+                dense=_dense_indexes(request, files, built.dense_counts),
                 complete_key=f"indexes/{built.version}/complete.json",
             )
             await meter.put_bytes(
@@ -230,3 +262,47 @@ def _match(request: Build, built: Built) -> None:
     actual = (built.version, built.target_generation, built.model, built.index_type)
     if actual != expected:
         raise Failed("index child result does not match the requested generation")
+    expected_dense = {item.retriever: item.count for item in request.dense_vectors}
+    if built.dense_counts != expected_dense:
+        raise Failed("index child dense counts do not match the requested vectors")
+
+
+def _dense_indexes(
+    request: Build,
+    files: list[File],
+    counts: Mapping[Literal["bge"], int],
+) -> list[DenseIndex]:
+    by_name = {file.name: file for file in files}
+    indexes: list[DenseIndex] = []
+    for descriptor in request.dense_vectors:
+        names = (
+            f"{descriptor.retriever}_index.faiss",
+            f"{descriptor.retriever}_mapping.json",
+            f"{descriptor.retriever}_metadata.json",
+        )
+        try:
+            selected = tuple(by_name[name] for name in names)
+        except KeyError as exc:
+            raise Failed(f"dense index output is missing: {exc.args[0]}") from exc
+        indexes.append(
+            DenseIndex(
+                retriever=descriptor.retriever,
+                model=descriptor.model,
+                dimension=descriptor.dimension,
+                encoder=descriptor.encoder,
+                document_content_sha256=descriptor.document_content_sha256,
+                projection_version=descriptor.projection_version,
+                render_version=descriptor.render_version,
+                count=counts[descriptor.retriever],
+                files=selected,  # type: ignore[arg-type]
+            )
+        )
+    return indexes
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()

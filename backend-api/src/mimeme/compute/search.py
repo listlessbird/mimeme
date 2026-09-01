@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import time
@@ -16,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, TypeAdapter
 
 from mimeme.compute import encoder_cache
 from mimeme.index import bm25
+from mimeme.inference import bge
 from mimeme.search import fusion, generation_workspace, recipe, retriever
 from mimeme.search.error import Failed, Incompatible, Loading, NotFound, Stale, Unavailable
 from mimeme.search.model import (
@@ -55,7 +57,7 @@ class _Metadata(BaseModel):
     encoder_repo: str
     encoder_revision: str
     encoder_variant: str
-    kind: Literal["image", "text"] = "image"
+    kind: Literal["image", "text", "bge"] = "image"
 
 
 class _TextEncoder(encoder_cache.Session, Protocol): ...
@@ -127,6 +129,8 @@ class _Generation:
         text: _Index | None,
         lexical: bm25.Index | None,
         encoder: encoder_cache.Lease,
+        dense: dict[recipe.RetrieverId, _Index],
+        dense_encoders: dict[recipe.RetrieverId, encoder_cache.Lease],
         workspace: generation_workspace.Workspace,
     ) -> None:
         self.version = version
@@ -135,6 +139,8 @@ class _Generation:
         self.text = text
         self.lexical = lexical
         self.encoder = encoder
+        self.dense = dense
+        self.dense_encoders = dense_encoders
         self.workspace = workspace
 
 
@@ -187,6 +193,7 @@ class Resident:
             encoder_revision=(encoder_cache.identity(active.encoder).revision if active else None),
             encoder_variant=active.metadata.encoder_variant if active else None,
             bm25_available=active.lexical is not None if active else False,
+            bge_available="bge" in active.dense if active else False,
             detail=None if active else "no index generation is serving",
         )
 
@@ -206,6 +213,9 @@ class Resident:
                 image_count=generation.image.size,
                 text_count=generation.text.size if generation.text else None,
                 bm25_count=call.bm25.count if call.bm25 is not None else None,
+                dense_counts={
+                    item.retriever: generation.dense[item.retriever].size for item in call.dense
+                },
                 faiss_version=generation.metadata.faiss_version,
                 onnxruntime_version=generation.metadata.onnxruntime_version,
                 encoder_revision=identity.revision,
@@ -304,6 +314,7 @@ class Resident:
                 available.add("siglip_text")
             if active.lexical is not None:
                 available.add("bm25")
+            available.update(active.dense)
             definition = recipe.resolve(request.query.recipe_id, available=available)
             candidates = self._rank(active, request, definition)
             offset = 0
@@ -357,14 +368,12 @@ class Resident:
             return [Candidate(image_id=image_id, score=score) for image_id, score in ranked]
         else:
             assert query.text is not None
-            try:
-                vector = encoder_cache.encode(generation.encoder, query.text)
-            except Exception as exc:
-                raise Failed(f"query encoding failed: {exc}") from exc
             indexes = {
                 "siglip_image": generation.image,
                 "siglip_text": generation.text,
+                **generation.dense,
             }
+            vectors: dict[str, np.ndarray] = {}
             rankings: list[list[retriever.Scored]] = []
             for retriever_id in definition.retrievers:
                 if retriever_id == "bm25":
@@ -385,6 +394,20 @@ class Resident:
                     continue
                 index = indexes[retriever_id]
                 assert index is not None
+                encoder = (
+                    generation.dense_encoders[retriever_id]
+                    if retriever_id in generation.dense_encoders
+                    else generation.encoder
+                )
+                identity = encoder_cache.identity(encoder)
+                cache_key = f"{identity.repo}@{identity.revision}/{identity.variant}"
+                try:
+                    vector = vectors.get(cache_key)
+                    if vector is None:
+                        vector = encoder_cache.encode(encoder, query.text)
+                        vectors[cache_key] = vector
+                except Exception as exc:
+                    raise Failed(f"{retriever_id} query encoding failed: {exc}") from exc
                 rankings.append(
                     _VectorRetriever(retriever_id, index).search(
                         vector,
@@ -458,6 +481,40 @@ class Resident:
                 hnsw_ef_search=call.hnsw_ef_search,
             )
 
+        dense: dict[recipe.RetrieverId, _Index] = {}
+        dense_metadata: dict[recipe.RetrieverId, _Metadata] = {}
+        for descriptor in call.dense:
+            names = {file.name for file in descriptor.files}
+            if not names.issubset(paths):
+                raise Incompatible(f"{descriptor.retriever} index generation is incomplete")
+            metadata_name = f"{descriptor.retriever}_metadata.json"
+            try:
+                item_metadata = _Metadata.model_validate_json(
+                    paths[metadata_name].read_text(encoding="utf-8")
+                )
+            except Exception as exc:
+                raise Incompatible(f"invalid {descriptor.retriever} index metadata: {exc}") from exc
+            _validate_metadata(item_metadata, call.version, kind=descriptor.retriever)
+            if (
+                item_metadata.embed_model != descriptor.model
+                or item_metadata.dimension != descriptor.dimension
+                or item_metadata.encoder_repo != descriptor.encoder.repo
+                or item_metadata.encoder_revision != descriptor.encoder.revision
+                or item_metadata.encoder_variant != descriptor.encoder.variant
+            ):
+                raise Incompatible(
+                    f"{descriptor.retriever} index metadata does not match its descriptor"
+                )
+            dense[descriptor.retriever] = _Index.read(
+                paths[f"{descriptor.retriever}_index.faiss"],
+                paths[f"{descriptor.retriever}_mapping.json"],
+                dimension=descriptor.dimension,
+                hnsw_ef_search=call.hnsw_ef_search,
+            )
+            if dense[descriptor.retriever].size != descriptor.count:
+                raise Incompatible(f"{descriptor.retriever} index count is incompatible")
+            dense_metadata[descriptor.retriever] = item_metadata
+
         lexical = None
         if call.bm25 is not None:
             path = paths.get(call.bm25.name)
@@ -472,38 +529,32 @@ class Resident:
             except Exception as exc:
                 raise Incompatible(f"BM25 generation is invalid: {exc}") from exc
 
+        leases: list[encoder_cache.Lease] = []
         try:
             encoder = encoder_cache.acquire(self._encoders, call.encoder)
+            leases.append(encoder)
         except Exception as exc:
             if lexical is not None:
                 bm25.close(lexical)
             raise Failed(f"text encoder load failed: {exc}") from exc
         try:
-            source_model = encoder_cache.source_model(encoder)
-            if source_model != metadata.embed_model:
-                raise Incompatible(
-                    f"encoder model {source_model!r} does not match index model "
-                    f"{metadata.embed_model!r}"
+            _validate_encoder(encoder, call.encoder, metadata, label="text")
+            dense_encoders: dict[recipe.RetrieverId, encoder_cache.Lease] = {}
+            for descriptor in call.dense:
+                lease = encoder_cache.acquire(self._encoders, descriptor.encoder)
+                leases.append(lease)
+                _validate_encoder(
+                    lease,
+                    descriptor.encoder,
+                    dense_metadata[descriptor.retriever],
+                    label=descriptor.retriever,
                 )
-            if (
-                metadata.encoder_repo != call.encoder.repo
-                or metadata.encoder_revision != call.encoder.revision
-                or metadata.encoder_variant != call.encoder.variant
-            ):
-                raise Incompatible("encoder artifact identity does not match index metadata")
-            try:
-                warmup = _normalize(encoder_cache.encode(encoder, "warmup"))
-            except Exception as exc:
-                raise Failed(f"text encoder warmup failed: {exc}") from exc
-            if warmup.shape[1] != metadata.dimension:
-                raise Incompatible(
-                    f"encoder dimension {warmup.shape[1]} does not match index dimension "
-                    f"{metadata.dimension}"
-                )
+                dense_encoders[descriptor.retriever] = lease
         except Exception:
             if lexical is not None:
                 bm25.close(lexical)
-            encoder_cache.release(encoder)
+            for lease in leases:
+                encoder_cache.release(lease)
             raise
         return _Generation(
             version=call.version,
@@ -512,6 +563,8 @@ class Resident:
             text=text,
             lexical=lexical,
             encoder=encoder,
+            dense=dense,
+            dense_encoders=dense_encoders,
             workspace=workspace,
         )
 
@@ -521,6 +574,8 @@ class Resident:
         if generation.lexical is not None:
             bm25.close(generation.lexical)
         encoder_cache.release(generation.encoder)
+        for encoder in generation.dense_encoders.values():
+            encoder_cache.release(encoder)
         generation_workspace.release(generation.workspace)
         _emit_resource_event(
             "search_generation_evicted",
@@ -550,6 +605,36 @@ def _validate_metadata(metadata: _Metadata, version: str, *, kind: str) -> None:
         )
 
 
+def _validate_encoder(
+    lease: encoder_cache.Lease,
+    config: Encoder,
+    metadata: _Metadata,
+    *,
+    label: str,
+) -> None:
+    source_model = encoder_cache.source_model(lease)
+    if source_model != metadata.embed_model:
+        raise Incompatible(
+            f"{label} encoder model {source_model!r} does not match index model "
+            f"{metadata.embed_model!r}"
+        )
+    if (
+        metadata.encoder_repo != config.repo
+        or metadata.encoder_revision != config.revision
+        or metadata.encoder_variant != config.variant
+    ):
+        raise Incompatible(f"{label} encoder artifact identity does not match index metadata")
+    try:
+        warmup = _normalize(encoder_cache.encode(lease, "warmup"))
+    except Exception as exc:
+        raise Failed(f"{label} encoder warmup failed: {exc}") from exc
+    if warmup.shape[1] != metadata.dimension:
+        raise Incompatible(
+            f"{label} encoder dimension {warmup.shape[1]} does not match index dimension "
+            f"{metadata.dimension}"
+        )
+
+
 def _normalize(vector: np.ndarray) -> np.ndarray:
     query = np.asarray(vector, dtype=np.float32)
     if query.ndim == 1:
@@ -575,13 +660,21 @@ class _OnnxEncoder:
             )
         )
         meta = json.loads((root / "export_meta.json").read_text(encoding="utf-8"))
+        if config.repo == bge.EXPORT.repo and config.revision == bge.EXPORT.revision:
+            _validate_bge_export(root, config, meta)
         self.source_model = str(meta["source_model"])
+        self._query_prefix = str(meta.get("query_prefix", ""))
+        self._input_names = tuple(meta.get("input_names", ["input_ids"]))
+        self._output_name = str(meta.get("output_name", "text_embeds"))
         self._tokenizer = Tokenizer.from_file(str(root / "tokenizer.json"))
-        self._tokenizer.enable_padding(
-            length=int(meta.get("max_length", 64)),
-            pad_id=int(meta.get("pad_token_id", 0)),
-            pad_token="<pad>",
-        )
+        if self._input_names == ("input_ids",):
+            self._tokenizer.enable_padding(
+                length=int(meta.get("max_length", 64)),
+                pad_id=int(meta.get("pad_token_id", 0)),
+                pad_token=str(meta.get("pad_token", "[PAD]")),
+            )
+        else:
+            self._tokenizer.no_padding()
         self._tokenizer.enable_truncation(max_length=int(meta.get("max_length", 64)))
         options = ort.SessionOptions()
         options.intra_op_num_threads = config.threads
@@ -594,13 +687,54 @@ class _OnnxEncoder:
         )
 
     def encode(self, text: str) -> np.ndarray:
-        tokens = np.array([self._tokenizer.encode(text).ids], dtype=np.int64)
-        value = self._session.run(["text_embeds"], {"input_ids": tokens})[0]
+        encoded = self._tokenizer.encode(f"{self._query_prefix}{text}")
+        fields = {
+            "input_ids": encoded.ids,
+            "attention_mask": encoded.attention_mask,
+            "token_type_ids": encoded.type_ids,
+        }
+        inputs = {name: np.asarray([fields[name]], dtype=np.int64) for name in self._input_names}
+        value = self._session.run([self._output_name], inputs)[0]
         return cast(np.ndarray, value)[0].astype(np.float32)
 
 
 def _load_encoder(config: Encoder) -> _TextEncoder:
     return _OnnxEncoder(config)
+
+
+def _validate_bge_export(root: Path, config: Encoder, meta: dict[str, object]) -> None:
+    expected_hashes = {
+        config.variant: bge.MODEL_SHA256,
+        "tokenizer.json": bge.TOKENIZER_SHA256,
+        "export_meta.json": bge.EXPORT_META_SHA256,
+    }
+    for name, expected in expected_hashes.items():
+        if _digest(root / name) != expected:
+            raise Incompatible(f"BGE encoder artifact checksum mismatch: {name}")
+    expected_meta: dict[str, object] = {
+        "source_model": bge.SOURCE_MODEL,
+        "source_revision": bge.SOURCE_REVISION,
+        "opset": bge.EXPORT.opset,
+        "tokenizer_sha256": bge.TOKENIZER_SHA256,
+        "max_length": bge.MAX_LENGTH,
+        "query_prefix": bge.QUERY_PREFIX,
+        "pooling": "cls",
+        "normalization": "l2",
+        "dimension": bge.DIMENSION,
+        "quantization": "int8-dynamic",
+        "input_names": ["input_ids", "attention_mask", "token_type_ids"],
+        "output_name": "embeddings",
+    }
+    if any(meta.get(name) != value for name, value in expected_meta.items()):
+        raise Incompatible("BGE encoder export metadata is incompatible")
+
+
+def _digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _rss_bytes() -> int:

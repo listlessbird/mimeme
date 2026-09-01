@@ -10,6 +10,7 @@ from mimeme.compute.index import build, pack
 from mimeme.compute.model import ChildOk
 from mimeme.compute.protocol import parse_reply
 from mimeme.compute.supervisor import Supervisor
+from mimeme.inference import bge
 
 
 def test_native_builder_writes_retrievable_normalized_generation(tmp_path) -> None:
@@ -45,6 +46,75 @@ def test_native_builder_writes_retrievable_normalized_generation(tmp_path) -> No
         "mapping.json",
         "metadata.json",
     }
+
+
+def test_native_builder_hosts_independent_384d_bge_and_siglip_indexes(tmp_path) -> None:
+    inputs = tmp_path / "inputs"
+    output = tmp_path / "output"
+    inputs.mkdir()
+    np.save(inputs / "siglip.npy", np.array([1.0, 0.0], dtype=np.float32))
+    np.save(inputs / "bge.npy", np.eye(1, bge.DIMENSION, dtype=np.float32))
+    (inputs / "bge-mapping.json").write_text('{"0": 7}')
+    (inputs / "bge-meta.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "retriever": "bge",
+                "version": "v2-test",
+                "model": bge.SOURCE_MODEL,
+                "dimension": bge.DIMENSION,
+                "dtype": "float32",
+                "normalized": True,
+                "count": 1,
+                "document_content_sha256": "a" * 64,
+                "projection_version": 1,
+                "render_version": 1,
+                "export": bge.EXPORT.model_dump(mode="json"),
+            }
+        )
+    )
+    encoder = index.Encoder(
+        repo=bge.EXPORT.repo,
+        revision=bge.EXPORT.revision,
+        variant=bge.EXPORT.variant,
+        threads=2,
+    )
+
+    result = build(
+        index.PreparedBuild(
+            version="v2-test",
+            target_generation=4,
+            model="test/embed",
+            index_type="flat",
+            dimension=2,
+            encoder=index.Encoder(repo="test/encoder", revision="rev", variant="model.onnx"),
+            output_dir=str(output),
+            embeddings=[index.LocalEmbedding(image_id=7, image_path=str(inputs / "siglip.npy"))],
+            dense=[
+                index.LocalDense(
+                    retriever="bge",
+                    version="v2-test",
+                    model=bge.SOURCE_MODEL,
+                    dimension=bge.DIMENSION,
+                    encoder=encoder,
+                    document_content_sha256="a" * 64,
+                    projection_version=1,
+                    render_version=1,
+                    count=1,
+                    vectors_path=str(inputs / "bge.npy"),
+                    mapping_path=str(inputs / "bge-mapping.json"),
+                    metadata_path=str(inputs / "bge-meta.json"),
+                )
+            ],
+        )
+    )
+
+    assert faiss.read_index(str(output / "index.faiss")).d == 2
+    assert faiss.read_index(str(output / "bge_index.faiss")).d == bge.DIMENSION
+    assert result.dense_counts == {"bge": 1}
+    assert {file.name for file in result.files}.issuperset(
+        {"bge_index.faiss", "bge_mapping.json", "bge_metadata.json"}
+    )
 
 
 def test_a_shard_build_matches_the_individual_object_build(tmp_path) -> None:

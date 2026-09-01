@@ -107,6 +107,7 @@ class Status(_Frozen):
     encoder_revision: str | None = None
     encoder_variant: str | None = None
     bm25_available: bool = False
+    bge_available: bool = False
     detail: str | None = None
 
 
@@ -118,6 +119,9 @@ class File(_Frozen):
         "text_index.faiss",
         "text_mapping.json",
         "text_metadata.json",
+        "bge_index.faiss",
+        "bge_mapping.json",
+        "bge_metadata.json",
     ]
     key: str = Field(min_length=1)
     sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
@@ -128,6 +132,28 @@ class Encoder(_Frozen):
     revision: str
     variant: str
     threads: int = Field(ge=1)
+
+
+class DenseIndex(_Frozen):
+    retriever: Literal["bge"]
+    model: Literal["BAAI/bge-small-en-v1.5"]
+    dimension: Literal[384]
+    encoder: Encoder
+    document_content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    projection_version: Literal[1]
+    render_version: Literal[1]
+    count: int = Field(ge=0)
+    files: tuple[File, File, File]
+
+    @model_validator(mode="after")
+    def _complete(self) -> Self:
+        if {file.name for file in self.files} != {
+            "bge_index.faiss",
+            "bge_mapping.json",
+            "bge_metadata.json",
+        }:
+            raise ValueError("BGE dense index is incomplete")
+        return self
 
 
 class Bm25File(_Frozen):
@@ -153,6 +179,7 @@ class Load(_Frozen):
     version: str = Field(min_length=1)
     files: list[File]
     bm25: Bm25File | None = None
+    dense: list[DenseIndex] = []
     encoder: Encoder
     hnsw_ef_search: int = Field(default=128, ge=1)
 
@@ -171,6 +198,12 @@ class Load(_Frozen):
         prefix = f"indexes/{self.version}/"
         if self.bm25 is not None and self.bm25.key != f"{prefix}{self.bm25.name}":
             raise ValueError("BM25 artifact must use its generation prefix")
+        dense_ids = [item.retriever for item in self.dense]
+        if len(dense_ids) != len(set(dense_ids)):
+            raise ValueError("dense retriever IDs must be unique")
+        files_by_name = {file.name: file for file in self.files}
+        if any(files_by_name.get(file.name) != file for item in self.dense for file in item.files):
+            raise ValueError("dense index files must belong to the generation")
         return self
 
 
@@ -179,6 +212,7 @@ class PreparedLoad(_Frozen):
     workspace: str
     paths: dict[str, str]
     bm25: Bm25File | None = None
+    dense: list[DenseIndex] = []
     encoder: Encoder
     hnsw_ef_search: int = Field(default=128, ge=1)
 
@@ -188,6 +222,8 @@ class PreparedLoad(_Frozen):
             raise ValueError("BM25 generation artifact is missing")
         if self.bm25 is None and "bm25.sqlite3" in self.paths:
             raise ValueError("BM25 workspace path requires a generation descriptor")
+        if any(file.name not in self.paths for item in self.dense for file in item.files):
+            raise ValueError("dense generation artifact is missing")
         return self
 
 
@@ -198,6 +234,7 @@ class Loaded(_Frozen):
     image_count: int = Field(ge=0)
     text_count: int | None = Field(default=None, ge=0)
     bm25_count: int | None = Field(default=None, ge=0)
+    dense_counts: dict[Literal["bge"], int] = {}
     faiss_version: str
     onnxruntime_version: str
     encoder_revision: str
