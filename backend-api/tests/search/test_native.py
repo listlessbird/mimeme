@@ -49,13 +49,6 @@ def _generation(
     mapping = {"0": 1, "1": 1 if duplicate_mapping else 2, "2": 3}
     (root / "mapping.json").write_text(json.dumps(mapping))
 
-    text_vectors = np.array([[1.0, 0.0], [0.5, 0.5]], dtype=np.float32)
-    faiss.normalize_L2(text_vectors)
-    text = faiss.IndexFlatIP(2)
-    text.add(text_vectors)
-    faiss.write_index(text, str(root / "text_index.faiss"))
-    (root / "text_mapping.json").write_text(json.dumps({"0": 2, "1": 3}))
-
     metadata = {
         "schema_version": 2,
         "version": "wrong" if broken else version,
@@ -70,7 +63,6 @@ def _generation(
         "encoder_variant": "model.onnx",
     }
     (root / "metadata.json").write_text(json.dumps(metadata))
-    (root / "text_metadata.json").write_text(json.dumps({**metadata, "kind": "text"}))
     bm25_built = bm25.build(
         root / "bm25.sqlite3",
         [
@@ -174,7 +166,7 @@ def test_load_does_not_serve_until_atomic_switch(tmp_path: Path) -> None:
 
 def test_failed_load_keeps_the_active_generation_serving(tmp_path: Path) -> None:
     resident = _resident()
-    resident.load(_generation(tmp_path, "v1"))
+    resident.load(_generation(tmp_path, "v1", with_bge=True))
     resident.switch("v1")
 
     with pytest.raises(search.Incompatible):
@@ -215,9 +207,37 @@ def test_switch_retains_one_generation_for_rollback(tmp_path: Path) -> None:
     assert status.retained_version is None
 
 
+def test_selected_recipe_survives_activation_and_previous_generation_rollback(
+    tmp_path: Path,
+) -> None:
+    resident = _resident()
+    resident.load(_generation(tmp_path, "previous", with_bge=True))
+    resident.switch("previous")
+    resident.load(_generation(tmp_path, "selected", with_bge=True))
+    resident.switch("selected")
+
+    selected = resident.query(
+        search.CandidateRequest(
+            query=search.Query(text="quokka", recipe_id="image_bm25_bge"),
+            count=10,
+        )
+    )
+    assert selected.version == "selected"
+    assert resident.status().retained_version == "previous"
+
+    resident.rollback("selected")
+    previous = resident.query(
+        search.CandidateRequest(
+            query=search.Query(text="quokka", recipe_id="image_bm25_bge"),
+            count=10,
+        )
+    )
+    assert previous.version == "previous"
+
+
 def test_image_hybrid_and_similar_search_preserve_frozen_order(tmp_path: Path) -> None:
     resident = _resident()
-    resident.load(_generation(tmp_path, "v1"))
+    resident.load(_generation(tmp_path, "v1", with_bge=True))
     resident.switch("v1")
 
     image = resident.query(
@@ -231,28 +251,28 @@ def test_image_hybrid_and_similar_search_preserve_frozen_order(tmp_path: Path) -
     )
 
     assert [hit.image_id for hit in image.candidates] == [1, 2, 3]
-    assert [hit.image_id for hit in hybrid.candidates] == [2, 3, 1]
+    assert [hit.image_id for hit in hybrid.candidates] == [1, 3, 2]
     assert [hit.image_id for hit in similar.candidates] == [2, 3]
     assert image.candidates[0].score == pytest.approx(1.0, abs=1e-6)
 
 
 def test_cursor_returns_the_next_stable_candidate_batch(tmp_path: Path) -> None:
     resident = _resident()
-    resident.load(_generation(tmp_path, "v1"))
+    resident.load(_generation(tmp_path, "v1", with_bge=True))
     resident.switch("v1")
     query = search.Query(text="cat")
 
     first = resident.query(search.CandidateRequest(query=query, count=2))
     second = resident.query(search.CandidateRequest(query=query, count=2, cursor=first.cursor))
 
-    assert [hit.image_id for hit in first.candidates] == [1, 2]
-    assert [hit.image_id for hit in second.candidates] == [3]
+    assert [hit.image_id for hit in first.candidates] == [1, 3]
+    assert [hit.image_id for hit in second.candidates] == [2]
     assert second.exhausted is True
 
 
 def test_hybrid_first_page_uses_fixed_recipe_depth(tmp_path: Path) -> None:
     resident = _resident()
-    resident.load(_generation(tmp_path, "v1"))
+    resident.load(_generation(tmp_path, "v1", with_bge=True))
     resident.switch("v1")
 
     first = resident.query(
@@ -262,7 +282,7 @@ def test_hybrid_first_page_uses_fixed_recipe_depth(tmp_path: Path) -> None:
         )
     )
 
-    assert [hit.image_id for hit in first.candidates] == [2]
+    assert [hit.image_id for hit in first.candidates] == [1]
 
 
 def test_bm25_recipe_promotes_an_exact_ocr_match(tmp_path: Path) -> None:
@@ -303,30 +323,6 @@ def test_bge_recipe_warms_and_queries_its_independent_encoder(tmp_path: Path) ->
     assert result.candidates[0].image_id == 3
 
 
-def test_recipe_fails_when_its_text_retriever_is_unavailable(tmp_path: Path) -> None:
-    resident = _resident()
-    generation = _generation(tmp_path, "v1")
-    generation = generation.model_copy(
-        update={
-            "paths": {
-                name: path
-                for name, path in generation.paths.items()
-                if not name.startswith("text_")
-            }
-        }
-    )
-    resident.load(generation)
-    resident.switch("v1")
-
-    with pytest.raises(search.recipe.UnavailableRetriever, match="siglip_text"):
-        resident.query(
-            search.CandidateRequest(
-                query=search.Query(text="cat", recipe_id="image_siglip_text"),
-                count=10,
-            )
-        )
-
-
 def test_equivalent_generations_share_encoder_and_release_replaced_workspaces(
     tmp_path: Path,
 ) -> None:
@@ -355,7 +351,9 @@ def test_equivalent_generations_share_encoder_and_release_replaced_workspaces(
     assert Path(third.workspace).exists()
     assert (Path(second.workspace) / "bm25.sqlite3").exists()
     assert (Path(third.workspace) / "bm25.sqlite3").exists()
-    batch = resident.query(search.CandidateRequest(query=search.Query(text="cat"), count=1))
+    batch = resident.query(
+        search.CandidateRequest(query=search.Query(text="cat", recipe_id="image_only"), count=1)
+    )
     assert [candidate.image_id for candidate in batch.candidates] == [1]
 
 

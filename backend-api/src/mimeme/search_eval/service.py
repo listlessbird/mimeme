@@ -32,6 +32,7 @@ from mimeme.media import Urls
 from mimeme.search.rows import SqlRows
 from mimeme.search_eval.metrics import Metrics, calculate
 from mimeme.search_eval.model import (
+    ArchivedDefinition,
     CandidateView,
     Comparison,
     ExperimentView,
@@ -153,11 +154,14 @@ async def _run_view(db: Db, row: SearchEvalRun) -> RunView:
     if row.score_snapshot_id is not None:
         async with db.read_session() as session:
             score = await session.get(SearchEvalScore, (row.id, row.score_snapshot_id))
+    definition = ArchivedDefinition.model_validate(row.recipe_definition)
+    if definition.id != row.recipe_id:
+        raise RuntimeError("Search eval recipe snapshot does not match its ID")
     return RunView(
         id=row.id,
         experiment_id=row.experiment_id,
-        recipe_id=search.recipe.id_of(row.recipe_id),
-        recipe=search.recipe.Definition.model_validate(row.recipe_definition),
+        recipe_id=definition.id,
+        recipe=definition,
         mode=row.mode,
         status=row.status,
         phase=row.phase,
@@ -625,7 +629,9 @@ async def create_experiment(
         id=experiment_id,
         snapshot_id=snapshot.id,
         index_version=None,
-        recipes=definitions,
+        recipes=tuple(
+            ArchivedDefinition.model_validate(definition.model_dump()) for definition in definitions
+        ),
         runs=views,
     )
 

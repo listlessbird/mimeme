@@ -1,7 +1,5 @@
 import { createMiddleware, createStart } from "@tanstack/react-start";
 
-
-
 function isProduction(): boolean {
 	return process.env.NODE_ENV === "production";
 }

@@ -88,22 +88,16 @@ class Gateway:
                             image_id=item.image_id,
                             shard=item.shard,
                             row=item.row,
-                            text_present=item.text_present,
                         )
                     )
                     continue
                 assert item.image_key is not None
                 image_path = workspace.path(f"input-{position}.npy")
                 await _download(meter, item.image_key, image_path)
-                text_path: Path | None = None
-                if item.text_key is not None:
-                    text_path = workspace.path(f"text-{position}.npy")
-                    await _download(meter, item.text_key, text_path)
                 local.append(
                     LocalEmbedding(
                         image_id=item.image_id,
                         image_path=str(image_path),
-                        text_path=str(text_path) if text_path else None,
                     )
                 )
             output = workspace.path("output")
@@ -159,7 +153,6 @@ class Gateway:
                 encoder=request.encoder,
                 dimension=built.dimension,
                 image_count=built.image_count,
-                text_count=built.text_count,
                 files=files,
                 documents=request.documents,
                 bm25=request.bm25,
@@ -192,13 +185,13 @@ class Gateway:
 async def _fetch_shards(
     artifacts: storage.Store, request: Build, workspace: Workspace
 ) -> list[LocalShard]:
-    wanted: dict[int, bool] = {}
+    wanted: set[int] = set()
     generation: dict[int, int] = {}
     for item in request.embeddings:
         if item.shard is None:
             continue
         assert item.seq is not None
-        wanted[item.shard] = wanted.get(item.shard, False) or item.text_present
+        wanted.add(item.shard)
         recorded = generation.setdefault(item.shard, item.seq)
         if recorded != item.seq:
             raise Failed(f"shard {item.shard} appears at two generations in one build")
@@ -206,20 +199,8 @@ async def _fetch_shards(
     for number in sorted(wanted):
         seq = generation[number]
         image_path = workspace.path(f"shard-image-{number:06d}.npy")
-        await _download(artifacts, pack.locate(request.model, number, seq, text=False), image_path)
-        text_path: Path | None = None
-        if wanted[number]:
-            text_path = workspace.path(f"shard-text-{number:06d}.npy")
-            await _download(
-                artifacts, pack.locate(request.model, number, seq, text=True), text_path
-            )
-        shards.append(
-            LocalShard(
-                number=number,
-                image_path=str(image_path),
-                text_path=str(text_path) if text_path else None,
-            )
-        )
+        await _download(artifacts, pack.locate(request.model, number, seq), image_path)
+        shards.append(LocalShard(number=number, image_path=str(image_path)))
     return shards
 
 

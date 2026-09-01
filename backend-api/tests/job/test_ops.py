@@ -460,7 +460,6 @@ class TestInference:
             model="m",
             dimension=768,
             image_embedding_key="k",
-            text_embedding_key="k_text",
         )
         assert first.index_changed and first.desired_generation == 2
         # identical retry does not re-increment
@@ -470,7 +469,6 @@ class TestInference:
             model="m",
             dimension=768,
             image_embedding_key="k",
-            text_embedding_key="k_text",
         )
         assert not second.index_changed
         assert (await ops.index_status(job_db)).view.desired_generation == 2
@@ -496,7 +494,6 @@ class TestInference:
             model="m",
             dimension=768,
             image_embedding_key="k2",
-            text_embedding_key=None,
         )
 
         async with job_db.read_session() as session:
@@ -526,7 +523,6 @@ class TestInference:
             model="m",
             dimension=768,
             image_embedding_key="k",
-            text_embedding_key=None,
         )
 
         async with job_db.read_session() as session:
@@ -550,7 +546,6 @@ class TestInference:
             model="m",
             dimension=768,
             image_embedding_key="k",
-            text_embedding_key="k_text",
         )
         assert not saved.found
         assert (await ops.index_status(job_db)).view.desired_generation == 3

@@ -8,7 +8,7 @@ import zstandard
 from sqlalchemy import Row, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from mimeme import inference, storage
+from mimeme import storage
 from mimeme.db.schema import (
     Annotation,
     EmbeddingShard,
@@ -100,7 +100,6 @@ async def capture(
                 Processing.image_id,
                 Processing.embed_s3_key,
                 Processing.embed_dim,
-                Processing.embed_text_present,
                 Processing.embed_shard,
                 Processing.embed_row,
                 EmbeddingShard.seq,
@@ -167,14 +166,9 @@ def _embedding(row: Row[Any]) -> Embedding:
             shard=row.embed_shard,
             row=row.embed_row,
             seq=row.seq,
-            text_present=bool(row.embed_text_present),
         )
     image_key = str(row.embed_s3_key)
-    return Embedding(
-        image_id=row.image_id,
-        image_key=image_key,
-        text_key=inference.text_embedding_key(image_key) if row.embed_text_present else None,
-    )
+    return Embedding(image_id=row.image_id, image_key=image_key)
 
 
 def _source_facts(row: Row[Any]) -> document.SourceFacts:

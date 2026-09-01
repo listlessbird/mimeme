@@ -406,9 +406,6 @@ class Store:
         model: str,
         dimension: int,
         image_embedding_key: str,
-        text_embedding_key: str | None,
-        text_sha256: str | None = None,
-        recipe_version: str | None = None,
     ) -> EmbeddingSaved:
         proc = (
             await self._session.scalars(select(Processing).where(Processing.image_id == image_id))
@@ -420,23 +417,12 @@ class Store:
             proc.embed_model,
             proc.embed_dim,
             proc.embed_s3_key,
-            proc.embed_text_present,
-            proc.embed_text_sha256,
-            proc.embed_recipe_version,
         )
-        superseded = (
-            proc.embed_model != model
-            or proc.embed_s3_key != image_embedding_key
-            or proc.embed_text_sha256 != text_sha256
-            or proc.embed_recipe_version != recipe_version
-        )
+        superseded = proc.embed_model != model or proc.embed_s3_key != image_embedding_key
         proc.embed_status = ProcessingStatus.DONE
         proc.embed_model = model
         proc.embed_dim = dimension
         proc.embed_s3_key = image_embedding_key
-        proc.embed_text_present = bool(text_embedding_key)
-        proc.embed_text_sha256 = text_sha256
-        proc.embed_recipe_version = recipe_version
         if superseded:
             proc.embed_shard = None
             proc.embed_row = None
@@ -445,9 +431,6 @@ class Store:
             proc.embed_model,
             proc.embed_dim,
             proc.embed_s3_key,
-            proc.embed_text_present,
-            proc.embed_text_sha256,
-            proc.embed_recipe_version,
         )
         if after == before:
             await self._session.flush()

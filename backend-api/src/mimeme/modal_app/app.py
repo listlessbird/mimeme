@@ -190,7 +190,6 @@ class EmbeddingService:
         self._is_siglip2 = "siglip2" in self.model_name.lower()
         self._is_naflex = "naflex" in self.model_name.lower()
         self._has_image = hasattr(self.model, "get_image_features")
-        self._has_text = hasattr(self.model, "get_text_features")
 
     def _to_device(self, inputs: dict) -> dict:
         import torch
@@ -218,22 +217,6 @@ class EmbeddingService:
                 self.model.get_image_features(**inputs) if self._has_image else self.model(**inputs)
             )
         return _to_numpy(feats, kind="image")
-
-    def _encode_texts(self, texts: list[str]) -> Any:
-        import torch
-
-        if self._is_siglip2:
-            inputs = self.processor(
-                text=texts, return_tensors="pt", padding="max_length", max_length=64
-            )
-        else:
-            inputs = self.processor(text=texts, return_tensors="pt", padding="max_length")
-        inputs = self._to_device(inputs)
-        with torch.no_grad():
-            feats = (
-                self.model.get_text_features(**inputs) if self._has_text else self.model(**inputs)
-            )
-        return _to_numpy(feats, kind="text")
 
     @modal.method()
     async def embed_batch(self, items: list[dict], model: str) -> dict:
@@ -264,7 +247,6 @@ class EmbeddingService:
             if prepared:
                 try:
                     img_feats = self._encode_images([pil for _, _, pil in prepared])
-                    txt_feats = self._encode_texts([item["text"] for _, item, _ in prepared])
                 except Exception as exc:
                     for index, item, _ in prepared:
                         results[index] = {
@@ -280,16 +262,10 @@ class EmbeddingService:
                                 _npy_bytes(np, img_feats[row]),
                                 content_type="application/octet-stream",
                             )
-                            await artifacts.put_bytes(
-                                storage.Object(item["text_key"]),
-                                _npy_bytes(np, txt_feats[row]),
-                                content_type="application/octet-stream",
-                            )
                             results[index] = {
                                 "image_id": item["image_id"],
                                 "ok": True,
                                 "image_key": item["image_key"],
-                                "text_key": item["text_key"],
                                 "model": model,
                                 "dimension": int(img_feats.shape[-1]),
                             }

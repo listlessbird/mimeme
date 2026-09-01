@@ -126,9 +126,7 @@ def test_a_shard_build_matches_the_individual_object_build(tmp_path) -> None:
     ]
     for position, vector in enumerate(vectors, start=1):
         np.save(inputs / f"{position}.npy", vector)
-        np.save(inputs / f"{position}_text.npy", vector[::-1].copy())
     np.save(inputs / "shard-image.npy", np.stack(vectors))
-    np.save(inputs / "shard-text.npy", np.stack([vector[::-1] for vector in vectors]))
 
     def request(sealed: bool, output: str) -> index.PreparedBuild:
         return index.PreparedBuild(
@@ -144,21 +142,17 @@ def test_a_shard_build_matches_the_individual_object_build(tmp_path) -> None:
                     index.LocalShard(
                         number=0,
                         image_path=str(inputs / "shard-image.npy"),
-                        text_path=str(inputs / "shard-text.npy"),
                     )
                 ]
                 if sealed
                 else []
             ),
             embeddings=[
-                index.LocalEmbedding(
-                    image_id=position, shard=0, row=position - 1, text_present=True
-                )
+                index.LocalEmbedding(image_id=position, shard=0, row=position - 1)
                 if sealed
                 else index.LocalEmbedding(
                     image_id=position,
                     image_path=str(inputs / f"{position}.npy"),
-                    text_path=str(inputs / f"{position}_text.npy"),
                 )
                 for position in (1, 2)
             ],
@@ -168,39 +162,30 @@ def test_a_shard_build_matches_the_individual_object_build(tmp_path) -> None:
     sealed = build(request(True, str(tmp_path / "sealed")))
 
     assert loose.image_count == sealed.image_count == 2
-    assert loose.text_count == sealed.text_count == 2
     assert {file.name: file.sha256 for file in loose.files} == {
         file.name: file.sha256 for file in sealed.files
     }
 
 
-def test_pack_writes_paired_matrices_and_zeroes_a_missing_text_row(tmp_path) -> None:
+def test_pack_writes_the_image_matrix(tmp_path) -> None:
     inputs = tmp_path / "inputs"
     inputs.mkdir()
     np.save(inputs / "1.npy", np.array([3.0, 0.0], dtype=np.float32))
-    np.save(inputs / "1_text.npy", np.array([0.0, 3.0], dtype=np.float32))
     np.save(inputs / "2.npy", np.array([0.0, 4.0], dtype=np.float32))
 
     packed = pack(
         index.PackCall(
             members=[
-                index.LocalMember(
-                    image_id=1,
-                    image_path=str(inputs / "1.npy"),
-                    text_path=str(inputs / "1_text.npy"),
-                ),
+                index.LocalMember(image_id=1, image_path=str(inputs / "1.npy")),
                 index.LocalMember(image_id=2, image_path=str(inputs / "2.npy")),
             ],
             image_out=str(tmp_path / "image.npy"),
-            text_out=str(tmp_path / "text.npy"),
         )
     )
 
     images = np.load(tmp_path / "image.npy")
-    texts = np.load(tmp_path / "text.npy")
     assert (packed.rows, packed.dimension) == (2, 2)
     assert images.tolist() == [[3.0, 0.0], [0.0, 4.0]]
-    assert texts.tolist() == [[0.0, 3.0], [0.0, 0.0]]
     assert packed.image.length == (tmp_path / "image.npy").stat().st_size
 
 
@@ -208,31 +193,22 @@ def test_pack_upcasts_half_precision_embeddings(tmp_path) -> None:
     inputs = tmp_path / "inputs"
     inputs.mkdir()
     np.save(inputs / "1.npy", np.array([3.0, 0.0], dtype=np.float16))
-    np.save(inputs / "1_text.npy", np.array([0.0, 3.0], dtype=np.float16))
     np.save(inputs / "2.npy", np.array([0.0, 4.0], dtype=np.float32))
 
     packed = pack(
         index.PackCall(
             members=[
-                index.LocalMember(
-                    image_id=1,
-                    image_path=str(inputs / "1.npy"),
-                    text_path=str(inputs / "1_text.npy"),
-                ),
+                index.LocalMember(image_id=1, image_path=str(inputs / "1.npy")),
                 index.LocalMember(image_id=2, image_path=str(inputs / "2.npy")),
             ],
             image_out=str(tmp_path / "image.npy"),
-            text_out=str(tmp_path / "text.npy"),
         )
     )
 
     images = np.load(tmp_path / "image.npy")
-    texts = np.load(tmp_path / "text.npy")
     assert (packed.rows, packed.dimension) == (2, 2)
     assert images.dtype == np.float32
-    assert texts.dtype == np.float32
     assert images.tolist() == [[3.0, 0.0], [0.0, 4.0]]
-    assert texts.tolist() == [[0.0, 3.0], [0.0, 0.0]]
 
 
 async def test_the_spawned_index_child_serves_both_build_and_pack(tmp_path) -> None:
@@ -243,7 +219,6 @@ async def test_the_spawned_index_child_serves_both_build_and_pack(tmp_path) -> N
         call = index.PackCall(
             members=[index.LocalMember(image_id=1, image_path=str(tmp_path / "1.npy"))],
             image_out=str(tmp_path / "image.npy"),
-            text_out=str(tmp_path / "text.npy"),
         )
         reply = parse_reply(await supervisor.call("index", call.model_dump_json().encode()))
         assert isinstance(reply, ChildOk)

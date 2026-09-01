@@ -4,7 +4,7 @@ from tests.support.storage import Memory
 
 from mimeme import index, storage
 from mimeme.index import documents
-from mimeme.index.ops import cleanup_incomplete, validate
+from mimeme.index.ops import validate
 from mimeme.search.document import SearchDocument
 
 
@@ -60,16 +60,3 @@ async def test_validation_reads_and_hashes_v2_documents() -> None:
     )
 
     assert await validate(artifacts, manifest) == manifest
-
-
-async def test_partial_generation_cleanup_never_deletes_protected_or_complete_output() -> None:
-    artifacts = Memory()
-    partial = storage.Object("indexes/partial/index.faiss")
-    await artifacts.put_bytes(partial, b"data", content_type="x")
-    await cleanup_incomplete(artifacts, version="partial", protect=set())
-    assert await artifacts.stat(partial) is None
-
-    protected = storage.Object("indexes/active/index.faiss")
-    await artifacts.put_bytes(protected, b"data", content_type="x")
-    await cleanup_incomplete(artifacts, version="active", protect={"active"})
-    assert await artifacts.stat(protected) is not None

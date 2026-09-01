@@ -264,7 +264,6 @@ class Activities:
                 self._env.artifacts,
                 self._env.search,
                 input,
-                retain=self._env.settings.index.retain_versions,
             )
             emit_activity_event(
                 log=log,
@@ -345,10 +344,6 @@ async def _bookkeep_failure(
             )
         except Exception as exc:
             failure_error = exc
-        try:
-            await index.cleanup_incomplete(env.artifacts, version=version, protect=set())
-        except Exception as exc:
-            failure_error = failure_error or exc
         if failure_error is not None:
             raise failure_error
 

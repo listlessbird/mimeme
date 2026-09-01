@@ -42,7 +42,6 @@ def test_inference_child_embed_smoke(_guard: None, tmp_path: Path) -> None:
                     path=str(path),
                     text="a blue square",
                     image_out=str(tmp_path / "img.npy"),
-                    text_out=str(tmp_path / "txt.npy"),
                 )
             ]
         )

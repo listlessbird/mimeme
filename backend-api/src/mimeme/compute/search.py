@@ -57,7 +57,7 @@ class _Metadata(BaseModel):
     encoder_repo: str
     encoder_revision: str
     encoder_variant: str
-    kind: Literal["image", "text", "bge"] = "image"
+    kind: Literal["image", "bge"] = "image"
 
 
 class _TextEncoder(encoder_cache.Session, Protocol): ...
@@ -126,7 +126,6 @@ class _Generation:
         version: str,
         metadata: _Metadata,
         image: _Index,
-        text: _Index | None,
         lexical: bm25.Index | None,
         encoder: encoder_cache.Lease,
         dense: dict[recipe.RetrieverId, _Index],
@@ -136,7 +135,6 @@ class _Generation:
         self.version = version
         self.metadata = metadata
         self.image = image
-        self.text = text
         self.lexical = lexical
         self.encoder = encoder
         self.dense = dense
@@ -211,7 +209,6 @@ class Resident:
                 embed_model=generation.metadata.embed_model,
                 dimension=generation.metadata.dimension,
                 image_count=generation.image.size,
-                text_count=generation.text.size if generation.text else None,
                 bm25_count=call.bm25.count if call.bm25 is not None else None,
                 dense_counts={
                     item.retriever: generation.dense[item.retriever].size for item in call.dense
@@ -310,8 +307,6 @@ class Resident:
         fingerprint = request.query.model_dump_json()
         if request.cursor is None:
             available: set[recipe.RetrieverId] = {"siglip_image"}
-            if active.text is not None:
-                available.add("siglip_text")
             if active.lexical is not None:
                 available.add("bm25")
             available.update(active.dense)
@@ -370,7 +365,6 @@ class Resident:
             assert query.text is not None
             indexes = {
                 "siglip_image": generation.image,
-                "siglip_text": generation.text,
                 **generation.dense,
             }
             vectors: dict[str, np.ndarray] = {}
@@ -457,30 +451,6 @@ class Resident:
             hnsw_ef_search=call.hnsw_ef_search,
         )
 
-        text: _Index | None = None
-        text_names = {"text_index.faiss", "text_mapping.json", "text_metadata.json"}
-        present = text_names.intersection(paths)
-        if present and present != text_names:
-            raise Incompatible("text index generation is incomplete")
-        if present:
-            try:
-                text_metadata = _Metadata.model_validate_json(
-                    paths["text_metadata.json"].read_text(encoding="utf-8")
-                )
-            except Exception as exc:
-                raise Incompatible(f"invalid text index metadata: {exc}") from exc
-            _validate_metadata(text_metadata, call.version, kind="text")
-            if text_metadata.embed_model != metadata.embed_model:
-                raise Incompatible("image and text indexes use different embedding models")
-            if text_metadata.dimension != metadata.dimension:
-                raise Incompatible("image and text indexes use different dimensions")
-            text = _Index.read(
-                paths["text_index.faiss"],
-                paths["text_mapping.json"],
-                dimension=text_metadata.dimension,
-                hnsw_ef_search=call.hnsw_ef_search,
-            )
-
         dense: dict[recipe.RetrieverId, _Index] = {}
         dense_metadata: dict[recipe.RetrieverId, _Metadata] = {}
         for descriptor in call.dense:
@@ -560,7 +530,6 @@ class Resident:
             version=call.version,
             metadata=metadata,
             image=image,
-            text=text,
             lexical=lexical,
             encoder=encoder,
             dense=dense,

@@ -39,7 +39,6 @@ class _Supervisor:
                 "embed_model": "test/embed",
                 "dimension": 2,
                 "image_count": 3,
-                "text_count": None,
                 "faiss_version": "1.13.2",
                 "onnxruntime_version": "1.27.0",
                 "encoder_revision": "rev-1",

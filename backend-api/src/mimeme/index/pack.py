@@ -57,7 +57,6 @@ class Packer(Protocol):
 class Member(_Frozen):
     image_id: int = Field(gt=0)
     image_key: str = Field(min_length=1)
-    text_present: bool
 
 
 class Shard(_Frozen):
@@ -71,23 +70,13 @@ class Shard(_Frozen):
 
     @property
     def image_key(self) -> str:
-        return locate(self.model, self.number, self.seq, text=False)
-
-    @property
-    def text_key(self) -> str:
-        return locate(self.model, self.number, self.seq, text=True)
+        return locate(self.model, self.number, self.seq)
 
     @property
     def base_image_key(self) -> str | None:
         if self.base_rows == 0:
             return None
-        return locate(self.model, self.number, self.seq - 1, text=False)
-
-    @property
-    def base_text_key(self) -> str | None:
-        if self.base_rows == 0:
-            return None
-        return locate(self.model, self.number, self.seq - 1, text=True)
+        return locate(self.model, self.number, self.seq - 1)
 
 
 class Plan(_Frozen):
@@ -105,16 +94,14 @@ class Plan(_Frozen):
         return self.unsealed - self.absorbed
 
 
-def locate(model: str, number: int, seq: int, *, text: bool) -> str:
-    family = "text" if text else "image"
-    return f"{inference.embedding_prefix(model)}shards/{family}/{number:06d}-{seq:04d}.npy"
+def locate(model: str, number: int, seq: int) -> str:
+    return f"{inference.embedding_prefix(model)}shards/image/{number:06d}-{seq:04d}.npy"
 
 
 def reads(embeddings: list[Embedding]) -> int:
     image_shards = {item.shard for item in embeddings if item.sealed}
-    text_shards = {item.shard for item in embeddings if item.sealed and item.text_present}
-    loose = sum(1 + int(item.text_key is not None) for item in embeddings if not item.sealed)
-    return len(image_shards) + len(text_shards) + loose
+    loose = sum(1 for item in embeddings if not item.sealed)
+    return len(image_shards) + loose
 
 
 async def plan(
@@ -135,7 +122,6 @@ async def plan(
         Member(
             image_id=row.image_id,
             image_key=str(row.embed_s3_key),
-            text_present=bool(row.embed_text_present),
         )
         for row in rows
     ]
@@ -205,20 +191,13 @@ def request(target: Plan, *, job_id: str) -> Seal:
                 number=shard.number,
                 seq=shard.seq,
                 image_key=shard.image_key,
-                text_key=shard.text_key,
                 base_image_key=shard.base_image_key,
-                base_text_key=shard.base_text_key,
                 base_rows=shard.base_rows,
                 sealed=shard.sealed,
                 members=[
                     SealMember(
                         image_id=member.image_id,
                         image_key=member.image_key,
-                        text_key=(
-                            inference.text_embedding_key(member.image_key)
-                            if member.text_present
-                            else None
-                        ),
                     )
                     for member in shard.members
                 ],
@@ -303,46 +282,30 @@ async def _seal_one(
     workspace = Workspace.create(workspace_dir, f"seal-{name}-{shard.number:06d}-{shard.seq:04d}")
     try:
         base_image: Path | None = None
-        base_text: Path | None = None
         if shard.base_image_key is not None:
             base_image = workspace.path("base-image.npy")
             await _download(artifacts, shard.base_image_key, base_image)
-            assert shard.base_text_key is not None
-            base_text = workspace.path("base-text.npy")
-            await _download(artifacts, shard.base_text_key, base_text)
         members: list[LocalMember] = []
         for position, member in enumerate(shard.members):
             image_path = workspace.path(f"image-{position}.npy")
             await _download(artifacts, member.image_key, image_path)
-            text_path: Path | None = None
-            if member.text_key is not None:
-                text_path = workspace.path(f"text-{position}.npy")
-                await _download(artifacts, member.text_key, text_path)
             members.append(
                 LocalMember(
                     image_id=member.image_id,
                     image_path=str(image_path),
-                    text_path=str(text_path) if text_path else None,
                 )
             )
         packed = await _pack(
             calls,
             members,
             image_out=workspace.path("shard-image.npy"),
-            text_out=workspace.path("shard-text.npy"),
             base_image=base_image,
-            base_text=base_text,
             base_rows=shard.base_rows,
         )
         expected = shard.base_rows + len(shard.members)
         if packed.rows != expected:
             raise Failed(f"shard {shard.number} packed {packed.rows} rows, expected {expected}")
         await _upload(artifacts, packed.image, shard.image_key)
-        await _upload(artifacts, packed.text, shard.text_key)
-        if shard.seq >= 2:
-            stale = shard.seq - 2
-            await artifacts.delete(storage.Object(locate(model, shard.number, stale, text=False)))
-            await artifacts.delete(storage.Object(locate(model, shard.number, stale, text=True)))
         return packed.rows
     finally:
         workspace.close()
@@ -353,9 +316,7 @@ async def _pack(
     members: list[LocalMember],
     *,
     image_out: Path,
-    text_out: Path,
     base_image: Path | None = None,
-    base_text: Path | None = None,
     base_rows: int = 0,
 ) -> Packed:
     raw = await calls.call(
@@ -363,9 +324,7 @@ async def _pack(
         PackCall(
             members=members,
             image_out=str(image_out),
-            text_out=str(text_out),
             base_image=str(base_image) if base_image else None,
-            base_text=str(base_text) if base_text else None,
             base_rows=base_rows,
         )
         .model_dump_json()

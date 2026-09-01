@@ -129,7 +129,6 @@ async def test_embed_builds_keys_and_maps() -> None:
                     "image_id": 1,
                     "ok": True,
                     "image_key": "e/1.npy",
-                    "text_key": "e/1_text.npy",
                     "model": "google/siglip2",
                     "dimension": 768,
                 },
@@ -141,8 +140,8 @@ async def test_embed_builds_keys_and_maps() -> None:
     adapter._embedding = _embedding(call)  # type: ignore[assignment]
     batch = Batch(
         items=[
-            Item(image_id=1, media_key="images/1.jpg", text="t", sha256="abc", dataset="ds"),
-            Item(image_id=2, media_key="images/2.jpg", text="t", sha256="def"),
+            Item(image_id=1, media_key="images/1.jpg", sha256="abc", dataset="ds"),
+            Item(image_id=2, media_key="images/2.jpg", sha256="def"),
         ]
     )
     result = await adapter.embed(batch)
@@ -150,6 +149,7 @@ async def test_embed_builds_keys_and_maps() -> None:
     assert result.failed_ids == [2]
     sent = {item["image_id"]: item for item in call.kwargs["items"]}
     assert sent[1]["image_key"] == "embeddings/google_siglip2/ds/abc.npy"
+    assert "text_key" not in sent[1]
 
 
 async def test_cancellation_cancels_remote_call() -> None:

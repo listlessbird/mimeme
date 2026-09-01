@@ -18,8 +18,6 @@ async def test_run_batch_sends_prepared_items_in_one_inference_call(monkeypatch)
             input=item,
             image_id=item.item_id,
             media_key=f"images/{item.item_id}.png",
-            text=f"text {item.item_id}",
-            text_sha256=f"text-sha-{item.item_id}",
             sha256=f"image-sha-{item.item_id}",
             outcome="processed",
             duplicate_reason=None,
@@ -45,7 +43,6 @@ async def test_run_batch_sends_prepared_items_in_one_inference_call(monkeypatch)
                         embedding=inference.Embedding(
                             image_id=item.image_id,
                             image_embedding_key=f"image-{item.image_id}.npy",
-                            text_embedding_key=f"text-{item.image_id}.npy",
                             model="siglip2",
                             dimension=4,
                         )

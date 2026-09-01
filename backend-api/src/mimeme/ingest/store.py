@@ -34,8 +34,6 @@ class ExistingImage(BaseModel):
     needs_embedding: bool
     existing_caption: str | None
     existing_ocr_text: str | None
-    embed_text_sha256: str | None
-    embed_recipe_version: str | None
     caption_context_sha256: str | None
     caption_prompt_version: str | None
 
@@ -191,8 +189,6 @@ class Store:
             needs_embedding=needs_embedding,
             existing_caption=annotation.caption_text if annotation else None,
             existing_ocr_text=annotation.ocr_text if annotation else None,
-            embed_text_sha256=proc.embed_text_sha256,
-            embed_recipe_version=proc.embed_recipe_version,
             caption_context_sha256=(annotation.caption_context_sha256 if annotation else None),
             caption_prompt_version=(annotation.caption_prompt_version if annotation else None),
         )

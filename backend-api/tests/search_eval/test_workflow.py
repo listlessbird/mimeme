@@ -43,8 +43,8 @@ async def test_run_workflow_retrieves_sequential_batches_then_scores() -> None:
         calls.append("prepare")
         return PreparedRun(
             run_id=input.run_id,
-            recipe_id="image_siglip_text",
-            recipe=search.recipe.resolve("image_siglip_text"),
+            recipe_id="image_bm25_bge",
+            recipe=search.recipe.resolve("image_bm25_bge"),
             index_version="index-v1",
             queries=queries,
         )

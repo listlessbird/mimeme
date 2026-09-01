@@ -709,6 +709,29 @@ export interface components {
             detail: string;
         };
         /**
+         * ArchivedDefinition
+         * @description Stored recipe snapshot, including the retired Plan 006 text recipe.
+         */
+        ArchivedDefinition: {
+            id: components["schemas"]["ArchivedRecipeId"];
+            /**
+             * Version
+             * @default 1
+             * @constant
+             */
+            version: 1;
+            /** Label */
+            label: string;
+            /** Retrievers */
+            retrievers: string[];
+            /** Candidate Depth */
+            candidate_depth: number;
+            /** Rrf K */
+            rrf_k: number;
+            bm25?: components["schemas"]["Bm25Settings"] | null;
+        };
+        ArchivedRecipeId: ("image_only" | "image_bm25" | "image_bge" | "image_bm25_bge") | "image_siglip_text";
+        /**
          * Bm25Settings
          * @description Versioned lexical settings frozen into evaluation run snapshots.
          */
@@ -794,7 +817,7 @@ export interface components {
         /** CreateSearchEvalExperimentRequest */
         CreateSearchEvalExperimentRequest: {
             /** Recipe Ids */
-            recipe_ids: ("image_only" | "image_siglip_text" | "image_bm25" | "image_bge" | "image_bm25_bge")[];
+            recipe_ids: ("image_only" | "image_bm25" | "image_bge" | "image_bm25_bge")[];
         };
         /** CreateSearchEvalQueryRequest */
         CreateSearchEvalQueryRequest: {
@@ -810,7 +833,7 @@ export interface components {
              * Recipe Id
              * @enum {string}
              */
-            recipe_id: "image_only" | "image_siglip_text" | "image_bm25" | "image_bge" | "image_bm25_bge";
+            recipe_id: "image_only" | "image_bm25" | "image_bge" | "image_bm25_bge";
         };
         /** CreateSourceRequest */
         CreateSourceRequest: {
@@ -849,7 +872,7 @@ export interface components {
              * Id
              * @enum {string}
              */
-            id: "image_only" | "image_siglip_text" | "image_bm25" | "image_bge" | "image_bm25_bge";
+            id: "image_only" | "image_bm25" | "image_bge" | "image_bm25_bge";
             /**
              * Version
              * @default 1
@@ -859,7 +882,7 @@ export interface components {
             /** Label */
             label: string;
             /** Retrievers */
-            retrievers: ("siglip_image" | "siglip_text" | "bm25" | "bge")[];
+            retrievers: ("siglip_image" | "bm25" | "bge")[];
             /** Candidate Depth */
             candidate_depth: number;
             /** Rrf K */
@@ -880,7 +903,7 @@ export interface components {
             /** Index Version */
             index_version: string | null;
             /** Recipes */
-            recipes: components["schemas"]["Definition"][];
+            recipes: components["schemas"]["ArchivedDefinition"][];
             /** Runs */
             runs: components["schemas"]["RunView"][];
         };
@@ -1378,7 +1401,7 @@ export interface components {
         /** PoolSearchEvalQueryRequest */
         PoolSearchEvalQueryRequest: {
             /** Recipe Ids */
-            recipe_ids: ("image_only" | "image_siglip_text" | "image_bm25" | "image_bge" | "image_bm25_bge")[];
+            recipe_ids: ("image_only" | "image_bm25" | "image_bge" | "image_bm25_bge")[];
         };
         /**
          * ProcessingStatus
@@ -1575,12 +1598,8 @@ export interface components {
             id: string;
             /** Experiment Id */
             experiment_id: string | null;
-            /**
-             * Recipe Id
-             * @enum {string}
-             */
-            recipe_id: "image_only" | "image_siglip_text" | "image_bm25" | "image_bge" | "image_bm25_bge";
-            recipe: components["schemas"]["Definition"];
+            recipe_id: components["schemas"]["ArchivedRecipeId"];
+            recipe: components["schemas"]["ArchivedDefinition"];
             mode: components["schemas"]["RunMode"];
             status: components["schemas"]["RunStatus"];
             phase: components["schemas"]["RunPhase"] | null;
@@ -2057,7 +2076,7 @@ export interface operations {
                 offset?: number;
                 mode?: "hybrid" | null;
                 /** @description Versioned retrieval recipe */
-                recipe?: ("image_only" | "image_siglip_text" | "image_bm25" | "image_bge" | "image_bm25_bge") | null;
+                recipe?: ("image_only" | "image_bm25" | "image_bge" | "image_bm25_bge") | null;
             };
             header?: never;
             path?: never;

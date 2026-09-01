@@ -238,9 +238,6 @@ async def save_embedding(
     model: str,
     dimension: int,
     image_embedding_key: str,
-    text_embedding_key: str | None,
-    text_sha256: str | None = None,
-    recipe_version: str | None = None,
 ) -> EmbeddingSaved:
     async with db.write_session() as session:
         return await Store(session).save_embedding(
@@ -248,9 +245,6 @@ async def save_embedding(
             model=model,
             dimension=dimension,
             image_embedding_key=image_embedding_key,
-            text_embedding_key=text_embedding_key,
-            text_sha256=text_sha256,
-            recipe_version=recipe_version,
         )
 
 

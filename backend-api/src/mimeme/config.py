@@ -198,7 +198,6 @@ class IndexConfig(BaseSettings):
     rebuild_settle_minutes: int = 10
     rebuild_max_stale_hours: int = 6
     reconcile_interval_s: float = 30.0
-    retain_versions: int = 5
     build_threads: int = 2
     bge_batch_size: int = Field(default=128, ge=1)
     shard_rows: int = 1_500

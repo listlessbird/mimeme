@@ -13,6 +13,19 @@ type QueryStatus = Literal["active", "disabled"]
 type RunMode = Literal["image", "hybrid"]
 type RunStatus = Literal["queued", "running", "needs_judgments", "complete", "failed", "cancelled"]
 type RunPhase = Literal["preparing", "searching", "calculating_metrics", "finalizing"]
+type ArchivedRecipeId = recipe.RecipeId | Literal["image_siglip_text"]
+
+
+class ArchivedDefinition(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: ArchivedRecipeId
+    version: Literal[1] = 1
+    label: str = Field(min_length=1)
+    retrievers: tuple[str, ...] = Field(min_length=1)
+    candidate_depth: int = Field(ge=1, le=1000)
+    rrf_k: int = Field(ge=1)
+    bm25: recipe.Bm25Settings | None = None
 
 
 class WorkflowInput(BaseModel):
@@ -116,8 +129,8 @@ class RunView(BaseModel):
 
     id: str
     experiment_id: str | None
-    recipe_id: recipe.RecipeId
-    recipe: recipe.Definition
+    recipe_id: ArchivedRecipeId
+    recipe: ArchivedDefinition
     mode: RunMode
     status: RunStatus
     phase: RunPhase | None
@@ -140,7 +153,7 @@ class ExperimentView(BaseModel):
     id: str
     snapshot_id: str
     index_version: str | None
-    recipes: tuple[recipe.Definition, ...]
+    recipes: tuple[ArchivedDefinition, ...]
     runs: list[RunView]
 
 

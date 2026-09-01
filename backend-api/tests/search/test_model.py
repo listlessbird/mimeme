@@ -14,10 +14,14 @@ def test_query_accepts_text_and_similar_searches() -> None:
     similar = search.Query(similar_image_id=42, limit=5)
 
     assert text.text == "funny cat"
-    assert text.recipe_id == "image_siglip_text"
+    assert text.recipe_id == "image_bm25_bge"
     assert text.mode == "hybrid"
     assert similar.similar_image_id == 42
     assert similar.mode == "image"
+
+
+def test_text_query_defaults_to_the_selected_recipe() -> None:
+    assert search.Query(text="funny cat").recipe_id == "image_bm25_bge"
 
 
 def test_query_preserves_the_public_query_text() -> None:

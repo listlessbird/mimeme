@@ -349,7 +349,7 @@ async def _copy_objects(
 
 async def _object_plan(prod: asyncpg.Connection, image_ids: list[int]) -> list[tuple[str, str]]:
     rows = await prod.fetch(
-        "select i.s3_key, p.embed_s3_key, p.embed_text_present from images i"
+        "select i.s3_key, p.embed_s3_key from images i"
         " join processing p on p.image_id = i.id"
         " where i.id = any($1::int[])",
         image_ids,
@@ -361,8 +361,6 @@ async def _object_plan(prod: asyncpg.Connection, image_ids: list[int]) -> list[t
         embed_key = row["embed_s3_key"]
         if embed_key:
             plan.append(("artifacts", embed_key))
-            if row["embed_text_present"]:
-                plan.append(("artifacts", f"{embed_key[: -len('.npy')]}_text.npy"))
     return plan
 
 

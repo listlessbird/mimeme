@@ -28,8 +28,7 @@ def build(request: PreparedBuild) -> Built:
     faiss.omp_set_num_threads(request.native_threads)
     root = Path(request.output_dir)
     root.mkdir(parents=True, exist_ok=True)
-    image_vectors, image_ids = _load(request, text=False)
-    text_vectors, text_ids = _load(request, text=True)
+    image_vectors, image_ids = _load(request)
 
     if request.embeddings and image_vectors.shape[1] != request.dimension:
         raise ValueError(
@@ -46,19 +45,6 @@ def build(request: PreparedBuild) -> Built:
             kind="image",
         )
     )
-    if len(text_ids) > 0:
-        if text_vectors.shape[1] != request.dimension:
-            raise ValueError("text and image embedding dimensions differ")
-        files.extend(
-            _write_kind(
-                root,
-                request=request,
-                vectors=text_vectors,
-                image_ids=text_ids,
-                kind="text",
-            )
-        )
-
     dense_counts: dict[Literal["bge"], int] = {}
     for dense in request.dense:
         vectors, image_ids = _load_dense(dense)
@@ -83,7 +69,6 @@ def build(request: PreparedBuild) -> Built:
         index_type=request.index_type,
         dimension=request.dimension,
         image_count=len(image_ids),
-        text_count=len(text_ids) or None,
         dense_counts=dense_counts,
         files=[_describe(path) for path in files],
     )
@@ -94,27 +79,19 @@ def pack(request: PackCall) -> Packed:
         raise ValueError("a shard needs at least one member")
     dimension = _dimension(request.members[0])
     base_images = _base(request.base_image, request.base_rows, dimension)
-    base_texts = _base(request.base_text, request.base_rows, dimension)
     total = request.base_rows + len(request.members)
     images = np.empty((total, dimension), dtype=np.float32)
-    texts = np.zeros((total, dimension), dtype=np.float32)
-    if base_images is not None and base_texts is not None:
+    if base_images is not None:
         images[: request.base_rows] = base_images
-        texts[: request.base_rows] = base_texts
     for offset, member in enumerate(request.members):
         row = request.base_rows + offset
         images[row] = _read(member.image_path, member.image_id, dimension)
-        if member.text_path is not None:
-            texts[row] = _read(member.text_path, member.image_id, dimension)
     image_out = Path(request.image_out)
-    text_out = Path(request.text_out)
     _save(image_out, images)
-    _save(text_out, texts)
     return Packed(
         rows=total,
         dimension=dimension,
         image=_packed_file(image_out),
-        text=_packed_file(text_out),
     )
 
 
@@ -169,15 +146,15 @@ def _digest(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _load(request: PreparedBuild, *, text: bool) -> tuple[np.ndarray, list[int]]:
+def _load(request: PreparedBuild) -> tuple[np.ndarray, list[int]]:
     shards = {shard.number: shard for shard in request.shards}
-    selected = [item for item in request.embeddings if _available(item, text=text)]
+    selected = [item for item in request.embeddings if _available(item)]
     if not selected:
         return np.empty((0, request.dimension), dtype=np.float32), []
     matrix = np.empty((len(selected), request.dimension), dtype=np.float32)
     opened: dict[str, np.ndarray] = {}
     for position, item in enumerate(selected):
-        vector = _vector(item, shards, opened, text=text)
+        vector = _vector(item, shards, opened)
         if vector.ndim != 1 or not np.all(np.isfinite(vector)):
             raise ValueError(f"invalid embedding for image {item.image_id}")
         if vector.shape[0] != request.dimension:
@@ -192,29 +169,25 @@ def _load(request: PreparedBuild, *, text: bool) -> tuple[np.ndarray, list[int]]
     return matrix, [item.image_id for item in selected]
 
 
-def _available(item: LocalEmbedding, *, text: bool) -> bool:
+def _available(item: LocalEmbedding) -> bool:
     if item.shard is not None:
-        return item.text_present if text else True
-    return item.text_path is not None if text else item.image_path is not None
+        return True
+    return item.image_path is not None
 
 
 def _vector(
     item: LocalEmbedding,
     shards: dict[int, LocalShard],
     opened: dict[str, np.ndarray],
-    *,
-    text: bool,
 ) -> np.ndarray:
     if item.shard is None:
-        path = item.text_path if text else item.image_path
+        path = item.image_path
         assert path is not None
         return np.asarray(np.load(path, allow_pickle=False), dtype=np.float32)
     shard = shards.get(item.shard)
     if shard is None:
         raise ValueError(f"build is missing shard {item.shard} for image {item.image_id}")
-    path = shard.text_path if text else shard.image_path
-    if path is None:
-        raise ValueError(f"build is missing the text half of shard {item.shard}")
+    path = shard.image_path
     matrix = opened.get(path)
     if matrix is None:
         matrix = np.load(path, mmap_mode="r", allow_pickle=False)
@@ -233,7 +206,7 @@ def _write_kind(
     request: PreparedBuild,
     vectors: np.ndarray,
     image_ids: list[int],
-    kind: Literal["image", "text", "bge"],
+    kind: Literal["image", "bge"],
     model: str | None = None,
     dimension: int | None = None,
     encoder: Encoder | None = None,

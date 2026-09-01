@@ -8,7 +8,6 @@ from mimeme.search.error import Invalid, Unavailable
 
 RecipeId = Literal[
     "image_only",
-    "image_siglip_text",
     "image_bm25",
     "image_bge",
     "image_bm25_bge",
@@ -17,12 +16,11 @@ RecipeName = Literal[
     "image",
     "hybrid",
     "image_only",
-    "image_siglip_text",
     "image_bm25",
     "image_bge",
     "image_bm25_bge",
 ]
-RetrieverId = Literal["siglip_image", "siglip_text", "bm25", "bge"]
+RetrieverId = Literal["siglip_image", "bm25", "bge"]
 
 
 class UnknownRecipe(Invalid):
@@ -56,9 +54,8 @@ class Definition(BaseModel):
 
 _ALIASES: dict[str, RecipeId] = {
     "image": "image_only",
-    "hybrid": "image_siglip_text",
+    "hybrid": "image_bm25_bge",
     "image_only": "image_only",
-    "image_siglip_text": "image_siglip_text",
     "image_bm25": "image_bm25",
     "image_bge": "image_bge",
     "image_bm25_bge": "image_bm25_bge",
@@ -69,13 +66,6 @@ _DEFINITIONS: dict[RecipeId, Definition] = {
         id="image_only",
         label="Image only",
         retrievers=("siglip_image",),
-        candidate_depth=1000,
-        rrf_k=60,
-    ),
-    "image_siglip_text": Definition(
-        id="image_siglip_text",
-        label="Image and SigLIP text",
-        retrievers=("siglip_image", "siglip_text"),
         candidate_depth=1000,
         rrf_k=60,
     ),

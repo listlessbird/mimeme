@@ -1,6 +1,5 @@
 import { createStartHandler, defaultStreamHandler } from "@tanstack/react-start/server";
 
-
 const PROD_CSP = [
 	"default-src 'self'",
 	"script-src 'self' 'unsafe-inline'",
@@ -44,4 +43,6 @@ async function fetch(request: Request): Promise<Response> {
 }
 
 export default { fetch };
-const __probe__ = (() => { throw new Error('PROBE_SERVER_ENTRY'); })();
+const __probe__ = (() => {
+	throw new Error("PROBE_SERVER_ENTRY");
+})();

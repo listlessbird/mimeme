@@ -16,7 +16,7 @@ class Query(_Frozen):
     text: str | None = Field(default=None, max_length=200)
     similar_image_id: int | None = Field(default=None, gt=0)
     recipe_id: recipe.RecipeId = Field(
-        default="image_only",
+        default="image_bm25_bge",
         validation_alias=AliasChoices("recipe_id", "mode"),
     )
     limit: int = Field(default=20, ge=1, le=100)
@@ -28,6 +28,18 @@ class Query(_Frozen):
         if not isinstance(value, str):
             raise ValueError("recipe ID must be a string")
         return recipe.id_of(value)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _default_similar_recipe(cls, value: object) -> object:
+        if (
+            isinstance(value, dict)
+            and value.get("similar_image_id") is not None
+            and "recipe_id" not in value
+            and "mode" not in value
+        ):
+            return {**value, "recipe_id": "image_only"}
+        return value
 
     @model_validator(mode="after")
     def _one_input(self) -> Self:
@@ -42,7 +54,7 @@ class Query(_Frozen):
 
     @property
     def mode(self) -> Literal["image", "hybrid"]:
-        return "hybrid" if self.recipe_id == "image_siglip_text" else "image"
+        return "image" if self.recipe_id == "image_only" else "hybrid"
 
 
 class Candidate(_Frozen):
@@ -116,9 +128,6 @@ class File(_Frozen):
         "index.faiss",
         "mapping.json",
         "metadata.json",
-        "text_index.faiss",
-        "text_mapping.json",
-        "text_metadata.json",
         "bge_index.faiss",
         "bge_mapping.json",
         "bge_metadata.json",
@@ -191,10 +200,6 @@ class Load(_Frozen):
         required = {"index.faiss", "mapping.json", "metadata.json"}
         if not required.issubset(names):
             raise ValueError("image index generation is incomplete")
-        text = {"text_index.faiss", "text_mapping.json", "text_metadata.json"}
-        present = text.intersection(names)
-        if present and present != text:
-            raise ValueError("text index generation is incomplete")
         prefix = f"indexes/{self.version}/"
         if self.bm25 is not None and self.bm25.key != f"{prefix}{self.bm25.name}":
             raise ValueError("BM25 artifact must use its generation prefix")
@@ -232,7 +237,6 @@ class Loaded(_Frozen):
     embed_model: str
     dimension: int = Field(gt=0)
     image_count: int = Field(ge=0)
-    text_count: int | None = Field(default=None, ge=0)
     bm25_count: int | None = Field(default=None, ge=0)
     dense_counts: dict[Literal["bge"], int] = {}
     faiss_version: str

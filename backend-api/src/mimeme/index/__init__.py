@@ -2,7 +2,6 @@ from mimeme.index.client import Client
 from mimeme.index.model import (
     Activated,
     ActivateInput,
-    Backfilled,
     Blob,
     Bm25File,
     Build,
@@ -51,7 +50,6 @@ from mimeme.index.state import InvalidTransition, transition
 __all__ = [
     "ActivateInput",
     "Activated",
-    "Backfilled",
     "Blob",
     "Bm25File",
     "Build",

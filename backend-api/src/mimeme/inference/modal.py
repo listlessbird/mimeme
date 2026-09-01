@@ -21,7 +21,6 @@ from mimeme.inference.model import (
     Ok,
     Unavailable,
     image_embedding_key,
-    text_embedding_key,
 )
 
 
@@ -90,10 +89,8 @@ class Modal:
                 {
                     "image_id": item.image_id,
                     "media_key": item.media_key,
-                    "text": item.text,
                     "sha256": item.sha256,
                     "image_key": image_key,
-                    "text_key": text_embedding_key(image_key),
                 }
             )
         instance = self._embedding_cls()()
@@ -108,7 +105,6 @@ class Modal:
                         embedding=Embedding(
                             image_id=entry["image_id"],
                             image_embedding_key=entry["image_key"],
-                            text_embedding_key=entry["text_key"],
                             model=entry["model"],
                             dimension=entry["dimension"],
                         )

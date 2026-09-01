@@ -121,11 +121,6 @@ async def test_a_rebuild_reads_each_referenced_vector_once_and_probes_nothing(tm
             _npy([1, 0]),
             content_type="application/octet-stream",
         )
-    await artifacts.put_bytes(
-        storage.Object("embeddings/1_text.npy"),
-        _npy([0, 1]),
-        content_type="application/octet-stream",
-    )
     gateway = Gateway(_Calls(), artifacts=artifacts, workspace_dir=tmp_path)
     request = index.Build(
         job_id="rebuild-2",
@@ -136,12 +131,10 @@ async def test_a_rebuild_reads_each_referenced_vector_once_and_probes_nothing(tm
         dimension=2,
         encoder=index.Encoder(repo="test/encoder", revision="rev", variant="model.onnx"),
         embeddings=[
-            index.Embedding(
-                image_id=1, image_key="embeddings/1.npy", text_key="embeddings/1_text.npy"
-            ),
+            index.Embedding(image_id=1, image_key="embeddings/1.npy"),
             index.Embedding(image_id=2, image_key="embeddings/2.npy"),
         ],
-        planned_reads=3,
+        planned_reads=2,
     )
 
     result = await gateway.build(request)
@@ -149,7 +142,6 @@ async def test_a_rebuild_reads_each_referenced_vector_once_and_probes_nothing(tm
     assert result.outcome == "built"
     assert artifacts.reads == [
         "embeddings/1.npy",
-        "embeddings/1_text.npy",
         "embeddings/2.npy",
     ]
     assert artifacts.probes == []
@@ -168,19 +160,17 @@ async def test_a_mixed_corpus_reads_one_object_per_shard_plus_the_unsealed_tail(
     tmp_path,
 ) -> None:
     artifacts = _CountingMemory()
-    await _shard(artifacts, pack.locate("test/embed", 0, 0, text=False), [[1, 0], [0, 1], [1, 1]])
-    await _shard(artifacts, pack.locate("test/embed", 0, 0, text=True), [[0, 1], [0, 0], [1, 0]])
-    await _shard(artifacts, pack.locate("test/embed", 1, 0, text=False), [[1, 2]])
-    await _shard(artifacts, pack.locate("test/embed", 1, 0, text=True), [[0, 0]])
+    await _shard(artifacts, pack.locate("test/embed", 0, 0), [[1, 0], [0, 1], [1, 1]])
+    await _shard(artifacts, pack.locate("test/embed", 1, 0), [[1, 2]])
     await artifacts.put_bytes(
         storage.Object("embeddings/tail.npy"), _npy([2, 1]), content_type="application/octet-stream"
     )
     gateway = Gateway(_Calls(), artifacts=artifacts, workspace_dir=tmp_path)
     embeddings = [
-        index.Embedding(image_id=1, shard=0, row=0, seq=0, text_present=True),
-        index.Embedding(image_id=2, shard=0, row=1, seq=0, text_present=False),
-        index.Embedding(image_id=3, shard=0, row=2, seq=0, text_present=True),
-        index.Embedding(image_id=4, shard=1, row=0, seq=0, text_present=False),
+        index.Embedding(image_id=1, shard=0, row=0, seq=0),
+        index.Embedding(image_id=2, shard=0, row=1, seq=0),
+        index.Embedding(image_id=3, shard=0, row=2, seq=0),
+        index.Embedding(image_id=4, shard=1, row=0, seq=0),
         index.Embedding(image_id=5, image_key="embeddings/tail.npy"),
     ]
     request = index.Build(
@@ -199,12 +189,11 @@ async def test_a_mixed_corpus_reads_one_object_per_shard_plus_the_unsealed_tail(
 
     assert result.manifest is not None
     assert result.manifest.image_count == 5
-    assert result.manifest.text_count == 2
+    assert result.manifest.text_count is None
     assert artifacts.probes == []
     assert artifacts.reads == [
-        pack.locate("test/embed", 0, 0, text=False),
-        pack.locate("test/embed", 0, 0, text=True),
-        pack.locate("test/embed", 1, 0, text=False),
+        pack.locate("test/embed", 0, 0),
+        pack.locate("test/embed", 1, 0),
         "embeddings/tail.npy",
     ]
-    assert len(artifacts.reads) == request.planned_reads == 4
+    assert len(artifacts.reads) == request.planned_reads == 3

@@ -11,6 +11,7 @@ from mimeme.db.schema import (
     SearchEvalPoolCandidate,
     SearchEvalPoolSource,
     SearchEvalQuery,
+    SearchEvalRun,
 )
 from mimeme.search_eval import service
 from tests.factories import create_image
@@ -44,24 +45,24 @@ async def test_run_lifecycle_persists_rankings_and_scores(
     created = await service.create_run(
         eval_db,
         run_id="run1",
-        recipe_id="image_siglip_text",
+        recipe_id="image_bm25_bge",
         workflow_id="search-eval-v1-run1",
     )
 
     assert created.status == "queued"
     assert created.progress_total == 1
-    assert created.recipe_id == "image_siglip_text"
+    assert created.recipe_id == "image_bm25_bge"
     assert created.recipe.candidate_depth == 1000
 
     prepared = await service.prepare_run(eval_db, created.id, index_version="index-v1")
     assert [query.id for query in prepared.queries] == [query_id]
-    assert prepared.recipe == created.recipe
+    assert prepared.recipe.model_dump() == created.recipe.model_dump()
 
     await service.record_query(
         eval_db,
         run_id=created.id,
         query_id=query_id,
-        recipe_id="image_siglip_text",
+        recipe_id="image_bm25_bge",
         expected_index_version="index-v1",
         page=search.Page(
             query=prepared.queries[0].text,
@@ -111,7 +112,7 @@ async def test_run_lifecycle_persists_rankings_and_scores(
             )
         ).all()
         experiment = await session.get(SearchEvalExperiment, created.experiment_id)
-    assert [source.recipe_id for source in sources] == ["image_siglip_text"] * 2
+    assert [source.recipe_id for source in sources] == ["image_bm25_bge"] * 2
     assert experiment is not None and experiment.index_version == "index-v1"
 
 
@@ -126,13 +127,13 @@ async def test_grouped_experiment_freezes_one_snapshot_and_recipe_set(
         experiment_id="experiment1",
         runs=[
             ("image-run", "image_only", "workflow-image"),
-            ("hybrid-run", "image_siglip_text", "workflow-hybrid"),
+            ("hybrid-run", "image_bm25_bge", "workflow-hybrid"),
         ],
     )
 
     assert [run.recipe_id for run in experiment.runs] == [
         "image_only",
-        "image_siglip_text",
+        "image_bm25_bge",
     ]
     assert {run.snapshot_id for run in experiment.runs} == {experiment.snapshot_id}
     await service.prepare_run(eval_db, "image-run", index_version="index-v1")
@@ -154,5 +155,34 @@ async def test_bm25_experiment_freezes_lexical_settings(eval_db, run_sync_seed) 
     assert definition.id == "image_bm25"
     assert definition.bm25 == search.recipe.Bm25Settings(weights=(4, 4, 4, 2, 2, 2, 1))
     prepared = await service.prepare_run(eval_db, "bm25-run", index_version="index-v2")
-    assert prepared.recipe == definition
+    assert prepared.recipe.model_dump() == definition.model_dump()
     assert prepared.index_version == "index-v2"
+
+
+async def test_retired_recipe_snapshot_remains_readable(eval_db, run_sync_seed) -> None:
+    await run_sync_seed(_seed)
+    created = await service.create_run(
+        eval_db,
+        run_id="archived-run",
+        recipe_id="image_only",
+        workflow_id="archived-workflow",
+    )
+    async with eval_db.write_session() as session:
+        row = await session.get(SearchEvalRun, created.id)
+        assert row is not None
+        row.recipe_id = "image_siglip_text"
+        row.mode = "hybrid"
+        row.recipe_definition = {
+            "id": "image_siglip_text",
+            "version": 1,
+            "label": "Image and SigLIP text",
+            "retrievers": ["siglip_image", "siglip_text"],
+            "candidate_depth": 1000,
+            "rrf_k": 60,
+            "bm25": None,
+        }
+
+    archived = await service.get_run(eval_db, created.id)
+
+    assert archived.recipe_id == "image_siglip_text"
+    assert archived.recipe.retrievers == ("siglip_image", "siglip_text")

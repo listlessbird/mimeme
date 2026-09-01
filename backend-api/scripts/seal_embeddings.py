@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Seal individual embedding objects into shard matrices.
 
-A rebuild reads one object per image, twice. Sealing packs a fixed number of
-vectors into one 2-D float32 matrix per family, so a rebuild reads one object
-per shard instead. This script drives the same ``index.pack`` code path the
+Sealing packs a fixed number of image vectors into one 2-D float32 matrix, so a
+rebuild reads one object per shard instead of one object per image. This script
+drives the same ``index.pack`` code path the
 rebuild workflow's seal activity uses; it is not a separate migration
 mechanism. The matrix work runs in the compute service, so a compute gateway
 must be reachable at ``COMPUTE_GATEWAY_URL``.
@@ -42,9 +42,7 @@ def _report(target: pack.Plan) -> dict[str, object]:
         "unsealed_tail_after": target.tail,
         "first_shard": target.shards[0].number if target.shards else None,
         "last_shard": target.shards[-1].number if target.shards else None,
-        "first_shard_keys": (
-            [target.shards[0].image_key, target.shards[0].text_key] if target.shards else []
-        ),
+        "first_shard_keys": [target.shards[0].image_key] if target.shards else [],
         "action_required": (None if not target.shards else "run with --apply --confirm APPLY"),
     }
 

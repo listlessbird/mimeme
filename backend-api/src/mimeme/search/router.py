@@ -49,7 +49,6 @@ async def search_text(
     recipe: Annotated[
         Literal[
             "image_only",
-            "image_siglip_text",
             "image_bm25",
             "image_bge",
             "image_bm25_bge",
@@ -62,7 +61,7 @@ async def search_text(
         raise HTTPException(status_code=400, detail="Use recipe or legacy mode, not both")
     query = search.Query(
         text=q,
-        recipe_id=recipe or ("image_siglip_text" if mode == "hybrid" else "image_only"),
+        recipe_id=recipe or "image_bm25_bge",
         limit=limit,
         offset=offset,
     )

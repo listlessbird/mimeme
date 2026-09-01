@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any, cast
 
-from sqlalchemy import CursorResult, Row, delete, func, select, update
+from sqlalchemy import Row, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from mimeme.db.schema import EmbeddingShard, IndexBuild, Processing, ProcessingStatus
@@ -50,7 +49,6 @@ class Store:
             select(
                 Processing.image_id,
                 Processing.embed_s3_key,
-                Processing.embed_text_present,
             )
             .where(
                 Processing.embed_status == ProcessingStatus.DONE,
@@ -112,32 +110,6 @@ class Store:
         row.sealed = sealed
         await self._session.flush()
 
-    async def mark_text_present(self, *, model: str, image_keys: list[str]) -> int:
-        if not image_keys:
-            return 0
-        result = await self._session.execute(
-            update(Processing)
-            .where(
-                Processing.embed_model == model,
-                Processing.embed_text_present.is_(None),
-                Processing.embed_s3_key.in_(image_keys),
-            )
-            .values(embed_text_present=True)
-        )
-        return cast("CursorResult[Any]", result).rowcount
-
-    async def mark_text_absent(self, *, model: str) -> int:
-        result = await self._session.execute(
-            update(Processing)
-            .where(
-                Processing.embed_status == ProcessingStatus.DONE,
-                Processing.embed_model == model,
-                Processing.embed_text_present.is_(None),
-            )
-            .values(embed_text_present=False)
-        )
-        return cast("CursorResult[Any]", result).rowcount
-
     async def activate(self, *, job_id: str, manifest: Manifest) -> None:
         await self._session.execute(
             update(IndexBuild).where(IndexBuild.is_active.is_(True)).values(is_active=False)
@@ -168,7 +140,7 @@ class Store:
             num_vectors=manifest.image_count,
             dimension=manifest.dimension,
             removed_versions=[],
-            text_num_vectors=manifest.text_count,
+            text_num_vectors=None,
         )
         await jobs.release(job_id=job_id)
 
@@ -199,28 +171,3 @@ class Store:
         else:
             await jobs.fail_rebuild(job_id, error)
         await jobs.release(job_id=job_id)
-
-    async def removable(self, *, protect: set[str], retain: int) -> list[str]:
-        rows = (
-            await self._session.scalars(
-                select(IndexBuild).order_by(IndexBuild.created_at.desc(), IndexBuild.id.desc())
-            )
-        ).all()
-        kept = 0
-        removed: list[str] = []
-        for row in rows:
-            if row.version in protect or row.is_active:
-                continue
-            if kept < retain:
-                kept += 1
-            else:
-                removed.append(row.version)
-        return removed
-
-    async def forget(self, versions: list[str]) -> None:
-        if versions:
-            await self._session.execute(
-                delete(IndexBuild).where(
-                    IndexBuild.version.in_(versions), IndexBuild.is_active.is_(False)
-                )
-            )

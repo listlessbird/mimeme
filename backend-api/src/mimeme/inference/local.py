@@ -27,7 +27,6 @@ from mimeme.inference.model import (
     Timeout,
     Unavailable,
     image_embedding_key,
-    text_embedding_key,
 )
 
 
@@ -78,10 +77,8 @@ class Local:
                 EmbedSpecItem(
                     image_id=item.image_id,
                     media_key=item.media_key,
-                    text=item.text,
                     sha256=item.sha256,
                     image_key=image_key,
-                    text_key=text_embedding_key(image_key),
                 )
             )
         spec = EmbedSpec(model=self._embed_model, items=spec_items)
@@ -90,13 +87,12 @@ class Local:
         result = EmbedResult.model_validate(state.result)
         items: list[Ok | Failed] = []
         for entry in result.items:
-            if entry.ok and entry.image_key and entry.text_key and entry.model and entry.dimension:
+            if entry.ok and entry.image_key and entry.model and entry.dimension:
                 items.append(
                     Ok(
                         embedding=Embedding(
                             image_id=entry.image_id,
                             image_embedding_key=entry.image_key,
-                            text_embedding_key=entry.text_key,
                             model=entry.model,
                             dimension=entry.dimension,
                         )
@@ -189,6 +185,6 @@ def _annotate_job_id(input: Input) -> str:
 
 
 def _embed_job_id(items: list[EmbedSpecItem]) -> str:
-    payload = "|".join(f"{item.image_id}:{item.media_key}:{item.text}" for item in items)
+    payload = "|".join(f"{item.image_id}:{item.media_key}:{item.sha256}" for item in items)
     digest = hashlib.sha256(payload.encode()).hexdigest()[:32]
     return f"embed-{digest}"

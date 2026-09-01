@@ -35,11 +35,9 @@ class State(_Frozen):
 class Embedding(_Frozen):
     image_id: int = Field(gt=0)
     image_key: str | None = Field(default=None, min_length=1)
-    text_key: str | None = Field(default=None, min_length=1)
     shard: int | None = Field(default=None, ge=0)
     row: int | None = Field(default=None, ge=0)
     seq: int | None = Field(default=None, ge=0)
-    text_present: bool = False
 
     @property
     def sealed(self) -> bool:
@@ -53,10 +51,6 @@ class Embedding(_Frozen):
             raise ValueError("a shard coordinate needs the object generation it lives in")
         if (self.image_key is None) == (self.shard is None):
             raise ValueError("an embedding is either sealed into a shard or a standalone object")
-        if self.text_key is not None and self.image_key is None:
-            raise ValueError("a sealed embedding carries no standalone text object")
-        if self.text_present and self.shard is None:
-            raise ValueError("text presence on a standalone embedding is its text key")
         return self
 
 
@@ -376,13 +370,6 @@ class Activated(_Frozen):
     removed_versions: list[str] = []
 
 
-class Backfilled(_Frozen):
-    model: str
-    text_objects: int = Field(ge=0)
-    marked_present: int = Field(ge=0)
-    marked_absent: int = Field(ge=0)
-
-
 class Snapshot(_Frozen):
     target_generation: int = Field(ge=0)
     dimension: int = Field(ge=0)
@@ -416,16 +403,13 @@ class WorkflowResult(_Frozen):
 class LocalShard(_Frozen):
     number: int = Field(ge=0)
     image_path: str
-    text_path: str | None = None
 
 
 class LocalEmbedding(_Frozen):
     image_id: int = Field(gt=0)
     image_path: str | None = None
-    text_path: str | None = None
     shard: int | None = Field(default=None, ge=0)
     row: int | None = Field(default=None, ge=0)
-    text_present: bool = False
 
 
 class PreparedBuild(_Frozen):
@@ -465,16 +449,13 @@ class BuildCall(_Frozen):
 class LocalMember(_Frozen):
     image_id: int = Field(gt=0)
     image_path: str
-    text_path: str | None = None
 
 
 class PackCall(_Frozen):
     op: Literal["index.pack"] = "index.pack"
     members: list[LocalMember]
     image_out: str
-    text_out: str
     base_image: str | None = None
-    base_text: str | None = None
     base_rows: int = Field(default=0, ge=0)
 
 
@@ -488,7 +469,6 @@ class Packed(_Frozen):
     rows: int = Field(ge=0)
     dimension: int = Field(gt=0)
     image: PackedFile
-    text: PackedFile
 
 
 IndexCall = Annotated[BuildCall | PackCall, Field(discriminator="op")]
@@ -508,7 +488,6 @@ class Built(_Frozen):
     index_type: Literal["flat", "hnsw"]
     dimension: int = Field(ge=0)
     image_count: int = Field(ge=0)
-    text_count: int | None = Field(default=None, ge=0)
     dense_counts: dict[Literal["bge"], int] = {}
     files: list[BuiltFile]
 
@@ -521,16 +500,13 @@ class BuildSpec(_Frozen):
 class SealMember(_Frozen):
     image_id: int = Field(gt=0)
     image_key: str = Field(min_length=1)
-    text_key: str | None = Field(default=None, min_length=1)
 
 
 class SealShard(_Frozen):
     number: int = Field(ge=0)
     seq: int = Field(ge=0)
     image_key: str = Field(min_length=1)
-    text_key: str = Field(min_length=1)
     base_image_key: str | None = Field(default=None, min_length=1)
-    base_text_key: str | None = Field(default=None, min_length=1)
     base_rows: int = Field(default=0, ge=0)
     sealed: bool = False
     members: list[SealMember]

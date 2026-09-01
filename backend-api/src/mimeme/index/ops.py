@@ -18,7 +18,6 @@ from mimeme.index.client import Client
 from mimeme.index.model import (
     Activated,
     ActivateInput,
-    Backfilled,
     Bm25File,
     Build,
     BuildPlan,
@@ -40,8 +39,12 @@ from mimeme.search import document
 
 _MANIFEST_MAX = 1024 * 1024
 _PLAN_MAX = 256 * 1024 * 1024
-_BACKFILL_BATCH = 1000
 _TERMINAL = (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED)
+_LEGACY_TEXT_ARTIFACTS = {
+    "text_index.faiss",
+    "text_mapping.json",
+    "text_metadata.json",
+}
 
 
 def plan_key(version: str) -> str:
@@ -204,37 +207,6 @@ async def prepare(
     )
 
 
-async def backfill_text_presence(
-    db: Db,
-    artifacts: storage.Store,
-    *,
-    model: str,
-    batch: int = _BACKFILL_BATCH,
-) -> Backfilled:
-    seen = 0
-    marked = 0
-    pending: list[str] = []
-    async for info in artifacts.list(prefix=inference.embedding_prefix(model)):
-        if not inference.is_text_embedding_key(info.object.key):
-            continue
-        seen += 1
-        pending.append(inference.image_embedding_key_of(info.object.key))
-        if len(pending) >= batch:
-            marked += await _mark_present(db, model=model, image_keys=pending)
-            pending = []
-    marked += await _mark_present(db, model=model, image_keys=pending)
-    async with db.write_session() as session:
-        absent = await Store(session).mark_text_absent(model=model)
-    return Backfilled(model=model, text_objects=seen, marked_present=marked, marked_absent=absent)
-
-
-async def _mark_present(db: Db, *, model: str, image_keys: list[str]) -> int:
-    if not image_keys:
-        return 0
-    async with db.write_session() as session:
-        return await Store(session).mark_text_present(model=model, image_keys=image_keys)
-
-
 async def build(client: Client, request: Build, *, progress=None) -> Result:  # noqa: ANN001
     return await client.build(request, progress=progress)
 
@@ -278,12 +250,9 @@ async def activate(
     artifacts: storage.Store,
     remote: search.Activation,
     input: ActivateInput,
-    *,
-    retain: int = 5,
 ) -> Activated:
     if input.cancelled or input.error is not None:
         await _record_failure(db, input)
-        await cleanup_incomplete(artifacts, version=None, protect=set())
         return Activated(version="")
     assert input.result is not None
     if input.result.outcome == "empty":
@@ -304,10 +273,8 @@ async def activate(
         await search.reconcile(load, activation=remote)
     else:
         await search.activate(load, activation=remote, commit=commit)
-    status = await _confirm_activation(db, remote, manifest)
-    protect = {version for version in (status.serving_version, status.retained_version) if version}
-    removed = await collect(db, artifacts, protect=protect, retain=retain)
-    return Activated(version=manifest.version, removed_versions=removed)
+    await _confirm_activation(db, remote, manifest)
+    return Activated(version=manifest.version)
 
 
 async def reconcile(
@@ -423,32 +390,6 @@ async def _publish_bm25(
         return descriptor
 
 
-async def collect(
-    db: Db,
-    artifacts: storage.Store,
-    *,
-    protect: set[str],
-    retain: int,
-) -> list[str]:
-    async with db.read_session() as session:
-        versions = await Store(session).removable(protect=protect, retain=retain)
-    for version in versions:
-        await _delete_prefix(artifacts, f"indexes/{version}/")
-    async with db.write_session() as session:
-        await Store(session).forget(versions)
-    return versions
-
-
-async def cleanup_incomplete(
-    artifacts: storage.Store, *, version: str | None, protect: set[str]
-) -> None:
-    if version is None or version in protect:
-        return
-    complete = await artifacts.stat(storage.Object(f"indexes/{version}/complete.json"))
-    if complete is None:
-        await _delete_prefix(artifacts, f"indexes/{version}/")
-
-
 async def fail(db: Db, *, job_id: str, error: str, cancelled: bool) -> None:
     await _record_failure(
         db,
@@ -473,11 +414,6 @@ async def _record_failure(db: Db, input: ActivateInput) -> None:
             pass
 
 
-async def _delete_prefix(artifacts: storage.Store, prefix: str) -> None:
-    objects = [info.object async for info in artifacts.list(prefix=prefix)]
-    await asyncio.gather(*(artifacts.delete(obj) for obj in objects))
-
-
 def _version(job_id: str, generation: int) -> str:
     digest = hashlib.sha256(job_id.encode()).hexdigest()[:12]
     return f"v2-g{generation}-{digest}"
@@ -486,7 +422,9 @@ def _version(job_id: str, generation: int) -> str:
 def _load(manifest: Manifest) -> search.Load:
     return search.Load(
         version=manifest.version,
-        files=[_search_file(file) for file in manifest.files],
+        files=[
+            _search_file(file) for file in manifest.files if file.name not in _LEGACY_TEXT_ARTIFACTS
+        ],
         bm25=(
             search.Bm25File.model_validate(manifest.bm25.model_dump())
             if manifest.bm25 is not None
@@ -520,7 +458,7 @@ def _load(manifest: Manifest) -> search.Load:
 
 
 def _search_file(file: File) -> search.File:
-    return search.File(name=file.name, key=file.key, sha256=file.sha256)
+    return search.File.model_validate(file.model_dump(exclude={"length"}))
 
 
 async def _activation_matches(db: Db, manifest: Manifest) -> bool:
