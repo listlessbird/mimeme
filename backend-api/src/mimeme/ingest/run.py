@@ -174,18 +174,11 @@ async def _resolve(
 ) -> Result | _PendingEmbedding:
     async with env.db.read_session() as session:
         store = Store(session)
-        phash_dedup_allowed = await store.phash_dedup_allowed(input.item_id)
         sha_id = await store.find_by_sha(facts.sha256)
-        phash_match = None if sha_id is not None else await store.find_phash_match(facts.phash)
     if sha_id is not None:
         return await _duplicate(
             env, input, sha_id, DuplicateReason.SHA256, context, timings=timings
         )
-    if phash_match is not None and phash_dedup_allowed:
-        return await _duplicate(
-            env, input, phash_match.image_id, DuplicateReason.PHASH, context, timings=timings
-        )
-
     payload = data if data is not None else await _read_staged(env, staging)
     media_key = rule.canonical_media_key(
         sha256=facts.sha256, dataset=input.dataset, image_format=facts.format
@@ -209,18 +202,15 @@ async def _resolve(
             resolved = (sha_id, DuplicateReason.SHA256)
         else:
             phash_match = await store.find_phash_match(facts.phash)
-            if phash_match is not None and phash_dedup_allowed:
-                resolved = (phash_match.image_id, DuplicateReason.PHASH)
-            else:
-                image_id = await store.insert_canonical(
-                    facts=facts,
-                    dataset=input.dataset,
-                    filename=_filename(input.source),
-                    s3_key=media_key,
-                    etag=info.etag,
-                    file_size=len(payload),
-                )
-                resolved = None
+            image_id = await store.insert_canonical(
+                facts=facts,
+                dataset=input.dataset,
+                filename=_filename(input.source),
+                s3_key=media_key,
+                etag=info.etag,
+                file_size=len(payload),
+            )
+            resolved = None
 
     if resolved is not None:
         return await _duplicate(env, input, resolved[0], resolved[1], context, timings=timings)

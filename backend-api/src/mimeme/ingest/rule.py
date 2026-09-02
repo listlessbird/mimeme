@@ -10,9 +10,8 @@ ITEM_ACTIVITY = "mimeme.ingest.item.v2"
 BATCH_ACTIVITY = "mimeme.ingest.batch.v2"
 FINISH_ACTIVITY = "mimeme.ingest.finish.v2"
 
-# One inference child and one image child serve the whole compute container, and
-# the pHash duplicate decision serializes on a single advisory lock. Keep only a
-# few ingestion batches in flight so downloads overlap without flooding either.
+# One inference child and one image child serve the whole compute container. Keep
+# only a few ingestion batches in flight so downloads overlap without flooding either.
 FANOUT = 2
 EMBED_BATCH_SIZE = 16
 
@@ -28,8 +27,8 @@ DOWNLOAD_USER_AGENT = (
 )
 _RETRYABLE_4XX = frozenset({408, 425, 429})
 
-# Fixed transaction-level advisory lock guarding the pHash duplicate decision and
-# the canonical image insert. All ingest workers contend on this single key.
+# Fixed transaction-level advisory lock guarding the SHA duplicate decision and
+# canonical image insert. All ingest workers contend on this single key.
 DEDUP_LOCK_KEY = 0x6D696E67  # "ming"
 
 

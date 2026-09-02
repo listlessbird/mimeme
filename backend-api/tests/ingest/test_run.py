@@ -196,28 +196,34 @@ class TestDuplicates:
             assert url.status is ProcessingStatus.DONE
             assert url.duplicate_reason is DuplicateReason.SHA256
 
-    async def test_phash_duplicate(self, db: SavepointDb, run_sync_seed, png_bytes: bytes) -> None:
+    async def test_phash_match_is_kept_and_linked(
+        self, db: SavepointDb, run_sync_seed, png_bytes: bytes
+    ) -> None:
         facts = facts_for(png_bytes, phash="000000000000000f")  # near 0
 
-        def seed(s: Session) -> tuple[str, int]:
+        def seed(s: Session) -> tuple[str, int, int]:
             create_search_index_state(session=s, desired_generation=0, active_generation=0)
             job = create_job(session=s)
             url = create_ingest_url(session=s, job=job)
-            create_image(session=s, sha256="9" * 64, phash="0000000000000000")
+            similar = create_image(session=s, sha256="9" * 64, phash="0000000000000000")
             s.flush()
-            return job.id, url.id
+            return job.id, url.id, similar.id
 
-        job_id, item_id = await run_sync_seed(seed)
+        job_id, item_id, similar_id = await run_sync_seed(seed)
         env = _remote_env(db, png_bytes, {rule.staging_key(item_id): facts})
 
         result = await run(
             env, Input(job_id=job_id, item_id=item_id, source=RemoteUrl(url=REMOTE_URL))
         )
-        assert result.outcome == "duplicate"
-        assert result.duplicate_reason is DuplicateReason.PHASH
+
+        assert result.outcome == "processed"
         async with db.read_session() as session:
-            # no new canonical image inserted for the near-duplicate sha
-            assert await session.scalar(select(Image).where(Image.sha256 == facts.sha256)) is None
+            image = await session.scalar(select(Image).where(Image.sha256 == facts.sha256))
+            assert image is not None
+            url = await session.get(IngestURL, item_id)
+            assert url.duplicate_reason is None
+            assert url.similar_image_id == similar_id
+            assert url.phash_distance == 4
 
     async def test_kym_phash_match_is_kept_and_linked(
         self, db: SavepointDb, run_sync_seed, png_bytes: bytes

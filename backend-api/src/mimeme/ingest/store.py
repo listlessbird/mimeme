@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from mimeme.db.schema import (
     Annotation,
     Image,
-    IngestionSource,
     IngestURL,
     Processing,
     ProcessingStatus,
@@ -97,14 +96,6 @@ class Store:
             return None
         context = Context.model_validate(raw)
         return context if any(context.model_dump().values()) else None
-
-    async def phash_dedup_allowed(self, ingest_url_id: int) -> bool:
-        adapter_key = await self._session.scalar(
-            select(IngestionSource.adapter_key)
-            .join(IngestURL, IngestURL.source_id == IngestionSource.id)
-            .where(IngestURL.id == ingest_url_id)
-        )
-        return adapter_key != "kym"
 
     async def find_by_sha(self, sha256: str) -> int | None:
         return await self._session.scalar(select(Image.id).where(Image.sha256 == sha256))
