@@ -52,7 +52,7 @@ async def test_run_lifecycle_persists_rankings_and_scores(
     assert created.status == "queued"
     assert created.progress_total == 1
     assert created.recipe_id == "image_bm25_bge"
-    assert created.recipe.candidate_depth == 1000
+    assert created.recipe.candidate_depth == 250
 
     prepared = await service.prepare_run(eval_db, created.id, index_version="index-v1")
     assert [query.id for query in prepared.queries] == [query_id]

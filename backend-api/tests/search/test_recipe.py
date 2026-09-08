@@ -13,7 +13,7 @@ def test_legacy_names_resolve_to_versioned_definitions() -> None:
         "version": 1,
         "label": "Image, BM25, and BGE",
         "retrievers": ("siglip_image", "bm25", "bge"),
-        "candidate_depth": 1000,
+        "candidate_depth": 250,
         "rrf_k": 60,
         "bm25": {
             "schema_version": 1,

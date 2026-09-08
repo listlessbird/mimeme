@@ -88,7 +88,7 @@ _DEFINITIONS: dict[RecipeId, Definition] = {
         id="image_bm25_bge",
         label="Image, BM25, and BGE",
         retrievers=("siglip_image", "bm25", "bge"),
-        candidate_depth=1000,
+        candidate_depth=250,
         rrf_k=60,
         bm25=Bm25Settings(weights=(4, 4, 4, 2, 2, 2, 1)),
     ),
